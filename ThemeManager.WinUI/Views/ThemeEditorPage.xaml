@@ -1,0 +1,432 @@
+<Page
+    x:Class="ThemeManager.WinUI.Views.ThemeEditorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ThemeManager.WinUI.Views"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    Background="{StaticResource AppBackgroundBrush}"
+    KeyDown="Page_KeyDown">
+
+    <Page.Resources>
+        <local:HexToBrushConverter    x:Key="HexToBrushConverter"    />
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*"    />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ════════ HEADER ════════════════════════════════════════════════ -->
+        <Grid Grid.Row="0" Padding="32,24,32,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*"    />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="← Back"
+                    Style="{StaticResource GhostButtonStyle}"
+                    Click="BackButton_Click"
+                    VerticalAlignment="Center"
+                    Margin="0,0,16,0" />
+
+            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="Theme Editor"
+                           FontSize="{StaticResource FontSizeDisplay}"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock Text="Palette updates live · Ctrl+Z to undo · Ctrl+Y to redo"
+                           Style="{StaticResource CaptionStyle}" />
+            </StackPanel>
+
+            <!-- Header actions -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+
+                <!-- Undo / Redo -->
+                <Button x:Name="UndoButton"
+                        Content="{x:Bind ViewModel.UndoDepthLabel, Mode=OneWay}"
+                        Style="{StaticResource GhostButtonStyle}"
+                        IsEnabled="{x:Bind ViewModel.CanUndo, Mode=OneWay}"
+                        Click="UndoButton_Click"
+                        Padding="12,8,12,8" />
+
+                <Button x:Name="RedoButton"
+                        Content="Redo"
+                        Style="{StaticResource GhostButtonStyle}"
+                        IsEnabled="{x:Bind ViewModel.CanRedo, Mode=OneWay}"
+                        Click="RedoButton_Click"
+                        Padding="12,8,12,8" />
+
+                <Button Content="Revert"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Click="RevertButton_Click" />
+
+                <Button Content="Save Theme"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="SaveButton_Click" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ════════ EDITOR + PREVIEW ══════════════════════════════════════ -->
+        <Grid Grid.Row="1" Margin="32,0,32,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="360" />
+                <ColumnDefinition Width="20"  />
+                <ColumnDefinition Width="*"   />
+            </Grid.ColumnDefinitions>
+
+            <!-- ── LEFT: Editor form ──────────────────────────────────── -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="20">
+
+                    <!-- Identity -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Identity" Style="{StaticResource SectionHeaderStyle}" />
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Name" Style="{StaticResource CaptionStyle}" />
+                                <TextBox Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource CozyTextBoxStyle}" />
+                            </StackPanel>
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Description" Style="{StaticResource CaptionStyle}" />
+                                <TextBox Text="{x:Bind ViewModel.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource CozyTextBoxStyle}"
+                                         TextWrapping="Wrap" AcceptsReturn="True" Height="60" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Palette -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="16">
+
+                            <!-- Palette header with harmony lock toggle -->
+                            <Grid>
+                                <TextBlock Text="Palette"
+                                           Style="{StaticResource SectionHeaderStyle}"
+                                           VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right"
+                                            Spacing="8"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="🔗 Harmony lock"
+                                               FontSize="12"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               VerticalAlignment="Center" />
+                                    <ToggleSwitch x:Name="HarmonyToggle"
+                                                  IsOn="{x:Bind ViewModel.HarmonyLocked, Mode=TwoWay}"
+                                                  Style="{StaticResource CozyToggleStyle}"
+                                                  Margin="0"
+                                                  MinWidth="0" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Harmony lock hint -->
+                            <Border Background="{StaticResource SidebarBackgroundBrush}"
+                                    CornerRadius="{StaticResource CornerRadiusSmall}"
+                                    Padding="10,7,10,7"
+                                    Visibility="{x:Bind ViewModel.HarmonyLocked, Mode=OneWay,
+                                                 Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="🔗  Changing Accent Primary will re-derive the entire palette automatically."
+                                           FontSize="11"
+                                           Foreground="{StaticResource PrimaryAccentBrush}"
+                                           TextWrapping="Wrap" />
+                            </Border>
+
+                            <local:ColorTokenRow Label="Background Base"
+                                HexValue="{x:Bind ViewModel.BackgroundBase, Mode=TwoWay}"
+                                DefaultHex="#F5F1EA" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Background Alt"
+                                HexValue="{x:Bind ViewModel.BackgroundAlt, Mode=TwoWay}"
+                                DefaultHex="#D7C9B8" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Surface / Controls"
+                                HexValue="{x:Bind ViewModel.Surface, Mode=TwoWay}"
+                                DefaultHex="#B2967D" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Accent Primary  ← harmony anchor"
+                                HexValue="{x:Bind ViewModel.AccentPrimary, Mode=TwoWay}"
+                                DefaultHex="#7D5A44" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Accent Strong"
+                                HexValue="{x:Bind ViewModel.AccentStrong, Mode=TwoWay}"
+                                DefaultHex="#4A342A" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Text Primary"
+                                HexValue="{x:Bind ViewModel.TextPrimary, Mode=TwoWay}"
+                                DefaultHex="#3B2A20" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Text Muted"
+                                HexValue="{x:Bind ViewModel.TextMuted, Mode=TwoWay}"
+                                DefaultHex="#7F7065" ColorChanged="OnColorTokenChanged" />
+
+                            <local:ColorTokenRow Label="Border Subtle"
+                                HexValue="{x:Bind ViewModel.BorderSubtle, Mode=TwoWay}"
+                                DefaultHex="#E0D5C7" ColorChanged="OnColorTokenChanged" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Geometry -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Geometry &amp; Density" Style="{StaticResource SectionHeaderStyle}" />
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Corner Radius Scale" Style="{StaticResource CaptionStyle}" />
+                                <Slider Minimum="0.25" Maximum="2.0" StepFrequency="0.05"
+                                        Value="{x:Bind ViewModel.CornerRadiusScale, Mode=TwoWay}"
+                                        Foreground="{StaticResource PrimaryAccentBrush}" />
+                                <TextBlock Text="{x:Bind ViewModel.CornerRadiusScale, Mode=OneWay}"
+                                           Style="{StaticResource CaptionStyle}" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Spacing / Density Scale" Style="{StaticResource CaptionStyle}" />
+                                <Slider Minimum="0.5" Maximum="2.0" StepFrequency="0.05"
+                                        Value="{x:Bind ViewModel.DensityScale, Mode=TwoWay}"
+                                        Foreground="{StaticResource PrimaryAccentBrush}" />
+                                <TextBlock Text="{x:Bind ViewModel.DensityScale, Mode=OneWay}"
+                                           Style="{StaticResource CaptionStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- WCAG Contrast checker -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="Accessibility"
+                                           Style="{StaticResource SectionHeaderStyle}"
+                                           Margin="0" VerticalAlignment="Center" />
+                                <Border Background="{StaticResource SidebarBackgroundBrush}"
+                                        CornerRadius="4" Padding="6,2,6,2"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind ViewModel.ContrastSummary, Mode=OneWay}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{StaticResource PrimaryAccentBrush}" />
+                                </Border>
+                            </StackPanel>
+
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.ContrastResults, Mode=OneWay}">
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="local:ContrastResultProxy">
+                                        <Grid Margin="0,2,0,2" ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"  />
+                                                <ColumnDefinition Width="48" />
+                                                <ColumnDefinition Width="72" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{x:Bind PairName}"
+                                                       FontSize="11"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{x:Bind RatioLabel}"
+                                                       FontSize="11" FontFamily="Consolas"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <Border Grid.Column="2"
+                                                    CornerRadius="4" Padding="6,2,6,2"
+                                                    Background="{x:Bind GradeBrush}"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind NormalGradeLabel}"
+                                                           FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="White"
+                                                           HorizontalAlignment="Center" />
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ── RIGHT: Live preview ─────────────────────────────────── -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Live Preview" Style="{StaticResource SectionHeaderStyle}" />
+
+                    <!-- Mock desktop -->
+                    <Border CornerRadius="{StaticResource CornerRadiusLarge}"
+                            BorderBrush="{StaticResource BorderSubtleBrush}"
+                            BorderThickness="1" ClipToBounds="True">
+
+                        <Grid Background="{x:Bind ViewModel.BackgroundBase, Mode=OneWay,
+                                           Converter={StaticResource HexToBrushConverter}}"
+                              Height="460">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"  />
+                                <RowDefinition Height="40" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Mock window -->
+                            <Grid Grid.Row="0" Margin="20">
+                                <Border CornerRadius="{StaticResource CornerRadiusLarge}"
+                                        Background="{x:Bind ViewModel.BackgroundBase, Mode=OneWay,
+                                                    Converter={StaticResource HexToBrushConverter}}"
+                                        BorderBrush="{x:Bind ViewModel.BorderSubtle, Mode=OneWay,
+                                                    Converter={StaticResource HexToBrushConverter}}"
+                                        BorderThickness="1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="130" />
+                                            <ColumnDefinition Width="1"   />
+                                            <ColumnDefinition Width="*"   />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Sidebar -->
+                                        <StackPanel Grid.Column="0"
+                                                    Background="{x:Bind ViewModel.BackgroundAlt, Mode=OneWay,
+                                                                Converter={StaticResource HexToBrushConverter}}"
+                                                    Padding="10,12,10,12" Spacing="4">
+                                            <Border Height="28" CornerRadius="8" Padding="8,0,8,0"
+                                                    Background="{x:Bind ViewModel.Surface, Mode=OneWay,
+                                                                Converter={StaticResource HexToBrushConverter}}">
+                                                <TextBlock Text="🎨  Themes" FontSize="11" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{x:Bind ViewModel.BackgroundBase, Mode=OneWay,
+                                                                       Converter={StaticResource HexToBrushConverter}}" />
+                                            </Border>
+                                            <Border Height="28" CornerRadius="8" Padding="8,0,8,0">
+                                                <TextBlock Text="✨  Vibe" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{x:Bind ViewModel.TextPrimary, Mode=OneWay,
+                                                                       Converter={StaticResource HexToBrushConverter}}" />
+                                            </Border>
+                                            <Border Height="28" CornerRadius="8" Padding="8,0,8,0">
+                                                <TextBlock Text="⚙️  System" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{x:Bind ViewModel.TextPrimary, Mode=OneWay,
+                                                                       Converter={StaticResource HexToBrushConverter}}" />
+                                            </Border>
+                                        </StackPanel>
+
+                                        <Rectangle Grid.Column="1"
+                                                   Fill="{x:Bind ViewModel.BorderSubtle, Mode=OneWay,
+                                                         Converter={StaticResource HexToBrushConverter}}" />
+
+                                        <!-- Content -->
+                                        <StackPanel Grid.Column="2" Padding="16,14,16,14" Spacing="12">
+                                            <TextBlock Text="{x:Bind ViewModel.Name, Mode=OneWay}"
+                                                       FontSize="18" FontWeight="Bold"
+                                                       Foreground="{x:Bind ViewModel.TextPrimary, Mode=OneWay,
+                                                                   Converter={StaticResource HexToBrushConverter}}" />
+
+                                            <!-- Card 1 -->
+                                            <Border CornerRadius="10" BorderThickness="1" Padding="12,10,12,10"
+                                                    BorderBrush="{x:Bind ViewModel.BorderSubtle, Mode=OneWay,
+                                                                Converter={StaticResource HexToBrushConverter}}">
+                                                <StackPanel Spacing="6">
+                                                    <TextBlock Text="{x:Bind ViewModel.Name, Mode=OneWay}"
+                                                               FontSize="12" FontWeight="SemiBold"
+                                                               Foreground="{x:Bind ViewModel.TextPrimary, Mode=OneWay,
+                                                                           Converter={StaticResource HexToBrushConverter}}" />
+                                                    <TextBlock Text="{x:Bind ViewModel.Description, Mode=OneWay}"
+                                                               FontSize="10" TextWrapping="Wrap"
+                                                               Foreground="{x:Bind ViewModel.TextMuted, Mode=OneWay,
+                                                                           Converter={StaticResource HexToBrushConverter}}" />
+                                                    <!-- Palette strip -->
+                                                    <Grid Height="8" CornerRadius="4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Rectangle Grid.Column="0" RadiusX="4" RadiusY="4"
+                                                                   Fill="{x:Bind ViewModel.BackgroundBase, Mode=OneWay, Converter={StaticResource HexToBrushConverter}}" />
+                                                        <Rectangle Grid.Column="1"
+                                                                   Fill="{x:Bind ViewModel.BackgroundAlt,  Mode=OneWay, Converter={StaticResource HexToBrushConverter}}" />
+                                                        <Rectangle Grid.Column="2"
+                                                                   Fill="{x:Bind ViewModel.Surface,        Mode=OneWay, Converter={StaticResource HexToBrushConverter}}" />
+                                                        <Rectangle Grid.Column="3"
+                                                                   Fill="{x:Bind ViewModel.AccentPrimary,  Mode=OneWay, Converter={StaticResource HexToBrushConverter}}" />
+                                                        <Rectangle Grid.Column="4" RadiusX="4" RadiusY="4"
+                                                                   Fill="{x:Bind ViewModel.AccentStrong,   Mode=OneWay, Converter={StaticResource HexToBrushConverter}}" />
+                                                    </Grid>
+                                                    <!-- Button preview -->
+                                                    <Border CornerRadius="8" Height="24" HorizontalAlignment="Left"
+                                                            Padding="12,0,12,0"
+                                                            Background="{x:Bind ViewModel.Surface, Mode=OneWay,
+                                                                        Converter={StaticResource HexToBrushConverter}}">
+                                                        <TextBlock Text="Set Active" FontSize="10" FontWeight="SemiBold"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{x:Bind ViewModel.BackgroundBase, Mode=OneWay,
+                                                                               Converter={StaticResource HexToBrushConverter}}" />
+                                                    </Border>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Ghost card -->
+                                            <Border CornerRadius="10" BorderThickness="1" Height="44" Opacity="0.4"
+                                                    BorderBrush="{x:Bind ViewModel.BorderSubtle, Mode=OneWay,
+                                                                Converter={StaticResource HexToBrushConverter}}" />
+
+                                            <!-- Typography row -->
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="Heading"
+                                                           FontSize="14" FontWeight="Bold"
+                                                           Foreground="{x:Bind ViewModel.AccentStrong, Mode=OneWay,
+                                                                       Converter={StaticResource HexToBrushConverter}}" />
+                                                <TextBlock Text="Body text — warm, readable, cozy."
+                                                           FontSize="11"
+                                                           Foreground="{x:Bind ViewModel.TextPrimary, Mode=OneWay,
+                                                                       Converter={StaticResource HexToBrushConverter}}" />
+                                                <TextBlock Text="Muted caption for supporting info"
+                                                           FontSize="10"
+                                                           Foreground="{x:Bind ViewModel.TextMuted, Mode=OneWay,
+                                                                       Converter={StaticResource HexToBrushConverter}}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <!-- Taskbar -->
+                            <Border Grid.Row="1"
+                                    Background="{x:Bind ViewModel.AccentStrong, Mode=OneWay,
+                                                Converter={StaticResource HexToBrushConverter}}">
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Spacing="8">
+                                    <Border Width="28" Height="28" CornerRadius="6"
+                                            Background="{x:Bind ViewModel.Surface, Mode=OneWay,
+                                                        Converter={StaticResource HexToBrushConverter}}">
+                                        <TextBlock Text="☕" FontSize="12"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border Width="28" Height="28" CornerRadius="6" Opacity="0.6"
+                                            Background="{x:Bind ViewModel.AccentPrimary, Mode=OneWay,
+                                                        Converter={StaticResource HexToBrushConverter}}" />
+                                    <Border Width="28" Height="28" CornerRadius="6" Opacity="0.6"
+                                            Background="{x:Bind ViewModel.AccentPrimary, Mode=OneWay,
+                                                        Converter={StaticResource HexToBrushConverter}}" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ════════ STATUS BAR ═════════════════════════════════════════════ -->
+        <Border Grid.Row="2"
+                Background="{StaticResource SidebarBackgroundBrush}"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="32,10,32,10">
+            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                       Style="{StaticResource CaptionStyle}" />
+        </Border>
+    </Grid>
+</Page>
