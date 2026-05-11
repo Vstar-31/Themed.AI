@@ -21,8 +21,8 @@ public sealed partial class ThemeEditorPage : Page
         // Keep ContrastResults projected into proxies whenever they change.
         ViewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(ThemeEditorViewModel.ContrastResults)
-                               or string.Empty)
+            if (e.PropertyName == nameof(ThemeEditorViewModel.ContrastResults)
+                || e.PropertyName == string.Empty || e.PropertyName == null)
                 RefreshContrastProxies();
         };
 

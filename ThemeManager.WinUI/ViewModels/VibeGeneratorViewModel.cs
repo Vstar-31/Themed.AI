@@ -99,7 +99,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     // Phase 3: bigram display
     public bool   HasBigrams    => Analysis?.BigramMatches.Count > 0;
     public string BigramDisplay => HasBigrams
-        ? string.Join("  ·  ", Analysis!.BigramMatches.Select(b => $""{b}""))
+        ? string.Join("  ·  ", Analysis!.BigramMatches.Select(b => $"\"{b}\""))
         : "—";
 
     // Phase 3: fuzzy correction display

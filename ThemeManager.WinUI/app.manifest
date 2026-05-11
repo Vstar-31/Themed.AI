@@ -21,7 +21,6 @@
     </windowsSettings>
   </application>
 
-  <!-- Declare use of common controls v6 for visual styles -->
   <dependency>
     <dependentAssembly>
       <assemblyIdentity

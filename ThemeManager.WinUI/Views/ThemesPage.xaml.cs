@@ -96,7 +96,7 @@ public sealed partial class ThemesPage : Page
         var dialog = new ContentDialog
         {
             Title             = "Delete theme?",
-            Content           = $""{theme.Name}" will be permanently deleted.",
+            Content           = $"\"{theme.Name}\" will be permanently deleted.",
             PrimaryButtonText = "Delete",
             CloseButtonText   = "Cancel",
             DefaultButton     = ContentDialogButton.Close,

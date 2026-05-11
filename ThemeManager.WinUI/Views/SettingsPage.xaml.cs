@@ -86,7 +86,7 @@ public sealed partial class SettingsPage : Page
             // Export first theme as a demo; a real app would export the whole list.
             var active = App.ThemeService.ActiveTheme;
             await App.ThemeRepository.ExportThemeAsync(active, file.Path);
-            StatusText.Text = $"Exported "{active.Name}" to {file.Name}.";
+            StatusText.Text = $"Exported \"{active.Name}\" to {file.Name}.";
         }
         catch (Exception ex)
         {
@@ -111,7 +111,7 @@ public sealed partial class SettingsPage : Page
 
         var imported = await App.ThemeService.ImportThemeAsync(file.Path);
         StatusText.Text = imported is not null
-            ? $"Imported "{imported.Name}" successfully."
+            ? $"Imported \"{imported.Name}\" successfully."
             : "Import failed — not a valid Themed.AI JSON file.";
     }
 

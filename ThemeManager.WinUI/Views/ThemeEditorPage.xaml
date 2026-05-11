@@ -259,7 +259,7 @@
                     <!-- Mock desktop -->
                     <Border CornerRadius="{StaticResource CornerRadiusLarge}"
                             BorderBrush="{StaticResource BorderSubtleBrush}"
-                            BorderThickness="1" ClipToBounds="True">
+                            BorderThickness="1">
 
                         <Grid Background="{x:Bind ViewModel.BackgroundBase, Mode=OneWay,
                                            Converter={StaticResource HexToBrushConverter}}"

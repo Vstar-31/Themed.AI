@@ -133,28 +133,29 @@
                                   IsOn="{x:Bind ViewModel.AdvancedEnabled, Mode=TwoWay}" />
 
                     <!-- Advanced controls (disabled until toggle is on) -->
-                    <StackPanel Spacing="12"
-                                IsEnabled="{x:Bind ViewModel.AdvancedEnabled, Mode=OneWay}"
-                                Opacity="{x:Bind ViewModel.AdvancedEnabledOpacity, Mode=OneWay}">
+                    <ContentControl IsEnabled="{x:Bind ViewModel.AdvancedEnabled, Mode=OneWay}">
+                        <StackPanel Spacing="12"
+                                    Opacity="{x:Bind ViewModel.AdvancedEnabledOpacity, Mode=OneWay}">
 
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Apply accent primary color to Windows"
-                                       FontSize="{StaticResource FontSizeBody}"
-                                       Foreground="{StaticResource TextPrimaryBrush}" />
-                            <TextBlock Style="{StaticResource CaptionStyle}"
-                                       Text="Writes to HKCU\Software\Microsoft\Windows\DWM." />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Apply accent primary color to Windows"
+                                           FontSize="{StaticResource FontSizeBody}"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Style="{StaticResource CaptionStyle}"
+                                           Text="Writes to HKCU\Software\Microsoft\Windows\DWM." />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="Apply Accent to Windows"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="ApplyAccentButton_Click" />
+
+                                <Button Content="Reset to Windows Default"
+                                        Style="{StaticResource DangerButtonStyle}"
+                                        Click="ResetAccentButton_Click" />
+                            </StackPanel>
                         </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button Content="Apply Accent to Windows"
-                                    Style="{StaticResource PrimaryButtonStyle}"
-                                    Click="ApplyAccentButton_Click" />
-
-                            <Button Content="Reset to Windows Default"
-                                    Style="{StaticResource DangerButtonStyle}"
-                                    Click="ResetAccentButton_Click" />
-                        </StackPanel>
-                    </StackPanel>
+                    </ContentControl>
                 </StackPanel>
             </Border>
 

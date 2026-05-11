@@ -39,14 +39,14 @@ public sealed class ThemesViewModel : ViewModelBase
     {
         var theme = await _themeService.CreateThemeAsync("New Theme");
         SelectedTheme = theme;
-        StatusMessage = $"Created "{theme.Name}".";
+        StatusMessage = $"Created \"{theme.Name}\".";
     }
 
     public async Task DuplicateThemeAsync(CozyTheme theme)
     {
         var clone = await _themeService.DuplicateThemeAsync(theme);
         SelectedTheme = clone;
-        StatusMessage = $"Duplicated as "{clone.Name}".";
+        StatusMessage = $"Duplicated as \"{clone.Name}\".";
     }
 
     public async Task DeleteThemeAsync(CozyTheme theme)
@@ -57,13 +57,13 @@ public sealed class ThemesViewModel : ViewModelBase
             return;
         }
         await _themeService.DeleteThemeAsync(theme);
-        StatusMessage = $"Deleted "{theme.Name}".";
+        StatusMessage = $"Deleted \"{theme.Name}\".";
     }
 
     public void SetAsActive(CozyTheme theme)
     {
         _themeService.SetActiveTheme(theme);
-        StatusMessage = $""{theme.Name}" is now active.";
+        StatusMessage = $"\"{theme.Name}\" is now active.";
     }
 
     public CozyTheme? GetActiveTheme() => _themeService.ActiveTheme;
