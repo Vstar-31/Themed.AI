@@ -9,8 +9,8 @@ namespace ThemeManager.WinUI.Views;
 
 public sealed partial class SettingsPage : Page
 {
-    private const string StartupKeyPath  = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string StartupAppName  = "ThemedAI";
+    private const string StartupKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupAppName = "ThemedAI";
 
     private static readonly string DataFolder =
         Path.Combine(
@@ -38,7 +38,7 @@ public sealed partial class SettingsPage : Page
 
         // Diagnostics
         DataFolderText.Text = DataFolder;
-        RuntimeText.Text    = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+        RuntimeText.Text = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
     }
 
     // ── Startup ───────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ public sealed partial class SettingsPage : Page
         var picker = new FileSavePicker
         {
             SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-            SuggestedFileName      = "ThemedAI-themes",
+            SuggestedFileName = "ThemedAI-themes",
         };
         picker.FileTypeChoices.Add("JSON file", new[] { ".json" });
         InitializeWithWindow.Initialize(picker, GetHwnd());
@@ -83,7 +83,6 @@ public sealed partial class SettingsPage : Page
 
         try
         {
-            // Export first theme as a demo; a real app would export the whole list.
             var active = App.ThemeService.ActiveTheme;
             await App.ThemeRepository.ExportThemeAsync(active, file.Path);
             StatusText.Text = $"Exported \"{active.Name}\" to {file.Name}.";
@@ -100,7 +99,7 @@ public sealed partial class SettingsPage : Page
     {
         var picker = new FileOpenPicker
         {
-            ViewMode               = PickerViewMode.List,
+            ViewMode = PickerViewMode.List,
             SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
         };
         picker.FileTypeFilter.Add(".json");
@@ -122,23 +121,17 @@ public sealed partial class SettingsPage : Page
         Directory.CreateDirectory(DataFolder);
         Process.Start(new ProcessStartInfo
         {
-            FileName        = DataFolder,
+            FileName = DataFolder,
             UseShellExecute = true,
         });
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Returns the HWND of the main window using the static App.MainWindow property.
+    /// Window.Current is always null in packaged WinUI 3 apps — do not use it.
+    /// </summary>
     private static IntPtr GetHwnd()
-    {
-        // Walk the open windows to find the main window handle.
-        // In a real app you'd store the hwnd centrally (e.g. App.MainWindowHandle).
-        foreach (var window in Microsoft.UI.Xaml.Window.Current is { } w
-                     ? new[] { w }
-                     : Array.Empty<Microsoft.UI.Xaml.Window>())
-        {
-            return WindowNative.GetWindowHandle(window);
-        }
-        return IntPtr.Zero;
-    }
+        => WindowNative.GetWindowHandle(App.MainWindow);
 }

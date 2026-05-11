@@ -197,6 +197,8 @@
                     </Border>
 
                     <!-- WCAG Contrast checker -->
+                    <!-- Binds to ContrastProxies on the page (not ViewModel.ContrastResults)
+                         so the DataTemplate x:DataType="ContrastResultProxy" resolves correctly. -->
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="12">
                             <StackPanel Orientation="Horizontal" Spacing="10">
@@ -212,7 +214,7 @@
                                 </Border>
                             </StackPanel>
 
-                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.ContrastResults, Mode=OneWay}">
+                            <ItemsRepeater ItemsSource="{x:Bind ContrastProxies, Mode=OneWay}">
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate x:DataType="local:ContrastResultProxy">
                                         <Grid Margin="0,2,0,2" ColumnSpacing="8">

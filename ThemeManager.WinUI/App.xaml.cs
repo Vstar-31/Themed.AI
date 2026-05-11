@@ -14,17 +14,21 @@ namespace ThemeManager.WinUI;
 public partial class App : Application
 {
     // ── Public service accessors (poor-man's DI; easy to replace with DI container) ──
-    public static ThemeService    ThemeService    { get; private set; } = null!;
+    public static ThemeService ThemeService { get; private set; } = null!;
     public static ThemeRepository ThemeRepository { get; private set; } = null!;
     public static ISystemThemeIntegrator SystemIntegrator { get; private set; } = null!;
 
-    private MainWindow? _mainWindow;
+    /// <summary>
+    /// Exposed so any page can retrieve the HWND for file pickers without
+    /// using the broken Window.Current / Resources["MainWindow"] pattern.
+    /// </summary>
+    public static MainWindow MainWindow { get; private set; } = null!;
 
     public App()
     {
         InitializeComponent();
-        ThemeRepository  = new ThemeRepository();
-        ThemeService     = new ThemeService(ThemeRepository);
+        ThemeRepository = new ThemeRepository();
+        ThemeService = new ThemeService(ThemeRepository);
         SystemIntegrator = new SystemThemeIntegrator();
     }
 
@@ -39,8 +43,9 @@ public partial class App : Application
         // Subscribe to future theme changes for live updating.
         ThemeService.ThemeChanged += (_, theme) => ApplyThemeToResources(theme);
 
-        _mainWindow = new MainWindow();
-        _mainWindow.Activate();
+        // Assign the static property BEFORE Activate so pickers can grab the HWND.
+        MainWindow = new MainWindow();
+        MainWindow.Activate();
     }
 
     // ── Live theming ──────────────────────────────────────────────────────────
@@ -59,40 +64,40 @@ public partial class App : Application
         Color Col(string hex) => HexToColor(hex);
 
         // Colors
-        resources["ColorBackgroundBase"]  = Col(theme.BackgroundBase);
-        resources["ColorBackgroundAlt"]   = Col(theme.BackgroundAlt);
-        resources["ColorSurface"]         = Col(theme.Surface);
-        resources["ColorAccentPrimary"]   = Col(theme.AccentPrimary);
-        resources["ColorAccentStrong"]    = Col(theme.AccentStrong);
-        resources["ColorTextPrimary"]     = Col(theme.TextPrimary);
-        resources["ColorTextMuted"]       = Col(theme.TextMuted);
-        resources["ColorBorderSubtle"]    = Col(theme.BorderSubtle);
+        resources["ColorBackgroundBase"] = Col(theme.BackgroundBase);
+        resources["ColorBackgroundAlt"] = Col(theme.BackgroundAlt);
+        resources["ColorSurface"] = Col(theme.Surface);
+        resources["ColorAccentPrimary"] = Col(theme.AccentPrimary);
+        resources["ColorAccentStrong"] = Col(theme.AccentStrong);
+        resources["ColorTextPrimary"] = Col(theme.TextPrimary);
+        resources["ColorTextMuted"] = Col(theme.TextMuted);
+        resources["ColorBorderSubtle"] = Col(theme.BorderSubtle);
 
         // Brushes (the binding targets throughout the visual tree)
-        resources["AppBackgroundBrush"]     = Brush(theme.BackgroundBase);
+        resources["AppBackgroundBrush"] = Brush(theme.BackgroundBase);
         resources["SidebarBackgroundBrush"] = Brush(theme.BackgroundAlt);
-        resources["CardBackgroundBrush"]    = Brush(theme.BackgroundBase);
-        resources["SurfaceBrush"]           = Brush(theme.Surface);
-        resources["PrimaryAccentBrush"]     = Brush(theme.AccentPrimary);
-        resources["StrongAccentBrush"]      = Brush(theme.AccentStrong);
-        resources["TextPrimaryBrush"]       = Brush(theme.TextPrimary);
-        resources["TextMutedBrush"]         = Brush(theme.TextMuted);
-        resources["BorderSubtleBrush"]      = Brush(theme.BorderSubtle);
+        resources["CardBackgroundBrush"] = Brush(theme.BackgroundBase);
+        resources["SurfaceBrush"] = Brush(theme.Surface);
+        resources["PrimaryAccentBrush"] = Brush(theme.AccentPrimary);
+        resources["StrongAccentBrush"] = Brush(theme.AccentStrong);
+        resources["TextPrimaryBrush"] = Brush(theme.TextPrimary);
+        resources["TextMutedBrush"] = Brush(theme.TextMuted);
+        resources["BorderSubtleBrush"] = Brush(theme.BorderSubtle);
 
         // Hover/pressed variants (auto-computed from base surface color).
-        resources["SurfaceHoverBrush"]    = Brush(LightenHex(theme.Surface, 0.15));
-        resources["SurfacePressedBrush"]  = Brush(DarkenHex (theme.Surface, 0.10));
+        resources["SurfaceHoverBrush"] = Brush(LightenHex(theme.Surface, 0.15));
+        resources["SurfacePressedBrush"] = Brush(DarkenHex(theme.Surface, 0.10));
 
         // Corner radius tokens (scaled by theme preference)
         double s = Math.Clamp(theme.CornerRadiusScale, 0.25, 2.0);
-        resources["CornerRadiusLarge"]  = new CornerRadius(16 * s);
+        resources["CornerRadiusLarge"] = new CornerRadius(16 * s);
         resources["CornerRadiusMedium"] = new CornerRadius(12 * s);
-        resources["CornerRadiusSmall"]  = new CornerRadius( 8 * s);
+        resources["CornerRadiusSmall"] = new CornerRadius(8 * s);
 
         // Spacing tokens (scaled by density)
         double d = Math.Clamp(theme.DensityScale, 0.5, 2.0);
-        resources["Space1"] = 4  * d;
-        resources["Space2"] = 8  * d;
+        resources["Space1"] = 4 * d;
+        resources["Space2"] = 8 * d;
         resources["Space3"] = 12 * d;
         resources["Space4"] = 16 * d;
         resources["Space5"] = 24 * d;

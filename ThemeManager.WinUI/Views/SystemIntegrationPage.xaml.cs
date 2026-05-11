@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using ThemeManager.WinUI.ViewModels;
 using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace ThemeManager.WinUI.Views;
 
@@ -15,8 +16,6 @@ public sealed partial class SystemIntegrationPage : Page
         InitializeComponent();
         ViewModel = new SystemIntegrationViewModel(App.SystemIntegrator);
 
-        // Extend ViewModel with wallpaper toggle proxy to the active theme.
-        // (Simpler than a full binding to a nested property via converter.)
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SystemIntegrationViewModel.IsBusy))
@@ -34,12 +33,11 @@ public sealed partial class SystemIntegrationPage : Page
 
     private void UpdateSystemInfoUI()
     {
-        ModeText.Text    = ViewModel.IsLightMode ? "Light" : "Dark";
+        ModeText.Text = ViewModel.IsLightMode ? "Light" : "Dark";
         AccentHexText.Text = ViewModel.CurrentAccentHex;
-        BuildText.Text   = ViewModel.WindowsBuild;
+        BuildText.Text = ViewModel.WindowsBuild;
 
-        if (App.HexToColor(ViewModel.CurrentAccentHex) is var c)
-            AccentSwatch.Background = new SolidColorBrush(c);
+        AccentSwatch.Background = new SolidColorBrush(App.HexToColor(ViewModel.CurrentAccentHex));
     }
 
     // ── Button handlers ───────────────────────────────────────────────────────
@@ -62,18 +60,14 @@ public sealed partial class SystemIntegrationPage : Page
         picker.FileTypeFilter.Add(".png");
         picker.FileTypeFilter.Add(".bmp");
 
-        // Associate picker with the window handle (required on Windows App SDK).
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(
-            (Application.Current as App) is not null
-                ? (Microsoft.UI.Xaml.Window)App.Current.Resources["MainWindow"]!
-                : throw new InvalidOperationException("No main window"));
-
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        // Use the static App.MainWindow — Window.Current is always null
+        // in packaged WinUI 3 apps and must never be used for HWND retrieval.
+        var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+        InitializeWithWindow.Initialize(picker, hwnd);
 
         var file = await picker.PickSingleFileAsync();
         if (file is not null)
         {
-            // Store path on the active theme.
             App.ThemeService.ActiveTheme.WallpaperPath = file.Path;
             ViewModel.StatusMessage = $"Wallpaper selected: {file.Name}";
         }

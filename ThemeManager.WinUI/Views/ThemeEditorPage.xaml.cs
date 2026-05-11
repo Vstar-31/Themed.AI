@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using ThemeManager.Core.Models;
@@ -13,17 +14,27 @@ public sealed partial class ThemeEditorPage : Page
 {
     public ThemeEditorViewModel ViewModel { get; }
 
+    // Backing field read by the XAML x:Bind — projected from ViewModel.ContrastResults
+    // so the DataTemplate can use x:DataType="ContrastResultProxy" without pulling
+    // a WinUI reference into the Core layer.
+    private IReadOnlyList<ContrastResultProxy> _contrastProxies = Array.Empty<ContrastResultProxy>();
+    public IReadOnlyList<ContrastResultProxy> ContrastProxies => _contrastProxies;
+
     public ThemeEditorPage()
     {
         InitializeComponent();
         ViewModel = new ThemeEditorViewModel(App.ThemeService);
 
-        // Keep ContrastResults projected into proxies whenever they change.
+        // Refresh proxies (and tell x:Bind to re-read ContrastProxies) whenever
+        // the contrast results change.
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ThemeEditorViewModel.ContrastResults)
-                || e.PropertyName == string.Empty || e.PropertyName == null)
+                || e.PropertyName == string.Empty
+                || e.PropertyName is null)
+            {
                 RefreshContrastProxies();
+            }
         };
 
         RefreshContrastProxies();
@@ -83,19 +94,16 @@ public sealed partial class ThemeEditorPage : Page
     private void RedoButton_Click(object sender, RoutedEventArgs e)
         => ViewModel.Redo();
 
-    private void OnColorTokenChanged(object sender, string newHex) { /* live via VM */ }
+    // Called by ColorTokenRow.ColorChanged — live update happens through the ViewModel binding.
+    private void OnColorTokenChanged(object sender, string newHex) { }
 
     // ── Contrast proxy refresh ────────────────────────────────────────────────
 
     private void RefreshContrastProxies()
     {
-        // The XAML DataTemplate is typed to ContrastResultProxy — project here.
-        // We bind a separate property on the page instead of the VM to avoid
-        // pulling a WinUI reference into the Core layer.
         _contrastProxies = ContrastResultProxy.FromList(ViewModel.ContrastResults);
+        // Bindings.Update() tells the compiled x:Bind engine to re-read all
+        // page-level properties (including ContrastProxies) immediately.
+        Bindings.Update();
     }
-
-    // Backing field read by the XAML x:Bind (property projection pattern).
-    private IReadOnlyList<ContrastResultProxy> _contrastProxies = Array.Empty<ContrastResultProxy>();
-    public  IReadOnlyList<ContrastResultProxy> ContrastProxies => _contrastProxies;
 }
