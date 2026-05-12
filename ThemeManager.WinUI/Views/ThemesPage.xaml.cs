@@ -73,14 +73,20 @@ public sealed partial class ThemesPage : Page
 
     private void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is CozyTheme theme)
+        if (sender is FrameworkElement element && element.DataContext is CozyTheme theme)
+        {
             ViewModel.SetAsActive(theme);
+            ViewModel.RefreshThemesList();
+        }
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is CozyTheme theme)
+        if (sender is FrameworkElement element && element.DataContext is CozyTheme theme)
+        {
+            ViewModel.SetAsActive(theme);
             Frame.Navigate(typeof(ThemeEditorPage), theme);
+        }
     }
 
     private async void DuplicateButton_Click(object sender, RoutedEventArgs e)
@@ -91,21 +97,22 @@ public sealed partial class ThemesPage : Page
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not CozyTheme theme) return;
-
-        var dialog = new ContentDialog
+        if (sender is FrameworkElement element && element.DataContext is CozyTheme theme)
         {
-            Title             = "Delete theme?",
-            Content           = $"\"{theme.Name}\" will be permanently deleted.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText   = "Cancel",
-            DefaultButton     = ContentDialogButton.Close,
-            XamlRoot          = XamlRoot,
-            RequestedTheme    = ElementTheme.Default,
-        };
+            var dialog = new ContentDialog
+            {
+                Title = "Delete theme?",
+                Content = $"\"{theme.Name}\" will be permanently deleted.",
+                PrimaryButtonText = "Delete",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot,
+                RequestedTheme = ElementTheme.Default,
+            };
 
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
-            await ViewModel.DeleteThemeAsync(theme);
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+                await ViewModel.DeleteThemeAsync(theme);
+        }
     }
-}
+};

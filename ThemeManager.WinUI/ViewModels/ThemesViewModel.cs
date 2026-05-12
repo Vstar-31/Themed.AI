@@ -68,6 +68,11 @@ public sealed class ThemesViewModel : ViewModelBase
 
     public CozyTheme? GetActiveTheme() => _themeService.ActiveTheme;
 
+    public void RefreshThemesList()
+    {
+        RefreshList();
+    }
+
     // ── Private ───────────────────────────────────────────────────────────────
 
     private void RefreshList()

@@ -29,7 +29,7 @@ public sealed partial class MiniColorRow : UserControl
         get => (string)GetValue(HexProperty);
         set => SetValue(HexProperty, value);
     }
-
+    
     public MiniColorRow() => InitializeComponent();
 
     private static void OnLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

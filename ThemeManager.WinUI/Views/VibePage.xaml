@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="ThemeManager.WinUI.Views.VibePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -92,7 +92,7 @@
                                        Style="{StaticResource SectionHeaderStyle}" />
                             <ItemsRepeater ItemsSource="{x:Bind ViewModel.SuggestionChips}">
                                 <ItemsRepeater.Layout>
-                                    <FlowLayout HorizontalSpacing="8" VerticalSpacing="8" />
+                                    <LinedFlowLayout MinItemSpacing="8" LineSpacing="8" />
                                 </ItemsRepeater.Layout>
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate x:DataType="x:String">

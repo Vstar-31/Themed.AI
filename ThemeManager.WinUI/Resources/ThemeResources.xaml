@@ -1,6 +1,7 @@
-<ResourceDictionary
+﻿<ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="using:Windows.UI">
 
     <!-- ═══════════════════════════════════════════════════════════════════════
          COZY CAFÉ – Default Palette
@@ -10,19 +11,19 @@
     ═══════════════════════════════════════════════════════════════════════ -->
 
     <!-- Raw colors -->
-    <Color x:Key="ColorBackgroundBase">#F5F1EA</Color>   <!-- Linen    -->
-    <Color x:Key="ColorBackgroundAlt" >#D7C9B8</Color>   <!-- Khaki    -->
-    <Color x:Key="ColorSurface"       >#B2967D</Color>   <!-- Camel    -->
-    <Color x:Key="ColorAccentPrimary" >#7D5A44</Color>   <!-- Cocoa    -->
-    <Color x:Key="ColorAccentStrong"  >#4A342A</Color>   <!-- Espresso -->
-    <Color x:Key="ColorTextPrimary"   >#3B2A20</Color>
-    <Color x:Key="ColorTextMuted"     >#7F7065</Color>
-    <Color x:Key="ColorBorderSubtle"  >#E0D5C7</Color>
+    <ui:Color x:Key="ColorBackgroundBase">#F5F1EA</ui:Color>   <!-- Linen    -->
+    <ui:Color x:Key="ColorBackgroundAlt" >#D7C9B8</ui:Color>   <!-- Khaki    -->
+    <ui:Color x:Key="ColorSurface"       >#B2967D</ui:Color>   <!-- Camel    -->
+    <ui:Color x:Key="ColorAccentPrimary" >#7D5A44</ui:Color>   <!-- Cocoa    -->
+    <ui:Color x:Key="ColorAccentStrong"  >#4A342A</ui:Color>   <!-- Espresso -->
+    <ui:Color x:Key="ColorTextPrimary"   >#3B2A20</ui:Color>
+    <ui:Color x:Key="ColorTextMuted"     >#7F7065</ui:Color>
+    <ui:Color x:Key="ColorBorderSubtle"  >#E0D5C7</ui:Color>
 
     <!-- Derived hover/pressed tints (slightly lighter / darker) -->
-    <Color x:Key="ColorSurfaceHover"   >#C4AA93</Color>
-    <Color x:Key="ColorSurfacePressed" >#A07B63</Color>
-    <Color x:Key="ColorOverlaySubtle"  >#1A000000</Color>  <!-- 10 % black overlay -->
+    <ui:Color x:Key="ColorSurfaceHover"   >#C4AA93</ui:Color>
+    <ui:Color x:Key="ColorSurfacePressed" >#A07B63</ui:Color>
+    <ui:Color x:Key="ColorOverlaySubtle"  >#1A000000</ui:Color>  <!-- 10 % black overlay -->
 
     <!-- ── SolidColorBrushes ──────────────────────────────────────────────── -->
     <SolidColorBrush x:Key="AppBackgroundBrush"       Color="{StaticResource ColorBackgroundBase}"  />
