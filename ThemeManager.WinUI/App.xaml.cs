@@ -4,6 +4,9 @@ using ThemeManager.Core.Models;
 using ThemeManager.Core.Services;
 using ThemeManager.Integration;
 using Windows.UI;
+using Serilog;
+using Microsoft.Extensions.Logging;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace ThemeManager.WinUI;
 
@@ -18,6 +21,8 @@ public partial class App : Application
     public static ThemeRepository ThemeRepository { get; private set; } = null!;
     public static ISystemThemeIntegrator SystemIntegrator { get; private set; } = null!;
 
+    public static ILoggerFactory LoggerFactory { get; private set; } = null!;
+
     /// <summary>
     /// Exposed so any page can retrieve the HWND for file pickers without
     /// using the broken Window.Current / Resources["MainWindow"] pattern.
@@ -29,11 +34,22 @@ public partial class App : Application
         InitializeComponent();
         ThemeRepository = new ThemeRepository();
         ThemeService = new ThemeService(ThemeRepository);
-        SystemIntegrator = new SystemThemeIntegrator();
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Debug()
+            .WriteTo.File(System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "ThemeManager.AI", "logs", "app-.log"), rollingInterval: RollingInterval.Day)
+            .CreateLogger();
+
+        LoggerFactory = new LoggerFactory().AddSerilog(Log.Logger);
+        var logger = LoggerFactory.CreateLogger<App>();
+        logger.LogInformation("Application Starting...");
+
+        SystemIntegrator = new SystemThemeIntegrator(LoggerFactory.CreateLogger<SystemThemeIntegrator>());
+
         // Initialise (loads JSON, sets Cozy Café as active) before the window appears.
         await ThemeService.InitializeAsync();
 

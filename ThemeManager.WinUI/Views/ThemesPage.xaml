@@ -127,29 +127,22 @@
                                             Spacing="8">
 
                                     <Button Content="Set Active"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Tag="{x:Bind}"
+                                            CommandParameter="{x:Bind}"
                                             Click="SetActiveButton_Click"
-                                            Padding="14,8,14,8" />
+                                            Style="{StaticResource PrimaryButtonStyle}" />
 
-                                    <Button Content="Edit"
-                                            Style="{StaticResource GhostButtonStyle}"
-                                            Tag="{x:Bind}"
-                                            Click="EditButton_Click"
-                                            Padding="14,8,14,8" />
+                                    <Button Content="Edit" 
+                                            CommandParameter="{x:Bind}" 
+                                            Click="EditButton_Click" />
 
-                                    <Button Content="Duplicate"
-                                            Style="{StaticResource GhostButtonStyle}"
-                                            Tag="{x:Bind}"
-                                            Click="DuplicateButton_Click"
-                                            Padding="14,8,14,8" />
+                                    <Button Content="Duplicate" 
+                                            CommandParameter="{x:Bind}" 
+                                            Click="DuplicateButton_Click" />
 
                                     <Button Content="Delete"
-                                            Style="{StaticResource DangerButtonStyle}"
-                                            Tag="{x:Bind}"
+                                            CommandParameter="{x:Bind}"
                                             Click="DeleteButton_Click"
-                                            IsEnabled="{x:Bind IsBuiltIn, Mode=OneWay,
-                                                Converter={StaticResource InverseBoolConverter}}"
+                                            IsEnabled="{x:Bind IsBuiltIn, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                                             Padding="14,8,14,8" />
                                 </StackPanel>
 

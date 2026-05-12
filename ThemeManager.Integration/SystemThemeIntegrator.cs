@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using ThemeManager.Core.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ThemeManager.Integration;
 
@@ -17,6 +19,13 @@ namespace ThemeManager.Integration;
 /// </summary>
 public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 {
+    private readonly ILogger<SystemThemeIntegrator> _logger;
+
+    public SystemThemeIntegrator(ILogger<SystemThemeIntegrator>? logger = null)
+    {
+        _logger = logger ?? NullLogger<SystemThemeIntegrator>.Instance;
+    }
+
     // ── Win32 interop ─────────────────────────────────────────────────────────
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern bool SystemParametersInfo(
@@ -59,12 +68,17 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         {
             try
             {
+                _logger.LogInformation("Applying accent color {HexColor} to DWM/Registry", hexColor);
                 uint argb = HexToArgb(hexColor);
                 // DWM stores colorization as BGRA (Blue in low byte).
                 uint bgra = ArgbToBgra(argb);
 
                 using var key = Registry.CurrentUser.OpenSubKey(DwmKey, writable: true);
-                if (key is null) return false;
+                if (key is null) 
+                {
+                    _logger.LogWarning("Failed to open HKCU\\{DwmKey} for writing", DwmKey);
+                    return false;
+                }
 
                 key.SetValue("ColorizationColor",       (int)bgra,  RegistryValueKind.DWord);
                 key.SetValue("ColorizationColorBalance", 100,        RegistryValueKind.DWord);
@@ -73,10 +87,12 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
                 // Broadcast so the shell picks up the change without a logoff.
                 BroadcastSettingsChange();
+                _logger.LogInformation("Accent color successfully applied");
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to apply accent color {HexColor}", hexColor);
                 return false;
             }
         });

@@ -71,12 +71,27 @@ public sealed partial class ThemesPage : Page
             Frame.Navigate(typeof(ThemeEditorPage), ViewModel.SelectedTheme);
     }
 
-    private void SetActiveButton_Click(object sender, RoutedEventArgs e)
+    private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement element && element.DataContext is CozyTheme theme)
+        // FOOLPROOF: Grab the theme directly from the CommandParameter 
+        var theme = (sender as Button)?.CommandParameter as CozyTheme 
+                 ?? (sender as FrameworkElement)?.DataContext as CozyTheme;
+
+        if (theme != null)
         {
+            // 1. Set it active in the App UI
             ViewModel.SetAsActive(theme);
             ViewModel.RefreshThemesList();
+
+            // 2. THE SAUCE: Push the colours natively to Windows OS!
+            var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
+            await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
+
+            // 3. Extra flex: apply wallpaper too if the theme has one enabled
+            if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
+            {
+                await sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
+            }
         }
     }
 
