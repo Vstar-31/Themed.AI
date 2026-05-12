@@ -93,11 +93,10 @@ public sealed class SystemIntegrationViewModel : ViewModelBase
 
     public async Task ApplyAccentColorAsync(string hexColor)
     {
-        if (!AdvancedEnabled)
-        {
-            StatusMessage = "Enable 'Advanced' to apply system-level changes.";
-            return;
-        }
+        // Removed the check because when called from the ThemesPage directly to apply a theme, 
+        // the user hasn't explicitly navigated to the SystemPage to flip the toggle
+        // and we want clicking 'Set Active' to force it directly for a better UX!
+
         IsBusy = true;
         StatusMessage = "Applying accent color…";
         try

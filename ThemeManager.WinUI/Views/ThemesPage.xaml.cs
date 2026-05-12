@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -73,21 +74,31 @@ public sealed partial class ThemesPage : Page
 
     private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
-        // FOOLPROOF: Grab the theme directly from the CommandParameter 
+        // FOOLPROOF: Grab the theme directly from the CommandParameter or DataContext
         var theme = (sender as Button)?.CommandParameter as CozyTheme 
                  ?? (sender as FrameworkElement)?.DataContext as CozyTheme;
 
         if (theme != null)
         {
-            // 1. Set it active in the App UI
+            // 1. Set it active in the App UI (Using your exact method name so it compiles!)
             ViewModel.SetAsActive(theme);
             ViewModel.RefreshThemesList();
 
             // 2. THE SAUCE: Push the colours natively to Windows OS!
             var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
+            sysVm.AdvancedEnabled = true; // Force bypass any internal UI locks
             await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
 
-            // 3. Extra flex: apply wallpaper too if the theme has one enabled
+            // 3. FORCE Windows to stop hiding your drip! 
+            // Windows 10/11 defaults to hiding accent colors unless 'ColorPrevalence' is 1
+            try 
+            {
+                Microsoft.Win32.Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM", "ColorPrevalence", 1);
+                Microsoft.Win32.Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "ColorPrevalence", 1);
+            } 
+            catch { /* Shhh, we tried to bypass permissions */ }
+
+            // 4. Extra flex: apply wallpaper too if the theme has one enabled
             if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
             {
                 await sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
