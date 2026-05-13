@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="ThemeManager.WinUI.Views.ThemesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -6,11 +6,18 @@
     xmlns:models="using:ThemeManager.Core.Models"
     Background="{StaticResource AppBackgroundBrush}">
 
+    <!-- Converters declared FIRST so they are available during DataTemplate parsing -->
+    <Page.Resources>
+        <local:BoolToVisibilityConverter  x:Key="BoolToVisibilityConverter" />
+        <local:InverseBoolConverter       x:Key="InverseBoolConverter" />
+        <local:HexToBrushConverter        x:Key="HexToBrushConverter" />
+    </Page.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />   <!-- Page header -->
-            <RowDefinition Height="*" />      <!-- Theme grid -->
-            <RowDefinition Height="Auto" />   <!-- Status bar -->
+            <RowDefinition Height="*" />      <!-- Theme grid  -->
+            <RowDefinition Height="Auto" />   <!-- Status bar  -->
         </Grid.RowDefinitions>
 
         <!-- ══════════════════════════════════════════════════════════
@@ -31,7 +38,6 @@
                            Style="{StaticResource CaptionStyle}" />
             </StackPanel>
 
-            <!-- New Theme button -->
             <Button Grid.Column="1"
                     x:Name="NewThemeButton"
                     Content="+ New Theme"
@@ -51,7 +57,6 @@
                            ItemsSource="{x:Bind ViewModel.Themes, Mode=OneWay}">
 
                 <ItemsRepeater.Layout>
-                    <!-- Responsive 2-column grid with 16 px gap -->
                     <UniformGridLayout MinItemWidth="340"
                                        MinColumnSpacing="16"
                                        MinRowSpacing="16" />
@@ -61,17 +66,16 @@
                     <DataTemplate x:DataType="models:CozyTheme">
 
                         <!-- Theme Card -->
-                        <Border Style="{StaticResource CardStyle}"
-                                Margin="0">
+                        <Border Style="{StaticResource CardStyle}" Margin="0">
 
                             <Grid RowSpacing="12">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />  <!-- Palette strip -->
-                                    <RowDefinition Height="Auto" />  <!-- Name + desc    -->
-                                    <RowDefinition Height="Auto" />  <!-- Actions        -->
+                                    <RowDefinition Height="Auto" />  <!-- Name + desc   -->
+                                    <RowDefinition Height="Auto" />  <!-- Actions       -->
                                 </Grid.RowDefinitions>
 
-                                <!-- Palette colour strip -->
+                                <!-- Palette colour strip (backgrounds set from code-behind via ElementPrepared) -->
                                 <Grid Grid.Row="0"
                                       Height="12"
                                       CornerRadius="6">
@@ -82,19 +86,11 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <!--
-                                        Note: In C# code-behind we'll set the Background of these
-                                        borders dynamically via x:Name+code or a converter.
-                                        These placeholders use the Cozy Café defaults; at runtime
-                                        the ThemeCardColorConverter fills them from the bound theme.
-                                    -->
-                                    <Border Grid.Column="0" CornerRadius="6,0,0,6"
-                                            x:Name="Strip1" Tag="{x:Bind BackgroundBase, Mode=OneWay}" />
-                                    <Border Grid.Column="1" Tag="{x:Bind BackgroundAlt,  Mode=OneWay}" />
-                                    <Border Grid.Column="2" Tag="{x:Bind Surface,         Mode=OneWay}" />
-                                    <Border Grid.Column="3" Tag="{x:Bind AccentPrimary,   Mode=OneWay}" />
-                                    <Border Grid.Column="4" CornerRadius="0,6,6,0"
-                                            Tag="{x:Bind AccentStrong,   Mode=OneWay}" />
+                                    <Border Grid.Column="0" CornerRadius="6,0,0,6" />
+                                    <Border Grid.Column="1" />
+                                    <Border Grid.Column="2" />
+                                    <Border Grid.Column="3" />
+                                    <Border Grid.Column="4" CornerRadius="0,6,6,0" />
                                 </Grid>
 
                                 <!-- Name, description, built-in badge -->
@@ -104,7 +100,6 @@
                                                    FontSize="{StaticResource FontSizeSubtitle}"
                                                    FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimaryBrush}" />
-                                        <!-- Built-in badge -->
                                         <Border Visibility="{x:Bind IsBuiltIn, Mode=OneWay,
                                                     Converter={StaticResource BoolToVisibilityConverter}}"
                                                 Background="{StaticResource SidebarBackgroundBrush}"
@@ -121,7 +116,7 @@
                                                TextWrapping="Wrap" />
                                 </StackPanel>
 
-                                <!-- Action buttons -->
+                                <!-- Action buttons — Tag="{x:Bind}" passes the CozyTheme instance reliably -->
                                 <StackPanel Grid.Row="2"
                                             Orientation="Horizontal"
                                             Spacing="8">
@@ -131,18 +126,19 @@
                                             Click="SetActiveButton_Click"
                                             Style="{StaticResource PrimaryButtonStyle}" />
 
-                                    <Button Content="Edit" 
-                                            Tag="{x:Bind}" 
+                                    <Button Content="Edit"
+                                            Tag="{x:Bind}"
                                             Click="EditButton_Click" />
 
-                                    <Button Content="Duplicate" 
-                                            Tag="{x:Bind}" 
+                                    <Button Content="Duplicate"
+                                            Tag="{x:Bind}"
                                             Click="DuplicateButton_Click" />
 
                                     <Button Content="Delete"
                                             Tag="{x:Bind}"
                                             Click="DeleteButton_Click"
-                                            IsEnabled="{x:Bind IsBuiltIn, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
+                                            IsEnabled="{x:Bind IsBuiltIn, Mode=OneWay,
+                                                Converter={StaticResource InverseBoolConverter}}"
                                             Padding="14,8,14,8" />
                                 </StackPanel>
 
@@ -168,12 +164,4 @@
         </Border>
 
     </Grid>
-
-    <!-- Converters (declared as page resources) -->
-    <Page.Resources>
-        <local:BoolToVisibilityConverter  x:Key="BoolToVisibilityConverter" />
-        <local:InverseBoolConverter       x:Key="InverseBoolConverter" />
-        <local:HexToBrushConverter        x:Key="HexToBrushConverter" />
-    </Page.Resources>
-
 </Page>

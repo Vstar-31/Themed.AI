@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -22,37 +21,40 @@ public sealed partial class ThemesPage : Page
     }
 
     // ── Palette strip coloring ────────────────────────────────────────────────
-    // ItemsRepeater doesn't support converters on child Borders out of the box
-    // for opaque types, so we color the strips from code-behind when each item
-    // is prepared (fires immediately on first render, and on recycle).
+    // ItemsRepeater does NOT set DataContext on its children (unlike ListView),
+    // so we retrieve the theme directly from ViewModel.Themes via args.Index.
     private void ThemesRepeater_ElementPrepared(
         ItemsRepeater sender,
         ItemsRepeaterElementPreparedEventArgs args)
     {
         if (args.Element is not Border card) return;
-        if (card.DataContext is not CozyTheme theme) return;
+
+        // Use the index to pull the theme from the source collection directly.
+        if (args.Index < 0 || args.Index >= ViewModel.Themes.Count) return;
+        var theme = ViewModel.Themes[args.Index];
 
         ColorPaletteStrip(card, theme);
     }
 
     private static void ColorPaletteStrip(Border card, CozyTheme theme)
     {
-        // Walk the visual tree to find the strip Grid (first child Grid row 0).
+        // Walk the visual tree to find the strip Grid (first child Grid, row 0).
         if (card.Child is not Grid root) return;
 
-        // The palette strip is the first child in row 0.
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
             if (VisualTreeHelper.GetChild(root, i) is Grid strip &&
                 Grid.GetRow(strip) == 0)
             {
-                string[] colors = [
+                string[] colors =
+                [
                     theme.BackgroundBase,
                     theme.BackgroundAlt,
                     theme.Surface,
                     theme.AccentPrimary,
                     theme.AccentStrong,
                 ];
+
                 for (int j = 0; j < VisualTreeHelper.GetChildrenCount(strip) && j < colors.Length; j++)
                 {
                     if (VisualTreeHelper.GetChild(strip, j) is Border swatch)
@@ -68,75 +70,64 @@ public sealed partial class ThemesPage : Page
     private async void NewThemeButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.CreateThemeAsync();
-        // Navigate straight to editor for the new theme.
         if (ViewModel.SelectedTheme is not null)
             Frame.Navigate(typeof(ThemeEditorPage), ViewModel.SelectedTheme);
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint Msg, IntPtr wParam, string lParam,
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
     private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
-        // FOOLPROOF: Grab the theme directly from the CommandParameter or DataContext
+        // Tag="{x:Bind}" in the DataTemplate reliably passes the CozyTheme instance.
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
+        if (theme is null) return;
 
-        if (theme != null)
+        // 1. Apply theme inside the app UI.
+        ViewModel.SetAsActive(theme);
+        ViewModel.RefreshThemesList();
+
+        // 2. Write accent/colorization prefs to registry and flush immediately.
+        try
         {
-            // 1. Set it active in the App UI 
-            ViewModel.SetAsActive(theme);
-            ViewModel.RefreshThemesList();
-
-            // 2. SURGICAL REGISTRY FIX WITH THE "FLUSH" (The ultimate fix)
-            try 
+            using (var pKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
             {
-                using (var pKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                if (pKey != null)
                 {
-                    if (pKey != null)
-                    {
-                        pKey.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
-                        pKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                        pKey.Flush(); // CRITICAL: Forces Windows to write this to the hard drive instantly
-                    }
+                    pKey.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    pKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    pKey.Flush(); // Forces immediate disk write.
                 }
+            }
 
-                using (var dKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\DWM"))
-                {
-                    if (dKey != null)
-                    {
-                        dKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                        dKey.Flush(); // CRITICAL: Forces disk write
-                    }
-                }
-            } 
-            catch { /* Shhh, we tried to bypass permissions */ }
-
-            // 3. THE SAUCE: Push the colours natively to Windows OS!
-            var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
-            sysVm.AdvancedEnabled = true; // Force bypass any internal UI locks
-            await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
-
-            // 4. THE CACHE FLUSH: Kill explorer.exe
-            // Because we used .Flush() above, Explorer can't overwrite our tweaks when it dies!
-            //try
-            //{
-            //    foreach (var process in System.Diagnostics.Process.GetProcessesByName("explorer"))
-            //    {
-            //        process.Kill();
-            //    }
-            //}
-            //catch { }
-
-            // 4. Smooth refresh: notify Windows to reload theme-related settings.
-            // WM_SETTINGCHANGE with "ImmersiveColorSet" refreshes the shell without killing Explorer.
-            SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet", 0x0002, 5000, out _);
-
-            // 5. Extra flex: apply wallpaper too if the theme has one enabled
-            if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
+            using (var dKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                @"Software\Microsoft\Windows\DWM"))
             {
-                await sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
+                if (dKey != null)
+                {
+                    dKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    dKey.Flush();
+                }
             }
         }
+        catch { /* Registry write failed silently — non-critical. */ }
+
+        // 3. Push the accent colour to the OS via SystemIntegrationViewModel.
+        var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
+        sysVm.AdvancedEnabled = true;
+        await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
+
+        // 4. Notify the shell to reload theme settings without killing Explorer.
+        //    WM_SETTINGCHANGE + "ImmersiveColorSet" is the safe, documented refresh.
+        SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet",
+            0x0002, 5000, out _);
+
+        // 5. Apply wallpaper if the theme has one configured.
+        if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
+            await sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
@@ -148,7 +139,6 @@ public sealed partial class ThemesPage : Page
 
     private async void DuplicateButton_Click(object sender, RoutedEventArgs e)
     {
-        // NOTE: use CommandParameter, NOT Tag — the XAML binds CommandParameter="{x:Bind}".
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is not null)
             await ViewModel.DuplicateThemeAsync(theme);
@@ -174,4 +164,4 @@ public sealed partial class ThemesPage : Page
         if (result == ContentDialogResult.Primary)
             await ViewModel.DeleteThemeAsync(theme);
     }
-};
+}
