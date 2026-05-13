@@ -84,16 +84,23 @@ public sealed partial class ThemesPage : Page
 
         if (theme != null)
         {
-            // 1. Set it active in the App UI (Using your exact method name so it compiles!)
+            // 1. Set it active in the App UI 
             ViewModel.SetAsActive(theme);
             ViewModel.RefreshThemesList();
 
-            // 2. FORCE Windows to stop hiding your drip! (CRITICAL: DO THIS FIRST)
-            // Windows 10/11 defaults to hiding accent colors unless 'ColorPrevalence' is 1
+            // 2. SURGICAL REGISTRY FIX (Forcing DWORD so Windows actually respects it)
             try 
             {
-                Microsoft.Win32.Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM", "ColorPrevalence", 1);
-                Microsoft.Win32.Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "ColorPrevalence", 1);
+                using (var pKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    pKey?.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    pKey?.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord); // Taskbar toggle
+                }
+
+                using (var dKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\DWM"))
+                {
+                    dKey?.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord); // Title bar toggle
+                }
             } 
             catch { /* Shhh, we tried to bypass permissions */ }
 
@@ -102,9 +109,9 @@ public sealed partial class ThemesPage : Page
             sysVm.AdvancedEnabled = true; // Force bypass any internal UI locks
             await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
 
-            // 4. THE NUCLEAR OPTION: Manually scream at Windows to refresh the UI right now
-            // 0x001A is WM_SETTINGCHANGE. This forces the taskbar and windows to redraw instantly.
-            SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet", 0x0002, 5000, out _);
+            // 4. THE SMOOTH REFRESH: Polite broadcast to reload the UI without crashing
+            // "Themes" specifically targets the taskbar and color prevalence updates
+            SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "Themes", 0x0002, 5000, out _);
 
             // 5. Extra flex: apply wallpaper too if the theme has one enabled
             if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
