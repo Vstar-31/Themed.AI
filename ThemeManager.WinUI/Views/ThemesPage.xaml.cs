@@ -88,18 +88,26 @@ public sealed partial class ThemesPage : Page
             ViewModel.SetAsActive(theme);
             ViewModel.RefreshThemesList();
 
-            // 2. SURGICAL REGISTRY FIX (Forcing DWORD so Windows actually respects it)
+            // 2. SURGICAL REGISTRY FIX WITH THE "FLUSH" (The ultimate fix)
             try 
             {
                 using (var pKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
                 {
-                    pKey?.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
-                    pKey?.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord); // Taskbar toggle
+                    if (pKey != null)
+                    {
+                        pKey.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                        pKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                        pKey.Flush(); // CRITICAL: Forces Windows to write this to the hard drive instantly
+                    }
                 }
 
                 using (var dKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\DWM"))
                 {
-                    dKey?.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord); // Title bar toggle
+                    if (dKey != null)
+                    {
+                        dKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                        dKey.Flush(); // CRITICAL: Forces disk write
+                    }
                 }
             } 
             catch { /* Shhh, we tried to bypass permissions */ }
@@ -109,9 +117,16 @@ public sealed partial class ThemesPage : Page
             sysVm.AdvancedEnabled = true; // Force bypass any internal UI locks
             await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
 
-            // 4. THE SMOOTH REFRESH: Polite broadcast to reload the UI without crashing
-            // "Themes" specifically targets the taskbar and color prevalence updates
-            SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "Themes", 0x0002, 5000, out _);
+            // 4. THE CACHE FLUSH: Kill explorer.exe
+            // Because we used .Flush() above, Explorer can't overwrite our tweaks when it dies!
+            try 
+            {
+                foreach (var process in System.Diagnostics.Process.GetProcessesByName("explorer"))
+                {
+                    process.Kill();
+                }
+            }
+            catch { }
 
             // 5. Extra flex: apply wallpaper too if the theme has one enabled
             if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
