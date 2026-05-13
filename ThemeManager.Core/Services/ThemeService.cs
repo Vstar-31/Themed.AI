@@ -105,6 +105,16 @@ public sealed class ThemeService : INotifyPropertyChanged
 
     public async Task SaveThemeAsync(CozyTheme theme)
     {
+        // Normalize all color fields before saving — prevents leading-zero stripping
+        theme.BackgroundBase  = CozyTheme.NormalizeHex(theme.BackgroundBase);
+        theme.BackgroundAlt   = CozyTheme.NormalizeHex(theme.BackgroundAlt);
+        theme.Surface         = CozyTheme.NormalizeHex(theme.Surface);
+        theme.AccentPrimary   = CozyTheme.NormalizeHex(theme.AccentPrimary);
+        theme.AccentStrong    = CozyTheme.NormalizeHex(theme.AccentStrong);
+        theme.TextPrimary     = CozyTheme.NormalizeHex(theme.TextPrimary);
+        theme.TextMuted       = CozyTheme.NormalizeHex(theme.TextMuted);
+        theme.BorderSubtle    = CozyTheme.NormalizeHex(theme.BorderSubtle);
+
         theme.LastModified = DateTimeOffset.UtcNow;
 
         if (!_themes.Contains(theme))

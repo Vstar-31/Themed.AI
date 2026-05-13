@@ -257,12 +257,25 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
     // ── Color math ───────────────────────────────────────────────────────────
 
+    //private static uint HexToArgb(string hex)
+    //{
+    //    hex = hex.TrimStart('#');
+    //    if (hex.Length == 6) hex = "FF" + hex;
+    //    return Convert.ToUInt32(hex, 16);
+    //}
     private static uint HexToArgb(string hex)
     {
-        hex = hex.TrimStart('#');
-        if (hex.Length == 6) hex = "FF" + hex;
+        hex = hex.TrimStart('#').Trim();
+
+        hex = hex.Length switch
+        {
+            3 => string.Concat("FF", hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]), // #RGB
+            6 => "FF" + hex,                                                            // #RRGGBB
+            8 => hex,                                                                   // #AARRGGBB
+            _ => "FF" + hex.PadLeft(6, '0')                                            // malformed — pad safely
+        };
+
         return Convert.ToUInt32(hex, 16);
     }
-
     private static string ArgbToHex(uint argb) => $"#{(argb & 0x00FFFFFF):X6}";
 }

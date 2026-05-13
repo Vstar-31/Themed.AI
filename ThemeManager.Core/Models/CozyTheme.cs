@@ -95,6 +95,22 @@ public sealed class CozyTheme
         DensityScale      = 1.0;
         LastModified      = DateTimeOffset.UtcNow;
     }
+
+    /// <summary>
+    /// Ensures hex color is always stored as a clean #RRGGBB string (6 chars, uppercase, leading zeros preserved).
+    /// </summary>
+    public static string NormalizeHex(string hex)
+    {
+        hex = hex.TrimStart('#').Trim();
+        // Expand shorthand #RGB → #RRGGBB
+        if (hex.Length == 3)
+            hex = string.Concat(hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]);
+        // Strip alpha if #AARRGGBB
+        if (hex.Length == 8)
+            hex = hex[2..];
+        // Pad to 6 with leading zeros (fixes the #66298 → #066298 problem)
+        return "#" + hex.PadLeft(6, '0').ToUpperInvariant();
+    }
 }
 
 /// <summary>Canonical hex values for the Cozy Café palette.</summary>
