@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -72,6 +73,9 @@ public sealed partial class ThemesPage : Page
             Frame.Navigate(typeof(ThemeEditorPage), ViewModel.SelectedTheme);
     }
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
     private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
         // FOOLPROOF: Grab the theme directly from the CommandParameter or DataContext
@@ -84,12 +88,7 @@ public sealed partial class ThemesPage : Page
             ViewModel.SetAsActive(theme);
             ViewModel.RefreshThemesList();
 
-            // 2. THE SAUCE: Push the colours natively to Windows OS!
-            var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
-            sysVm.AdvancedEnabled = true; // Force bypass any internal UI locks
-            await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
-
-            // 3. FORCE Windows to stop hiding your drip! 
+            // 2. FORCE Windows to stop hiding your drip! (CRITICAL: DO THIS FIRST)
             // Windows 10/11 defaults to hiding accent colors unless 'ColorPrevalence' is 1
             try 
             {
@@ -98,7 +97,16 @@ public sealed partial class ThemesPage : Page
             } 
             catch { /* Shhh, we tried to bypass permissions */ }
 
-            // 4. Extra flex: apply wallpaper too if the theme has one enabled
+            // 3. THE SAUCE: Push the colours natively to Windows OS!
+            var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
+            sysVm.AdvancedEnabled = true; // Force bypass any internal UI locks
+            await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
+
+            // 4. THE NUCLEAR OPTION: Manually scream at Windows to refresh the UI right now
+            // 0x001A is WM_SETTINGCHANGE. This forces the taskbar and windows to redraw instantly.
+            SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet", 0x0002, 5000, out _);
+
+            // 5. Extra flex: apply wallpaper too if the theme has one enabled
             if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
             {
                 await sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
