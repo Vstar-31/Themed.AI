@@ -79,8 +79,7 @@ public sealed partial class ThemesPage : Page
     private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
         // FOOLPROOF: Grab the theme directly from the CommandParameter or DataContext
-        var theme = (sender as Button)?.CommandParameter as CozyTheme 
-                 ?? (sender as FrameworkElement)?.DataContext as CozyTheme;
+        var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
 
         if (theme != null)
         {
@@ -142,7 +141,7 @@ public sealed partial class ThemesPage : Page
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
     {
-        var theme = (sender as Button)?.CommandParameter as CozyTheme;
+        var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
         Frame.Navigate(typeof(ThemeEditorPage), theme);
     }
@@ -150,14 +149,14 @@ public sealed partial class ThemesPage : Page
     private async void DuplicateButton_Click(object sender, RoutedEventArgs e)
     {
         // NOTE: use CommandParameter, NOT Tag — the XAML binds CommandParameter="{x:Bind}".
-        var theme = (sender as Button)?.CommandParameter as CozyTheme;
+        var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is not null)
             await ViewModel.DuplicateThemeAsync(theme);
     }
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        var theme = (sender as Button)?.CommandParameter as CozyTheme;
+        var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
 
         var dialog = new ContentDialog

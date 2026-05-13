@@ -127,20 +127,20 @@
                                             Spacing="8">
 
                                     <Button Content="Set Active"
-                                            CommandParameter="{x:Bind}"
+                                            Tag="{x:Bind}"
                                             Click="SetActiveButton_Click"
                                             Style="{StaticResource PrimaryButtonStyle}" />
 
                                     <Button Content="Edit" 
-                                            CommandParameter="{x:Bind}" 
+                                            Tag="{x:Bind}" 
                                             Click="EditButton_Click" />
 
                                     <Button Content="Duplicate" 
-                                            CommandParameter="{x:Bind}" 
+                                            Tag="{x:Bind}" 
                                             Click="DuplicateButton_Click" />
 
                                     <Button Content="Delete"
-                                            CommandParameter="{x:Bind}"
+                                            Tag="{x:Bind}"
                                             Click="DeleteButton_Click"
                                             IsEnabled="{x:Bind IsBuiltIn, Mode=OneWay, Converter={StaticResource InverseBoolConverter}}"
                                             Padding="14,8,14,8" />
