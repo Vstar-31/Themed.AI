@@ -138,37 +138,37 @@ public sealed partial class ThemesPage : Page
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement element && element.DataContext is CozyTheme theme)
-        {
-            ViewModel.SetAsActive(theme);
-            Frame.Navigate(typeof(ThemeEditorPage), theme);
-        }
+        var theme = (sender as Button)?.CommandParameter as CozyTheme;
+        if (theme is null) return;
+        Frame.Navigate(typeof(ThemeEditorPage), theme);
     }
 
     private async void DuplicateButton_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is CozyTheme theme)
+        // NOTE: use CommandParameter, NOT Tag — the XAML binds CommandParameter="{x:Bind}".
+        var theme = (sender as Button)?.CommandParameter as CozyTheme;
+        if (theme is not null)
             await ViewModel.DuplicateThemeAsync(theme);
     }
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement element && element.DataContext is CozyTheme theme)
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "Delete theme?",
-                Content = $"\"{theme.Name}\" will be permanently deleted.",
-                PrimaryButtonText = "Delete",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Close,
-                XamlRoot = XamlRoot,
-                RequestedTheme = ElementTheme.Default,
-            };
+        var theme = (sender as Button)?.CommandParameter as CozyTheme;
+        if (theme is null) return;
 
-            var result = await dialog.ShowAsync();
-            if (result == ContentDialogResult.Primary)
-                await ViewModel.DeleteThemeAsync(theme);
-        }
+        var dialog = new ContentDialog
+        {
+            Title = "Delete theme?",
+            Content = $"\"{theme.Name}\" will be permanently deleted.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+            RequestedTheme = ElementTheme.Default,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+            await ViewModel.DeleteThemeAsync(theme);
     }
 };
