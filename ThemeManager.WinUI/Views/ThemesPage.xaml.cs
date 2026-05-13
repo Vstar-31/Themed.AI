@@ -119,14 +119,18 @@ public sealed partial class ThemesPage : Page
 
             // 4. THE CACHE FLUSH: Kill explorer.exe
             // Because we used .Flush() above, Explorer can't overwrite our tweaks when it dies!
-            try 
-            {
-                foreach (var process in System.Diagnostics.Process.GetProcessesByName("explorer"))
-                {
-                    process.Kill();
-                }
-            }
-            catch { }
+            //try
+            //{
+            //    foreach (var process in System.Diagnostics.Process.GetProcessesByName("explorer"))
+            //    {
+            //        process.Kill();
+            //    }
+            //}
+            //catch { }
+
+            // 4. Smooth refresh: notify Windows to reload theme-related settings.
+            // WM_SETTINGCHANGE with "ImmersiveColorSet" refreshes the shell without killing Explorer.
+            SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet", 0x0002, 5000, out _);
 
             // 5. Extra flex: apply wallpaper too if the theme has one enabled
             if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
