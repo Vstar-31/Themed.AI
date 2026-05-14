@@ -2,19 +2,20 @@ using ThemeManager.Core.Services;
 
 namespace ThemeManager.WinUI.ViewModels;
 
-public sealed class SystemIntegrationViewModel : ViewModelBase
+public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
 {
     private readonly ISystemThemeIntegrator _integrator;
+    private readonly EventHandler<ThemeManager.Core.Models.CozyTheme> _themeChangedHandler;
 
     // ── System info ───────────────────────────────────────────────────────────
-    private string _currentAccentHex = "…";
+    private string _currentAccentHex = "\u2026";
     public string CurrentAccentHex
     {
         get => _currentAccentHex;
         set => SetProperty(ref _currentAccentHex, value);
     }
 
-    private string _windowsBuild = "…";
+    private string _windowsBuild = "\u2026";
     public string WindowsBuild
     {
         get => _windowsBuild;
@@ -72,8 +73,14 @@ public sealed class SystemIntegrationViewModel : ViewModelBase
     public SystemIntegrationViewModel(ISystemThemeIntegrator integrator)
     {
         _integrator = integrator;
-        App.ThemeService.ThemeChanged += (_, _) =>
+
+        // Store the handler so it can be properly unsubscribed in Dispose().
+        // Previously this was an inline lambda — every new instance leaked a
+        // permanent subscription that could never be removed.
+        _themeChangedHandler = (_, _) =>
             OnPropertyChanged(nameof(ActiveThemeApplyWallpaper));
+
+        App.ThemeService.ThemeChanged += _themeChangedHandler;
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -93,18 +100,19 @@ public sealed class SystemIntegrationViewModel : ViewModelBase
 
     public async Task ApplyAccentColorAsync(string hexColor)
     {
-        // Removed the check because when called from the ThemesPage directly to apply a theme, 
-        // the user hasn't explicitly navigated to the SystemPage to flip the toggle
-        // and we want clicking 'Set Active' to force it directly for a better UX!
+        // Removed the AdvancedEnabled guard because when called from ThemesPage
+        // directly to apply a theme, the user hasn't explicitly navigated to the
+        // SystemPage to flip the toggle — and we want 'Set Active' to force it
+        // directly for better UX.
 
         IsBusy = true;
-        StatusMessage = "Applying accent color…";
+        StatusMessage = "Applying accent color\u2026";
         try
         {
             bool ok = await _integrator.ApplyAccentColorAsync(hexColor);
             StatusMessage = ok
                 ? "Accent color applied. A sign-out may be required."
-                : "Failed to apply accent color — check permissions.";
+                : "Failed to apply accent color \u2014 check permissions.";
         }
         finally { IsBusy = false; }
     }
@@ -117,7 +125,7 @@ public sealed class SystemIntegrationViewModel : ViewModelBase
             return;
         }
         IsBusy = true;
-        StatusMessage = "Setting wallpaper…";
+        StatusMessage = "Setting wallpaper\u2026";
         try
         {
             bool ok = await _integrator.ApplyWallpaperAsync(path);
@@ -130,12 +138,19 @@ public sealed class SystemIntegrationViewModel : ViewModelBase
     {
         if (!AdvancedEnabled) return;
         IsBusy = true;
-        StatusMessage = "Resetting accent to Windows default…";
+        StatusMessage = "Resetting accent to Windows default\u2026";
         try
         {
             bool ok = await _integrator.ResetAccentColorAsync();
             StatusMessage = ok ? "Accent color reset." : "Reset failed.";
         }
         finally { IsBusy = false; }
+    }
+
+    // ── Cleanup ───────────────────────────────────────────────────────────────
+
+    public void Dispose()
+    {
+        App.ThemeService.ThemeChanged -= _themeChangedHandler;
     }
 }

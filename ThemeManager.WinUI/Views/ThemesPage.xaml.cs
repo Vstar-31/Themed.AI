@@ -11,10 +11,16 @@ public sealed partial class ThemesPage : Page
 {
     public ThemesViewModel ViewModel { get; }
 
+    // Single page-level instance — avoids creating a new VM (and leaking a
+    // new ThemeChanged subscription) on every "Set Active" click.
+    private readonly SystemIntegrationViewModel _sysVm;
+
     public ThemesPage()
     {
         InitializeComponent();
         ViewModel = new ThemesViewModel(App.ThemeService);
+        _sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
+        _sysVm.AdvancedEnabled = true;
 
         // After ItemsRepeater renders, colour the palette strips.
         ThemesRepeater.ElementPrepared += ThemesRepeater_ElementPrepared;
@@ -110,15 +116,12 @@ public sealed partial class ThemesPage : Page
                 }
             }
         }
-        catch { /* Registry write failed silently — non-critical. */ }
+        catch { /* Registry write failed silently \u2014 non-critical. */ }
 
-        // 3. Normalize the hex BEFORE pushing to the registry.
-        //    This ensures ColorPicker-derived, harmony-generated, or
-        //    unsaved values are all clean #RRGGBB before hitting DWM.
-        var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
-        sysVm.AdvancedEnabled = true;
+        // 3. Normalize hex before pushing to DWM/registry — prevents dirty
+        //    ColorPicker-derived or harmony-generated values hitting the OS.
         string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
-        await sysVm.ApplyAccentColorAsync(safeAccent);
+        await _sysVm.ApplyAccentColorAsync(safeAccent);
 
         // 4. Notify shell to reload theme settings without killing Explorer.
         SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet",
@@ -126,7 +129,7 @@ public sealed partial class ThemesPage : Page
 
         // 5. Apply wallpaper if the theme has one configured.
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
-            await sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
+            await _sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
