@@ -27,6 +27,10 @@ public sealed partial class SystemIntegrationPage : Page
             await ViewModel.RefreshSystemInfoAsync();
             UpdateSystemInfoUI();
         };
+
+        // Dispose the VM when navigating away so its ThemeChanged subscription
+        // doesn't linger and trigger stale accent applies.
+        Unloaded += (_, _) => ViewModel.Dispose();
     }
 
     // ── System info UI update ─────────────────────────────────────────────────

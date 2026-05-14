@@ -4,11 +4,12 @@ using ThemeManager.Core.Services;
 
 namespace ThemeManager.WinUI.ViewModels;
 
-public sealed class ThemesViewModel : ViewModelBase
+public sealed class ThemesViewModel : ViewModelBase, IDisposable
 {
     private readonly ThemeService _themeService;
+    private readonly EventHandler _themeListChangedHandler;
 
-    // ── Observable theme list ─────────────────────────────────────────────────
+    // ── Observable theme list ───────────────────────────────────────────────────
     public ObservableCollection<CozyTheme> Themes { get; } = new();
 
     private CozyTheme? _selectedTheme;
@@ -18,7 +19,7 @@ public sealed class ThemesViewModel : ViewModelBase
         set => SetProperty(ref _selectedTheme, value);
     }
 
-    // ── Status/feedback ───────────────────────────────────────────────────────
+    // ── Status/feedback ────────────────────────────────────────────────────────
     private string _statusMessage = string.Empty;
     public string StatusMessage
     {
@@ -29,7 +30,14 @@ public sealed class ThemesViewModel : ViewModelBase
     public ThemesViewModel(ThemeService themeService)
     {
         _themeService = themeService;
-        _themeService.ThemeListChanged += (_, _) => RefreshList();
+
+        // Store the handler so it can be unsubscribed in Dispose().
+        // Previously an inline lambda was used here — it could never be
+        // removed, so every new ThemesPage (created on each navigation)
+        // added another permanent ghost listener to ThemeListChanged.
+        _themeListChangedHandler = (_, _) => RefreshList();
+        _themeService.ThemeListChanged += _themeListChangedHandler;
+
         RefreshList();
     }
 
@@ -71,6 +79,13 @@ public sealed class ThemesViewModel : ViewModelBase
     public void RefreshThemesList()
     {
         RefreshList();
+    }
+
+    // ── Cleanup ───────────────────────────────────────────────────────────────
+
+    public void Dispose()
+    {
+        _themeService.ThemeListChanged -= _themeListChangedHandler;
     }
 
     // ── Private ───────────────────────────────────────────────────────────────

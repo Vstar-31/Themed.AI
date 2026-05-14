@@ -24,6 +24,14 @@ public sealed partial class ThemesPage : Page
 
         // After ItemsRepeater renders, colour the palette strips.
         ThemesRepeater.ElementPrepared += ThemesRepeater_ElementPrepared;
+
+        // Dispose both VMs when the page is navigated away from so their
+        // event subscriptions don't accumulate across nav cycles.
+        Unloaded += (_, _) =>
+        {
+            ViewModel.Dispose();
+            _sysVm.Dispose();
+        };
     }
 
     // ── Palette strip coloring ────────────────────────────────────────────────
@@ -116,7 +124,7 @@ public sealed partial class ThemesPage : Page
                 }
             }
         }
-        catch { /* Registry write failed silently \u2014 non-critical. */ }
+        catch { /* Registry write failed silently — non-critical. */ }
 
         // 3. Normalize hex before pushing to DWM/registry — prevents dirty
         //    ColorPicker-derived or harmony-generated values hitting the OS.
