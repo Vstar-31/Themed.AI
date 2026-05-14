@@ -83,11 +83,9 @@ public sealed partial class ThemesPage : Page
         ViewModel.SetAsActive(theme);
         ViewModel.RefreshThemesList();
 
-        // Use AccentStrong for the Windows system accent — it's a mid-range,
-        // visible color that reads well on the taskbar/titlebars. AccentPrimary
-        // is intentionally dark for app UI contrast but is too dark for DWM to
-        // render visibly as a taskbar accent color.
-        string safeAccent = CozyTheme.NormalizeHex(theme.AccentStrong);
+        // AccentPrimary is the theme's main interactive color — now that
+        // ColorizationColorBalance=100 renders it exactly, this is correct.
+        string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
         await _sysVm.ApplyAccentColorAsync(safeAccent);
 
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
