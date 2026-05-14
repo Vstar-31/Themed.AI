@@ -41,9 +41,10 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
     // ── Registry paths ──────────────────────────────────────────────────────────────
 
-    private const string DwmKey      = @"SOFTWARE\Microsoft\Windows\DWM";
-    private const string ThemesKey   = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-    private const string ExplorerKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent";
+    private const string DwmKey        = @"SOFTWARE\Microsoft\Windows\DWM";
+    private const string ThemesKey     = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+    private const string ExplorerKey   = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent";
+    private const string ControlColors = @"Control Panel\Colors";
 
     // ── ISystemThemeIntegrator ───────────────────────────────────────────────────────────
 
@@ -58,18 +59,19 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     return ArgbToHex((uint)raw);
             }
             catch { /* Silently fall through */ }
-            return "#7D5A44"; // Fallback: Cocoa
+            return "#7D5A44";
         });
     }
 
     /// <summary>
     /// Writes the accent color to all required registry locations and broadcasts
-    /// WM_SETTINGCHANGE so Windows 11 picks up the change immediately (no sign-out needed).
+    /// WM_SETTINGCHANGE so Windows 11 picks up the change immediately.
     ///
     /// Keys written:
     ///   HKCU\SOFTWARE\Microsoft\Windows\DWM              — ColorizationColor (ARGB), AccentColor, ColorPrevalence
-    ///   HKCU\...\Themes\Personalize                      — ColorPrevalence only (does NOT touch light/dark mode)
+    ///   HKCU\...\Themes\Personalize                      — ColorPrevalence only
     ///   HKCU\...\Explorer\Accent                         — AccentPalette blob, StartColorMenu/AccentColorMenu (ABGR)
+    ///   HKCU\Control Panel\Colors                        — Hilight + HotTrackingColor (decimal R G B) for shell repaint
     /// </summary>
     public Task<bool> ApplyAccentColorAsync(string hexColor)
     {
@@ -79,17 +81,15 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             {
                 _logger.LogInformation("Applying accent color {HexColor} to DWM/Registry", hexColor);
 
-                // Parse hex → ARGB (0xFFRRGGBB) — used by DWM.
                 uint argb = HexToArgb(hexColor);
                 byte r = (byte)((argb >> 16) & 0xFF);
                 byte g = (byte)((argb >> 8)  & 0xFF);
                 byte b = (byte)( argb        & 0xFF);
 
-                // Explorer\Accent keys use ABGR (0xFFBBGGRR) — byte-swapped vs DWM.
-                // Writing ARGB here is the classic "wrong colour" bug on Win11.
-                uint abgr = (0xFF000000u) | ((uint)b << 16) | ((uint)g << 8) | r;
+                // Explorer\Accent uses ABGR (0xFFBBGGRR) — NOT ARGB.
+                uint abgr = 0xFF000000u | ((uint)b << 16) | ((uint)g << 8) | r;
 
-                // ── 1. DWM key (ColorizationColor = ARGB) ───────────────────────
+                // ── 1. DWM key (ARGB) ────────────────────────────────────────────────
                 using (var dwmKey = Registry.CurrentUser.OpenSubKey(DwmKey, writable: true))
                 {
                     if (dwmKey is null)
@@ -106,10 +106,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     dwmKey.Flush();
                 }
 
-                // ── 2. Themes\Personalize key ──────────────────────────────────
-                // Only enable colorization. Do NOT touch SystemUsesLightTheme —
-                // that's the user's personal dark/light mode preference and must
-                // never be overwritten by a theme accent change.
+                // ── 2. Themes\Personalize (ColorPrevalence only — never touch light/dark mode) ──
                 using (var pKey = Registry.CurrentUser.OpenSubKey(ThemesKey, writable: true))
                 {
                     if (pKey != null)
@@ -119,24 +116,40 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
                 }
 
-                // ── 3. Explorer\Accent key (ABGR byte order) ──────────────────
-                // Windows 11 reads AccentPalette and StartColorMenu from here.
-                // StartColorMenu / AccentColorMenu must be in ABGR (0xFFBBGGRR),
-                // not ARGB — otherwise the taskbar/Start shows the wrong hue.
+                // ── 3. Explorer\Accent (ABGR byte order) ──────────────────────────
                 using (var accentKey = Registry.CurrentUser.CreateSubKey(ExplorerKey))
                 {
                     if (accentKey != null)
                     {
                         byte[] palette = BuildAccentPalette(r, g, b);
-                        accentKey.SetValue("AccentPalette",   palette,    RegistryValueKind.Binary);
-                        accentKey.SetValue("StartColorMenu",  (int)abgr,  RegistryValueKind.DWord);
-                        accentKey.SetValue("AccentColorMenu", (int)abgr,  RegistryValueKind.DWord);
+                        accentKey.SetValue("AccentPalette",   palette,   RegistryValueKind.Binary);
+                        accentKey.SetValue("StartColorMenu",  (int)abgr, RegistryValueKind.DWord);
+                        accentKey.SetValue("AccentColorMenu", (int)abgr, RegistryValueKind.DWord);
                         accentKey.Flush();
                     }
                 }
 
-                // ── 4. Broadcast shell refresh ─────────────────────────────────
-                BroadcastSettingsChange();
+                // ── 4. Control Panel\Colors (decimal "R G B" strings) ────────────────
+                // Win11 shell reads Hilight and HotTrackingColor from here for
+                // selection highlights and taskbar hover states. Must be "R G B"
+                // decimal strings, e.g. "121 83 82".
+                string rgbDecimal = $"{r} {g} {b}";
+                using (var cpKey = Registry.CurrentUser.OpenSubKey(ControlColors, writable: true))
+                {
+                    if (cpKey != null)
+                    {
+                        cpKey.SetValue("Hilight",          rgbDecimal, RegistryValueKind.String);
+                        cpKey.SetValue("HotTrackingColor", rgbDecimal, RegistryValueKind.String);
+                        cpKey.Flush();
+                    }
+                }
+
+                // ── 5. Dual broadcast ──────────────────────────────────────────────
+                // "ImmersiveColorSet" refreshes the DWM/accent colour.
+                // "WindowsThemeElement" triggers a secondary shell repaint pass
+                // that Win11 23H2+ needs to update the taskbar live.
+                BroadcastSettingsChange("ImmersiveColorSet");
+                BroadcastSettingsChange("WindowsThemeElement");
 
                 _logger.LogInformation("Accent color successfully applied");
                 return true;
@@ -197,7 +210,8 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     pKey.Flush();
                 }
 
-                BroadcastSettingsChange();
+                BroadcastSettingsChange("ImmersiveColorSet");
+                BroadcastSettingsChange("WindowsThemeElement");
                 return true;
             }
             catch { return false; }
@@ -216,14 +230,14 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         catch { return true; }
     }
 
-    private static void BroadcastSettingsChange()
+    private static void BroadcastSettingsChange(string param)
     {
         SendMessageTimeout(
-            new IntPtr(-1),
-            0x001A,               // WM_SETTINGCHANGE
+            new IntPtr(-1),      // HWND_BROADCAST
+            0x001A,              // WM_SETTINGCHANGE
             IntPtr.Zero,
-            "ImmersiveColorSet",
-            0x0002,               // SMTO_ABORTIFHUNG
+            param,
+            0x0002,              // SMTO_ABORTIFHUNG
             5000,
             out _);
     }
@@ -244,22 +258,19 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             byte sg = (byte)Math.Clamp((int)(g * factors[i]), 0, 255);
             byte sb = (byte)Math.Clamp((int)(b * factors[i]), 0, 255);
 
-            // Each entry is BGRA (little-endian, Windows convention)
-            palette[i * 4 + 0] = sb;   // B
-            palette[i * 4 + 1] = sg;   // G
-            palette[i * 4 + 2] = sr;   // R
-            palette[i * 4 + 3] = 0xFF; // A
+            // BGRA (little-endian, Windows convention)
+            palette[i * 4 + 0] = sb;
+            palette[i * 4 + 1] = sg;
+            palette[i * 4 + 2] = sr;
+            palette[i * 4 + 3] = 0xFF;
         }
 
         return palette;
     }
 
-    // ── Color math ──────────────────────────────────────────────────────────────
-
     private static uint HexToArgb(string hex)
     {
         hex = hex.TrimStart('#').Trim();
-
         hex = hex.Length switch
         {
             3 => string.Concat("FF", hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]),
@@ -267,7 +278,6 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             8 => hex,
             _ => "FF" + hex.PadLeft(6, '0')
         };
-
         return Convert.ToUInt32(hex, 16);
     }
 
