@@ -28,17 +28,14 @@ public sealed partial class ThemesPage : Page
         ItemsRepeaterElementPreparedEventArgs args)
     {
         if (args.Element is not Border card) return;
-
-        // Use the index to pull the theme from the source collection directly.
         if (args.Index < 0 || args.Index >= ViewModel.Themes.Count) return;
-        var theme = ViewModel.Themes[args.Index];
 
+        var theme = ViewModel.Themes[args.Index];
         ColorPaletteStrip(card, theme);
     }
 
     private static void ColorPaletteStrip(Border card, CozyTheme theme)
     {
-        // Walk the visual tree to find the strip Grid (first child Grid, row 0).
         if (card.Child is not Grid root) return;
 
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
@@ -58,7 +55,8 @@ public sealed partial class ThemesPage : Page
                 for (int j = 0; j < VisualTreeHelper.GetChildrenCount(strip) && j < colors.Length; j++)
                 {
                     if (VisualTreeHelper.GetChild(strip, j) is Border swatch)
-                        swatch.Background = new SolidColorBrush(App.HexToColor(colors[j]));
+                        swatch.Background = new SolidColorBrush(
+                            App.HexToColor(CozyTheme.NormalizeHex(colors[j])));
                 }
                 break;
             }
@@ -81,7 +79,6 @@ public sealed partial class ThemesPage : Page
 
     private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
-        // Tag="{x:Bind}" in the DataTemplate reliably passes the CozyTheme instance.
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
 
@@ -99,7 +96,7 @@ public sealed partial class ThemesPage : Page
                 {
                     pKey.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
                     pKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                    pKey.Flush(); // Forces immediate disk write.
+                    pKey.Flush();
                 }
             }
 
@@ -115,13 +112,15 @@ public sealed partial class ThemesPage : Page
         }
         catch { /* Registry write failed silently — non-critical. */ }
 
-        // 3. Push the accent colour to the OS via SystemIntegrationViewModel.
+        // 3. Normalize the hex BEFORE pushing to the registry.
+        //    This ensures ColorPicker-derived, harmony-generated, or
+        //    unsaved values are all clean #RRGGBB before hitting DWM.
         var sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
         sysVm.AdvancedEnabled = true;
-        await sysVm.ApplyAccentColorAsync(theme.AccentPrimary);
+        string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
+        await sysVm.ApplyAccentColorAsync(safeAccent);
 
-        // 4. Notify the shell to reload theme settings without killing Explorer.
-        //    WM_SETTINGCHANGE + "ImmersiveColorSet" is the safe, documented refresh.
+        // 4. Notify shell to reload theme settings without killing Explorer.
         SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet",
             0x0002, 5000, out _);
 
