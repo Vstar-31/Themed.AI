@@ -10,8 +10,6 @@ public sealed partial class ThemesPage : Page
 {
     public ThemesViewModel ViewModel { get; }
 
-    // Single page-level instance — avoids creating a new VM (and leaking a
-    // new ThemeChanged subscription) on every "Set Active" click.
     private readonly SystemIntegrationViewModel _sysVm;
 
     public ThemesPage()
@@ -21,11 +19,8 @@ public sealed partial class ThemesPage : Page
         _sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
         _sysVm.AdvancedEnabled = true;
 
-        // After ItemsRepeater renders, colour the palette strips.
         ThemesRepeater.ElementPrepared += ThemesRepeater_ElementPrepared;
 
-        // Dispose both VMs when the page is navigated away from so their
-        // event subscriptions don't accumulate across nav cycles.
         Unloaded += (_, _) =>
         {
             ViewModel.Dispose();
@@ -33,9 +28,6 @@ public sealed partial class ThemesPage : Page
         };
     }
 
-    // ── Palette strip coloring ────────────────────────────────────────────────
-    // ItemsRepeater does NOT set DataContext on its children (unlike ListView),
-    // so we retrieve the theme directly from ViewModel.Themes via args.Index.
     private void ThemesRepeater_ElementPrepared(
         ItemsRepeater sender,
         ItemsRepeaterElementPreparedEventArgs args)
@@ -76,8 +68,6 @@ public sealed partial class ThemesPage : Page
         }
     }
 
-    // ── Button handlers ───────────────────────────────────────────────────────
-
     private async void NewThemeButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.CreateThemeAsync();
@@ -90,18 +80,16 @@ public sealed partial class ThemesPage : Page
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
 
-        // 1. Mark as active inside the app.
         ViewModel.SetAsActive(theme);
         ViewModel.RefreshThemesList();
 
-        // 2. Push accent colour + all registry keys to the OS in one shot.
-        //    SystemThemeIntegrator.ApplyAccentColorAsync writes DWM, Personalize,
-        //    and Explorer\Accent, then broadcasts WM_SETTINGCHANGE — no need to
-        //    duplicate any of that here.
-        string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
+        // Use AccentStrong for the Windows system accent — it's a mid-range,
+        // visible color that reads well on the taskbar/titlebars. AccentPrimary
+        // is intentionally dark for app UI contrast but is too dark for DWM to
+        // render visibly as a taskbar accent color.
+        string safeAccent = CozyTheme.NormalizeHex(theme.AccentStrong);
         await _sysVm.ApplyAccentColorAsync(safeAccent);
 
-        // 3. Apply wallpaper if the theme has one configured.
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
             await _sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
     }
