@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -86,56 +85,23 @@ public sealed partial class ThemesPage : Page
             Frame.Navigate(typeof(ThemeEditorPage), ViewModel.SelectedTheme);
     }
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessageTimeout(
-        IntPtr hWnd, uint Msg, IntPtr wParam, string lParam,
-        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
-
     private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
 
-        // 1. Apply theme inside the app UI.
+        // 1. Mark as active inside the app.
         ViewModel.SetAsActive(theme);
         ViewModel.RefreshThemesList();
 
-        // 2. Write accent/colorization prefs to registry and flush immediately.
-        try
-        {
-            using (var pKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
-                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
-            {
-                if (pKey != null)
-                {
-                    pKey.SetValue("SystemUsesLightTheme", 0, Microsoft.Win32.RegistryValueKind.DWord);
-                    pKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                    pKey.Flush();
-                }
-            }
-
-            using (var dKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
-                @"Software\Microsoft\Windows\DWM"))
-            {
-                if (dKey != null)
-                {
-                    dKey.SetValue("ColorPrevalence", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                    dKey.Flush();
-                }
-            }
-        }
-        catch { /* Registry write failed silently — non-critical. */ }
-
-        // 3. Normalize hex before pushing to DWM/registry — prevents dirty
-        //    ColorPicker-derived or harmony-generated values hitting the OS.
+        // 2. Push accent colour + all registry keys to the OS in one shot.
+        //    SystemThemeIntegrator.ApplyAccentColorAsync writes DWM, Personalize,
+        //    and Explorer\Accent, then broadcasts WM_SETTINGCHANGE — no need to
+        //    duplicate any of that here.
         string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
         await _sysVm.ApplyAccentColorAsync(safeAccent);
 
-        // 4. Notify shell to reload theme settings without killing Explorer.
-        SendMessageTimeout(new IntPtr(-1), 0x001A, IntPtr.Zero, "ImmersiveColorSet",
-            0x0002, 5000, out _);
-
-        // 5. Apply wallpaper if the theme has one configured.
+        // 3. Apply wallpaper if the theme has one configured.
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
             await _sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
     }
