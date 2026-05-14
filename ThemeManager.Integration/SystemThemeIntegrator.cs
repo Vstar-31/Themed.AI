@@ -9,12 +9,6 @@ namespace ThemeManager.Integration;
 
 /// <summary>
 /// Windows-specific implementation of <see cref="ISystemThemeIntegrator"/>.
-///
-/// Safe boundaries observed:
-///   • Reads accent color via HKCU DWM registry key (documented).
-///   • Writes accent color via HKCU\SOFTWARE\Microsoft\Windows\DWM and Explorer\Accent.
-///   • Sets wallpaper via SystemParametersInfo (Win32, documented).
-///   • No DLL injection, no undocumented kernel calls.
 /// </summary>
 public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 {
@@ -47,7 +41,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     private const string ExplorerKey   = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent";
     private const string ControlColors = @"Control Panel\Colors";
 
-    // ── ISystemThemeIntegrator ───────────────────────────────────────────────────────────
+    // ── ISystemThemeIntegrator ─────────────────────────────────────────────────────────
 
     public Task<string> GetCurrentAccentColorAsync()
     {
@@ -59,20 +53,18 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 if (key?.GetValue("ColorizationColor") is int raw)
                     return ArgbToHex((uint)raw);
             }
-            catch { /* Silently fall through */ }
+            catch { }
             return "#7D5A44";
         });
     }
 
     /// <summary>
-    /// Writes the accent color to all required registry locations, broadcasts
-    /// WM_SETTINGCHANGE, then restarts Explorer so Win11 DWM visually repaints.
+    /// Writes the accent color to all required registry locations.
     ///
-    /// Keys written:
-    ///   HKCU\SOFTWARE\Microsoft\Windows\DWM              — ColorizationColor (ARGB), AccentColor, ColorPrevalence
-    ///   HKCU\...\Themes\Personalize                      — ColorPrevalence only (never touches light/dark mode)
-    ///   HKCU\...\Explorer\Accent                         — AccentPalette blob, StartColorMenu/AccentColorMenu (ABGR)
-    ///   HKCU\Control Panel\Colors                        — Hilight + HotTrackingColor (decimal R G B)
+    /// Critical values:
+    ///   ColorizationColorBalance = 0   (0 = use exact color, 100 = blend with glass/wallpaper)
+    ///   AutoColorization         = 0   (0 = manual color, 1 = auto-pick from wallpaper)
+    ///   ColorPrevalence          = 1   (show accent on taskbar/titlebar)
     /// </summary>
     public Task<bool> ApplyAccentColorAsync(string hexColor)
     {
@@ -87,10 +79,10 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 byte g = (byte)((argb >> 8)  & 0xFF);
                 byte b = (byte)( argb        & 0xFF);
 
-                // Explorer\Accent uses ABGR (0xFFBBGGRR) — NOT ARGB.
+                // Explorer\Accent uses ABGR (0xFFBBGGRR)
                 uint abgr = 0xFF000000u | ((uint)b << 16) | ((uint)g << 8) | r;
 
-                // ── 1. DWM key (ARGB) ────────────────────────────────────────────────
+                // ── 1. DWM key ──────────────────────────────────────────────────────────
                 using (var dwmKey = Registry.CurrentUser.OpenSubKey(DwmKey, writable: true))
                 {
                     if (dwmKey is null)
@@ -98,25 +90,32 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                         _logger.LogWarning("Failed to open HKCU\\{DwmKey} for writing", DwmKey);
                         return false;
                     }
+
                     dwmKey.SetValue("ColorizationColor",        (int)argb, RegistryValueKind.DWord);
-                    dwmKey.SetValue("ColorizationColorBalance", 100,        RegistryValueKind.DWord);
+                    // KEY FIX: 0 = use the exact color as-is, no glass/wallpaper blending.
+                    // Previously this was 100 which blended the color into near-invisible.
+                    dwmKey.SetValue("ColorizationColorBalance", 0,          RegistryValueKind.DWord);
                     dwmKey.SetValue("AccentColor",              (int)argb, RegistryValueKind.DWord);
                     dwmKey.SetValue("AccentColorInactive",      (int)argb, RegistryValueKind.DWord);
                     dwmKey.SetValue("ColorPrevalence",          1,          RegistryValueKind.DWord);
+                    // KEY FIX: disable auto-colorization from wallpaper so our manual
+                    // color is not overridden by Windows' automatic accent picker.
+                    dwmKey.SetValue("AutoColorization",         0,          RegistryValueKind.DWord);
                     dwmKey.Flush();
                 }
 
-                // ── 2. Themes\Personalize (ColorPrevalence only) ────────────────────
+                // ── 2. Themes\Personalize ──────────────────────────────────────────
                 using (var pKey = Registry.CurrentUser.OpenSubKey(ThemesKey, writable: true))
                 {
                     if (pKey != null)
                     {
-                        pKey.SetValue("ColorPrevalence", 1, RegistryValueKind.DWord);
+                        pKey.SetValue("ColorPrevalence",   1, RegistryValueKind.DWord);
+                        pKey.SetValue("AutoColorization",  0, RegistryValueKind.DWord);
                         pKey.Flush();
                     }
                 }
 
-                // ── 3. Explorer\Accent (ABGR byte order) ──────────────────────────
+                // ── 3. Explorer\Accent (ABGR) ────────────────────────────────────
                 using (var accentKey = Registry.CurrentUser.CreateSubKey(ExplorerKey))
                 {
                     if (accentKey != null)
@@ -129,7 +128,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
                 }
 
-                // ── 4. Control Panel\Colors (decimal "R G B" strings) ──────────────
+                // ── 4. Control Panel\Colors ──────────────────────────────────────
                 string rgbDecimal = $"{r} {g} {b}";
                 using (var cpKey = Registry.CurrentUser.OpenSubKey(ControlColors, writable: true))
                 {
@@ -141,16 +140,9 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
                 }
 
-                // ── 5. Broadcast + Explorer restart ──────────────────────────────
-                // Broadcast first so DWM gets the message while Explorer is still running.
+                // ── 5. Broadcast + Explorer restart ─────────────────────────────
                 BroadcastSettingsChange("ImmersiveColorSet");
                 BroadcastSettingsChange("WindowsThemeElement");
-
-                // Explorer restart is the only reliable way to force Win11's DWM
-                // compositor to visually repaint the taskbar/titlebar with the new
-                // accent colour. WM_SETTINGCHANGE alone stopped being sufficient on
-                // Win11 22H2+. This is the same technique used by winpal, AccentColorizer,
-                // and Windows Settings itself.
                 RestartExplorer();
 
                 _logger.LogInformation("Accent color successfully applied");
@@ -203,12 +195,14 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 dwmKey.DeleteValue("AccentColor",              throwOnMissingValue: false);
                 dwmKey.DeleteValue("AccentColorInactive",      throwOnMissingValue: false);
                 dwmKey.DeleteValue("ColorPrevalence",          throwOnMissingValue: false);
+                dwmKey.DeleteValue("AutoColorization",         throwOnMissingValue: false);
                 dwmKey.Flush();
 
                 using var pKey = Registry.CurrentUser.OpenSubKey(ThemesKey, writable: true);
                 if (pKey != null)
                 {
-                    pKey.SetValue("ColorPrevalence", 0, RegistryValueKind.DWord);
+                    pKey.SetValue("ColorPrevalence",  0, RegistryValueKind.DWord);
+                    pKey.SetValue("AutoColorization", 1, RegistryValueKind.DWord);
                     pKey.Flush();
                 }
 
@@ -236,7 +230,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     private static void BroadcastSettingsChange(string param)
     {
         SendMessageTimeout(
-            new IntPtr(-1),      // HWND_BROADCAST
+            new IntPtr(-1),
             0x001A,              // WM_SETTINGCHANGE
             IntPtr.Zero,
             param,
@@ -245,36 +239,28 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             out _);
     }
 
-    /// <summary>
-    /// Kills the running Explorer shell and lets Windows auto-restart it.
-    /// Explorer restarts automatically within ~1 second because it is registered
-    /// as a critical shell process. The taskbar will flash briefly but the new
-    /// accent colour will be live immediately after restart.
-    /// </summary>
     private static void RestartExplorer()
     {
         try
         {
-            foreach (var proc in Process.GetProcessesByName("explorer"))
+            // Use cmd taskkill — more reliable than Process.Kill() across privilege levels
+            var kill = Process.Start(new ProcessStartInfo
             {
-                proc.Kill();
-                proc.WaitForExit(3000);
-                proc.Dispose();
-            }
-            // Give Windows ~800 ms to auto-relaunch explorer.exe
-            Thread.Sleep(800);
+                FileName        = "cmd.exe",
+                Arguments       = "/c taskkill /f /im explorer.exe",
+                CreateNoWindow  = true,
+                UseShellExecute = false,
+            });
+            kill?.WaitForExit(3000);
 
-            // If Windows didn't auto-restart it (rare), start it manually.
+            Thread.Sleep(1000);
+
             if (!Process.GetProcessesByName("explorer").Any())
                 Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
         }
-        catch { /* Non-fatal — registry writes already done */ }
+        catch { }
     }
 
-    /// <summary>
-    /// Builds the 32-byte AccentPalette binary blob (8 shades × 4 bytes BGRA)
-    /// that Windows 11 reads from HKCU\...\Explorer\Accent.
-    /// </summary>
     private static byte[] BuildAccentPalette(byte r, byte g, byte b)
     {
         float[] factors = { 0.35f, 0.50f, 0.65f, 0.80f, 1.00f, 1.15f, 1.35f, 1.60f };
@@ -284,10 +270,10 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             byte sr = (byte)Math.Clamp((int)(r * factors[i]), 0, 255);
             byte sg = (byte)Math.Clamp((int)(g * factors[i]), 0, 255);
             byte sb = (byte)Math.Clamp((int)(b * factors[i]), 0, 255);
-            palette[i * 4 + 0] = sb;   // B
-            palette[i * 4 + 1] = sg;   // G
-            palette[i * 4 + 2] = sr;   // R
-            palette[i * 4 + 3] = 0xFF; // A
+            palette[i * 4 + 0] = sb;
+            palette[i * 4 + 1] = sg;
+            palette[i * 4 + 2] = sr;
+            palette[i * 4 + 3] = 0xFF;
         }
         return palette;
     }
