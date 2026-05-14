@@ -19,7 +19,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         _logger = logger ?? NullLogger.Instance;
     }
 
-    // ── Win32 interop ──────────────────────────────────────────────────────────────
+    // ── Win32 interop ──────────────────────────────────────────────────────
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern bool SystemParametersInfo(
@@ -34,14 +34,14 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     private const uint SPIF_UPDATEINIFILE   = 0x01;
     private const uint SPIF_SENDCHANGE      = 0x02;
 
-    // ── Registry paths ──────────────────────────────────────────────────────────────
+    // ── Registry paths ──────────────────────────────────────────────────────
 
     private const string DwmKey        = @"SOFTWARE\Microsoft\Windows\DWM";
     private const string ThemesKey     = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize";
     private const string ExplorerKey   = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent";
     private const string ControlColors = @"Control Panel\Colors";
 
-    // ── ISystemThemeIntegrator ─────────────────────────────────────────────────────────
+    // ── ISystemThemeIntegrator ──────────────────────────────────────────────────────────
 
     public Task<string> GetCurrentAccentColorAsync()
     {
@@ -62,9 +62,9 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     /// Writes the accent color to all required registry locations.
     ///
     /// Critical values:
-    ///   ColorizationColorBalance = 0   (0 = use exact color, 100 = blend with glass/wallpaper)
-    ///   AutoColorization         = 0   (0 = manual color, 1 = auto-pick from wallpaper)
-    ///   ColorPrevalence          = 1   (show accent on taskbar/titlebar)
+    ///   ColorizationColorBalance = 100  (0 = no color / glass look, 100 = exact solid color)
+    ///   AutoColorization         = 0    (0 = manual color, 1 = auto-pick from wallpaper)
+    ///   ColorPrevalence          = 1    (show accent on taskbar/titlebar)
     /// </summary>
     public Task<bool> ApplyAccentColorAsync(string hexColor)
     {
@@ -82,7 +82,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 // Explorer\Accent uses ABGR (0xFFBBGGRR)
                 uint abgr = 0xFF000000u | ((uint)b << 16) | ((uint)g << 8) | r;
 
-                // ── 1. DWM key ──────────────────────────────────────────────────────────
+                // ── 1. DWM key ─────────────────────────────────────────────────────────
                 using (var dwmKey = Registry.CurrentUser.OpenSubKey(DwmKey, writable: true))
                 {
                     if (dwmKey is null)
@@ -92,19 +92,17 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
 
                     dwmKey.SetValue("ColorizationColor",        (int)argb, RegistryValueKind.DWord);
-                    // KEY FIX: 0 = use the exact color as-is, no glass/wallpaper blending.
-                    // Previously this was 100 which blended the color into near-invisible.
-                    dwmKey.SetValue("ColorizationColorBalance", 0,          RegistryValueKind.DWord);
+                    // 100 = render the exact color with no glass/wallpaper blending.
+                    // 0 would make the color nearly invisible (transparent/glass look).
+                    dwmKey.SetValue("ColorizationColorBalance", 100,        RegistryValueKind.DWord);
                     dwmKey.SetValue("AccentColor",              (int)argb, RegistryValueKind.DWord);
                     dwmKey.SetValue("AccentColorInactive",      (int)argb, RegistryValueKind.DWord);
                     dwmKey.SetValue("ColorPrevalence",          1,          RegistryValueKind.DWord);
-                    // KEY FIX: disable auto-colorization from wallpaper so our manual
-                    // color is not overridden by Windows' automatic accent picker.
                     dwmKey.SetValue("AutoColorization",         0,          RegistryValueKind.DWord);
                     dwmKey.Flush();
                 }
 
-                // ── 2. Themes\Personalize ──────────────────────────────────────────
+                // ── 2. Themes\Personalize ──────────────────────────────────────────────────
                 using (var pKey = Registry.CurrentUser.OpenSubKey(ThemesKey, writable: true))
                 {
                     if (pKey != null)
@@ -115,7 +113,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
                 }
 
-                // ── 3. Explorer\Accent (ABGR) ────────────────────────────────────
+                // ── 3. Explorer\Accent (ABGR) ─────────────────────────────────────────────
                 using (var accentKey = Registry.CurrentUser.CreateSubKey(ExplorerKey))
                 {
                     if (accentKey != null)
@@ -128,7 +126,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
                 }
 
-                // ── 4. Control Panel\Colors ──────────────────────────────────────
+                // ── 4. Control Panel\Colors ──────────────────────────────────────────────
                 string rgbDecimal = $"{r} {g} {b}";
                 using (var cpKey = Registry.CurrentUser.OpenSubKey(ControlColors, writable: true))
                 {
@@ -140,7 +138,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     }
                 }
 
-                // ── 5. Broadcast + Explorer restart ─────────────────────────────
+                // ── 5. Broadcast + Explorer restart ───────────────────────────────────────
                 BroadcastSettingsChange("ImmersiveColorSet");
                 BroadcastSettingsChange("WindowsThemeElement");
                 RestartExplorer();
@@ -215,7 +213,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         });
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────────────
+    // ── Private helpers ──────────────────────────────────────────────────────────────────
 
     private static bool IsLightModeEnabled()
     {
@@ -243,7 +241,6 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     {
         try
         {
-            // Use cmd taskkill — more reliable than Process.Kill() across privilege levels
             var kill = Process.Start(new ProcessStartInfo
             {
                 FileName        = "cmd.exe",
