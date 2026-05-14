@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using ThemeManager.Core.Services;
@@ -14,7 +13,6 @@ namespace ThemeManager.Integration;
 ///   • Reads accent color via HKCU DWM registry key (documented).
 ///   • Writes accent color via HKCU\SOFTWARE\Microsoft\Windows\DWM and Explorer\Accent.
 ///   • Sets wallpaper via SystemParametersInfo (Win32, documented).
-///   • All write operations are guarded behind the caller's "Advanced" toggle.
 ///   • No DLL injection, no undocumented kernel calls.
 /// </summary>
 public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
@@ -26,7 +24,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         _logger = logger ?? NullLogger.Instance;
     }
 
-    // ── Win32 interop ────────────────────────────────────────────────────────
+    // ── Win32 interop ──────────────────────────────────────────────────────────────
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern bool SystemParametersInfo(
@@ -41,13 +39,13 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     private const uint SPIF_UPDATEINIFILE   = 0x01;
     private const uint SPIF_SENDCHANGE      = 0x02;
 
-    // ── Registry paths ───────────────────────────────────────────────────────
+    // ── Registry paths ──────────────────────────────────────────────────────────────
 
     private const string DwmKey      = @"SOFTWARE\Microsoft\Windows\DWM";
     private const string ThemesKey   = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize";
     private const string ExplorerKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent";
 
-    // ── ISystemThemeIntegrator ───────────────────────────────────────────────
+    // ── ISystemThemeIntegrator ───────────────────────────────────────────────────────────
 
     public Task<string> GetCurrentAccentColorAsync()
     {
@@ -69,9 +67,9 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
     /// WM_SETTINGCHANGE so Windows 11 picks up the change immediately (no sign-out needed).
     ///
     /// Keys written:
-    ///   HKCU\SOFTWARE\Microsoft\Windows\DWM              — ColorizationColor, AccentColor, ColorPrevalence
-    ///   HKCU\...\Themes\Personalize                      — ColorPrevalence, SystemUsesLightTheme
-    ///   HKCU\...\Explorer\Accent                         — AccentPalette (8-shade binary blob), StartColorMenu
+    ///   HKCU\SOFTWARE\Microsoft\Windows\DWM              — ColorizationColor (ARGB), AccentColor, ColorPrevalence
+    ///   HKCU\...\Themes\Personalize                      — ColorPrevalence only (does NOT touch light/dark mode)
+    ///   HKCU\...\Explorer\Accent                         — AccentPalette blob, StartColorMenu/AccentColorMenu (ABGR)
     /// </summary>
     public Task<bool> ApplyAccentColorAsync(string hexColor)
     {
@@ -81,14 +79,17 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             {
                 _logger.LogInformation("Applying accent color {HexColor} to DWM/Registry", hexColor);
 
-                // Parse hex to ARGB (0xFFRRGGBB)
+                // Parse hex → ARGB (0xFFRRGGBB) — used by DWM.
                 uint argb = HexToArgb(hexColor);
                 byte r = (byte)((argb >> 16) & 0xFF);
                 byte g = (byte)((argb >> 8)  & 0xFF);
                 byte b = (byte)( argb        & 0xFF);
 
-                // ── 1. DWM key ───────────────────────────────────────────────
-                // ColorizationColor is 0xAARRGGBB — no byte swap needed.
+                // Explorer\Accent keys use ABGR (0xFFBBGGRR) — byte-swapped vs DWM.
+                // Writing ARGB here is the classic "wrong colour" bug on Win11.
+                uint abgr = (0xFF000000u) | ((uint)b << 16) | ((uint)g << 8) | r;
+
+                // ── 1. DWM key (ColorizationColor = ARGB) ───────────────────────
                 using (var dwmKey = Registry.CurrentUser.OpenSubKey(DwmKey, writable: true))
                 {
                     if (dwmKey is null)
@@ -105,35 +106,36 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                     dwmKey.Flush();
                 }
 
-                // ── 2. Themes\Personalize key ────────────────────────────────
+                // ── 2. Themes\Personalize key ──────────────────────────────────
+                // Only enable colorization. Do NOT touch SystemUsesLightTheme —
+                // that's the user's personal dark/light mode preference and must
+                // never be overwritten by a theme accent change.
                 using (var pKey = Registry.CurrentUser.OpenSubKey(ThemesKey, writable: true))
                 {
                     if (pKey != null)
                     {
-                        pKey.SetValue("ColorPrevalence",      1, RegistryValueKind.DWord);
-                        pKey.SetValue("SystemUsesLightTheme", 0, RegistryValueKind.DWord);
+                        pKey.SetValue("ColorPrevalence", 1, RegistryValueKind.DWord);
                         pKey.Flush();
                     }
                 }
 
-                // ── 3. Explorer\Accent key (CRITICAL for Win11 visual refresh) ─
-                // Windows 11 reads the 8-shade AccentPalette binary blob from here.
-                // Without this key, titlebar/taskbar colors won't update visually.
+                // ── 3. Explorer\Accent key (ABGR byte order) ──────────────────
+                // Windows 11 reads AccentPalette and StartColorMenu from here.
+                // StartColorMenu / AccentColorMenu must be in ABGR (0xFFBBGGRR),
+                // not ARGB — otherwise the taskbar/Start shows the wrong hue.
                 using (var accentKey = Registry.CurrentUser.CreateSubKey(ExplorerKey))
                 {
                     if (accentKey != null)
                     {
                         byte[] palette = BuildAccentPalette(r, g, b);
-                        accentKey.SetValue("AccentPalette",   palette,   RegistryValueKind.Binary);
-                        accentKey.SetValue("StartColorMenu",  (int)argb, RegistryValueKind.DWord);
-                        accentKey.SetValue("AccentColorMenu", (int)argb, RegistryValueKind.DWord);
+                        accentKey.SetValue("AccentPalette",   palette,    RegistryValueKind.Binary);
+                        accentKey.SetValue("StartColorMenu",  (int)abgr,  RegistryValueKind.DWord);
+                        accentKey.SetValue("AccentColorMenu", (int)abgr,  RegistryValueKind.DWord);
                         accentKey.Flush();
                     }
                 }
 
-                // ── 4. Broadcast shell refresh ───────────────────────────────
-                // WM_SETTINGCHANGE + "ImmersiveColorSet" refreshes shell theme
-                // without killing Explorer or requiring sign-out.
+                // ── 4. Broadcast shell refresh ─────────────────────────────────
                 BroadcastSettingsChange();
 
                 _logger.LogInformation("Accent color successfully applied");
@@ -174,7 +176,6 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
     public Task<bool> ResetAccentColorAsync()
     {
-        // Deleting the overridden values lets Windows revert to its own defaults.
         return Task.Run(() =>
         {
             try
@@ -203,7 +204,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         });
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────
+    // ── Private helpers ──────────────────────────────────────────────────────────────
 
     private static bool IsLightModeEnabled()
     {
@@ -217,10 +218,8 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
     private static void BroadcastSettingsChange()
     {
-        // WM_SETTINGCHANGE (0x001A) with "ImmersiveColorSet" causes the shell
-        // to refresh accent/colorization without a sign-out.
         SendMessageTimeout(
-            new IntPtr(-1),       // HWND_BROADCAST
+            new IntPtr(-1),
             0x001A,               // WM_SETTINGCHANGE
             IntPtr.Zero,
             "ImmersiveColorSet",
@@ -245,37 +244,32 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             byte sg = (byte)Math.Clamp((int)(g * factors[i]), 0, 255);
             byte sb = (byte)Math.Clamp((int)(b * factors[i]), 0, 255);
 
-            // Each entry is stored as BGRA (little-endian, Windows convention)
+            // Each entry is BGRA (little-endian, Windows convention)
             palette[i * 4 + 0] = sb;   // B
             palette[i * 4 + 1] = sg;   // G
             palette[i * 4 + 2] = sr;   // R
-            palette[i * 4 + 3] = 0xFF; // A (fully opaque)
+            palette[i * 4 + 3] = 0xFF; // A
         }
 
         return palette;
     }
 
-    // ── Color math ───────────────────────────────────────────────────────────
+    // ── Color math ──────────────────────────────────────────────────────────────
 
-    //private static uint HexToArgb(string hex)
-    //{
-    //    hex = hex.TrimStart('#');
-    //    if (hex.Length == 6) hex = "FF" + hex;
-    //    return Convert.ToUInt32(hex, 16);
-    //}
     private static uint HexToArgb(string hex)
     {
         hex = hex.TrimStart('#').Trim();
 
         hex = hex.Length switch
         {
-            3 => string.Concat("FF", hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]), // #RGB
-            6 => "FF" + hex,                                                            // #RRGGBB
-            8 => hex,                                                                   // #AARRGGBB
-            _ => "FF" + hex.PadLeft(6, '0')                                            // malformed — pad safely
+            3 => string.Concat("FF", hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]),
+            6 => "FF" + hex,
+            8 => hex,
+            _ => "FF" + hex.PadLeft(6, '0')
         };
 
         return Convert.ToUInt32(hex, 16);
     }
+
     private static string ArgbToHex(uint argb) => $"#{(argb & 0x00FFFFFF):X6}";
 }
