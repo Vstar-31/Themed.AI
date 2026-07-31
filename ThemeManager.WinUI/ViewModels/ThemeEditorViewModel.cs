@@ -219,9 +219,16 @@ public sealed class ThemeEditorViewModel : ViewModelBase
 
     public async Task SaveAsync()
     {
-        await _themeService.SaveThemeAsync(_working);
-        Dirty = false;
-        StatusMessage = $"\"{_working.Name}\" saved.";
+        try
+        {
+            await _themeService.SaveThemeAsync(_working);
+            Dirty = false;
+            StatusMessage = $"\"{_working.Name}\" saved.";
+        }
+        catch (IOException ex)
+        {
+            StatusMessage = $"Save failed: {ex.Message}";
+        }
     }
 
     public void RevertToDefault()

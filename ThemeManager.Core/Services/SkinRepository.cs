@@ -49,16 +49,17 @@ public sealed class SkinRepository
                         ?? new List<SkinDefinition>();
             return skins;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or IOException)
         {
-            // Corrupt file – back it up (so nothing is silently lost) and re-seed, exactly
-            // like ThemeRepository does for themes.json.
-            File.Move(SkinsFilePath, SkinsFilePath + ".bak", overwrite: true);
+            // Corrupt or locked file – back it up (best-effort) and re-seed.
+            try { File.Move(SkinsFilePath, SkinsFilePath + ".bak", overwrite: true); }
+            catch (IOException) { /* backup failed – still safe to re-seed */ }
             return await SeedDefaultsAsync();
         }
     }
 
     /// <summary>Persists the full list of skins to disk atomically (write-then-rename).</summary>
+    /// <exception cref="IOException">Thrown after one retry if the file is locked or disk is full.</exception>
     public async Task SaveAllAsync(IEnumerable<SkinDefinition> skins)
     {
         EnsureStorageFolderExists();
@@ -66,6 +67,19 @@ public sealed class SkinRepository
         var list = skins.ToList();
         var tempPath = SkinsFilePath + ".tmp";
 
+        try
+        {
+            await WriteAndMoveAsync(list, tempPath);
+        }
+        catch (IOException)
+        {
+            await Task.Delay(200);
+            await WriteAndMoveAsync(list, tempPath);
+        }
+    }
+
+    private async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
+    {
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, list, JsonOptions);
 

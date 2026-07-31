@@ -224,8 +224,15 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     public async Task SaveGeneratedThemeAsync()
     {
         if (GeneratedTheme is null) return;
-        await _themeService.SaveThemeAsync(GeneratedTheme);
-        Status = $"\"{GeneratedTheme.Name}\" saved to your themes.";
+        try
+        {
+            await _themeService.SaveThemeAsync(GeneratedTheme);
+            Status = $"\"{GeneratedTheme.Name}\" saved to your themes.";
+        }
+        catch (IOException ex)
+        {
+            Status = $"Save failed: {ex.Message}";
+        }
     }
 
     /// <summary>

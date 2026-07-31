@@ -49,6 +49,20 @@ public sealed class AppSettings
     {
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
         var tmp = SettingsPath + ".tmp";
+
+        try
+        {
+            await WriteAndMoveAsync(tmp);
+        }
+        catch (IOException)
+        {
+            await Task.Delay(200);
+            await WriteAndMoveAsync(tmp);
+        }
+    }
+
+    private async Task WriteAndMoveAsync(string tmp)
+    {
         await using (var s = File.Create(tmp))
             await JsonSerializer.SerializeAsync(s, this, JsonOpts);
         File.Move(tmp, SettingsPath, overwrite: true);

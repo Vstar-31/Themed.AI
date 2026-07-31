@@ -99,7 +99,7 @@ public sealed partial class SkinHostWindow : Window
         {
             var compositor = ElementCompositionPreview.GetElementVisual(RootCanvas).Compositor;
             var transparentBrush = compositor.CreateColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
-            this.As<ICompositionSupportsSystemBackdrop>().SystemBackdrop = transparentBrush;
+            this.As<ICompositionSupportsSystemBackdrop>().SystemBackdrop = (Windows.UI.Composition.CompositionBrush)(object)transparentBrush;
         }
         catch (Exception ex)
         {

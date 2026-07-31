@@ -36,7 +36,7 @@ public sealed class SkinManagerService : IDisposable
     {
         _repo = repository;
         _loggerFactory = loggerFactory;
-        _logger = loggerFactory?.CreateLogger<SkinManagerService>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        _logger = loggerFactory?.CreateLogger<SkinManagerService>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SkinManagerService>.Instance;
     }
 
     /// <summary>Must be called once on startup, after the main window exists (needs a DispatcherQueue).</summary>
@@ -146,7 +146,14 @@ public sealed class SkinManagerService : IDisposable
 
     private async Task PersistAsync()
     {
-        await _repo.SaveAllAsync(_skins);
+        try
+        {
+            await _repo.SaveAllAsync(_skins);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist skins to disk");
+        }
         SkinsChanged?.Invoke(this, EventArgs.Empty);
     }
 

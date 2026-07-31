@@ -51,7 +51,7 @@ public sealed partial class ThemeEditorPage : Page
 
     // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
-    private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
+    private async void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         var ctrl = Microsoft.UI.Input.InputKeyboardSource
                        .GetKeyStateForCurrentThread(VirtualKey.Control);
@@ -71,7 +71,7 @@ public sealed partial class ThemeEditorPage : Page
                 break;
             case VirtualKey.S:
                 e.Handled = true;
-                _ = ViewModel.SaveAsync();
+                await ViewModel.SaveAsync();
                 break;
         }
     }

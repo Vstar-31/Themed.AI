@@ -51,15 +51,17 @@ public sealed class ThemeRepository
             EnsureBuiltInThemePresent(themes);
             return themes;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or IOException)
         {
-            // Corrupt file – back it up and re-seed.
-            File.Move(ThemesFilePath, ThemesFilePath + ".bak", overwrite: true);
+            // Corrupt or locked file – back it up (best-effort) and re-seed.
+            try { File.Move(ThemesFilePath, ThemesFilePath + ".bak", overwrite: true); }
+            catch (IOException) { /* backup failed – still safe to re-seed */ }
             return await SeedDefaultsAsync();
         }
     }
 
     /// <summary>Persists the full list of themes to disk atomically (write-then-rename).</summary>
+    /// <exception cref="IOException">Thrown after one retry if the file is locked or disk is full.</exception>
     public async Task SaveAllAsync(IEnumerable<CozyTheme> themes)
     {
         EnsureStorageFolderExists();
@@ -67,10 +69,23 @@ public sealed class ThemeRepository
         var list = themes.ToList();
         var tempPath = ThemesFilePath + ".tmp";
 
+        try
+        {
+            await WriteAndMoveAsync(list, tempPath);
+        }
+        catch (IOException)
+        {
+            // One retry after a short delay – covers transient antivirus / file-lock races.
+            await Task.Delay(200);
+            await WriteAndMoveAsync(list, tempPath);
+        }
+    }
+
+    private async Task WriteAndMoveAsync(List<CozyTheme> list, string tempPath)
+    {
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, list, JsonOptions);
 
-        // Atomic replace – avoids a corrupt file on crash mid-write.
         File.Move(tempPath, ThemesFilePath, overwrite: true);
     }
 
