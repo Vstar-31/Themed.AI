@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Media;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Services;
 using ThemeManager.Integration;
+using ThemeManager.WinUI.Services;
 using Windows.UI;
 using Serilog;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,9 @@ public partial class App : Application
     public static ThemeService ThemeService { get; private set; } = null!;
     public static ThemeRepository ThemeRepository { get; private set; } = null!;
     public static ISystemThemeIntegrator SystemIntegrator { get; private set; } = null!;
+
+    /// <summary>Skins (desktop widgets) — see ThemeManager.WinUI.Services.SkinManagerService.</summary>
+    public static SkinManagerService SkinManager { get; private set; } = null!;
 
     public static ILoggerFactory LoggerFactory { get; private set; } = null!;
 
@@ -62,6 +66,19 @@ public partial class App : Application
         // Assign the static property BEFORE Activate so pickers can grab the HWND.
         MainWindow = new MainWindow();
         MainWindow.Activate();
+
+        // Widgets start up after the main window so its DispatcherQueue is definitely
+        // running (SkinManagerService's tick timer needs one). A widget that was left
+        // enabled last session reappears on the desktop right away, same as Rainmeter.
+        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory);
+        await SkinManager.InitializeAsync();
+
+        // Phase 1 has no system tray yet (that's a Phase 2 item — see the roadmap notes),
+        // so widgets are only ever visible while the main window is open. Without this,
+        // closing MainWindow would leave widget windows running invisibly in the
+        // background with no way back to the UI, since WinUI3 only exits once *every*
+        // window is closed, not just the main one.
+        MainWindow.Closed += (_, _) => SkinManager.Dispose();
     }
 
     // ── Live theming ──────────────────────────────────────────────────────────

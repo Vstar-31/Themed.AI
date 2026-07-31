@@ -71,7 +71,7 @@ public static class SentimentAnalyzer
         ["depressing"] = -2.0f, ["dismal"]     = -1.9f, ["forlorn"]    = -1.8f,
         ["eerie"]      = -1.2f, ["creepy"]     = -1.5f, ["ominous"]    = -1.4f,
         ["shadowy"]    = -0.8f, ["murky"]      = -1.2f, ["hazy"]       = -0.5f,
-        ["chaotic"]    = -1.3f, ["rough"]      = -1.0f, ["harsh"]      = -1.5f,
+        ["chaotic"]    = -1.3f, ["rough"]      = -1.0f,
     };
 
     // ── Booster words (intensifiers / diminishers) ────────────────────────────

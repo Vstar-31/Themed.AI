@@ -79,7 +79,9 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 byte g = (byte)((argb >> 8)  & 0xFF);
                 byte b = (byte)( argb        & 0xFF);
 
-                // Explorer\Accent uses ABGR (0xFFBBGGRR)
+                // DWM ColorizationColor is typically 0xC4RRGGBB
+                uint c_argb = 0xC4000000u | ((uint)r << 16) | ((uint)g << 8) | b;
+                // DWM AccentColor and Explorer colors use ABGR (0xFFBBGGRR)
                 uint abgr = 0xFF000000u | ((uint)b << 16) | ((uint)g << 8) | r;
 
                 // ── 1. DWM key ─────────────────────────────────────────────────────────
@@ -91,14 +93,12 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                         return false;
                     }
 
-                    dwmKey.SetValue("ColorizationColor",        (int)argb, RegistryValueKind.DWord);
-                    // 100 = render the exact color with no glass/wallpaper blending.
-                    // 0 would make the color nearly invisible (transparent/glass look).
-                    dwmKey.SetValue("ColorizationColorBalance", 100,        RegistryValueKind.DWord);
-                    dwmKey.SetValue("AccentColor",              (int)argb, RegistryValueKind.DWord);
-                    dwmKey.SetValue("AccentColorInactive",      (int)argb, RegistryValueKind.DWord);
-                    dwmKey.SetValue("ColorPrevalence",          1,          RegistryValueKind.DWord);
-                    dwmKey.SetValue("AutoColorization",         0,          RegistryValueKind.DWord);
+                    dwmKey.SetValue("ColorizationColor",        (int)c_argb, RegistryValueKind.DWord);
+                    dwmKey.SetValue("ColorizationColorBalance", 100,         RegistryValueKind.DWord);
+                    dwmKey.SetValue("AccentColor",              (int)abgr,   RegistryValueKind.DWord);
+                    dwmKey.SetValue("AccentColorInactive",      (int)abgr,   RegistryValueKind.DWord);
+                    dwmKey.SetValue("ColorPrevalence",          1,           RegistryValueKind.DWord);
+                    dwmKey.SetValue("AutoColorization",         0,           RegistryValueKind.DWord);
                     dwmKey.Flush();
                 }
 
@@ -267,10 +267,10 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             byte sr = (byte)Math.Clamp((int)(r * factors[i]), 0, 255);
             byte sg = (byte)Math.Clamp((int)(g * factors[i]), 0, 255);
             byte sb = (byte)Math.Clamp((int)(b * factors[i]), 0, 255);
-            palette[i * 4 + 0] = sb;
+            palette[i * 4 + 0] = sr;
             palette[i * 4 + 1] = sg;
-            palette[i * 4 + 2] = sr;
-            palette[i * 4 + 3] = 0xFF;
+            palette[i * 4 + 2] = sb;
+            palette[i * 4 + 3] = 0x00;
         }
         return palette;
     }
@@ -280,7 +280,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         hex = hex.TrimStart('#').Trim();
         hex = hex.Length switch
         {
-            3 => string.Concat("FF", hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]),
+            3 => $"FF{hex[0]}{hex[0]}{hex[1]}{hex[1]}{hex[2]}{hex[2]}",
             6 => "FF" + hex,
             8 => hex,
             _ => "FF" + hex.PadLeft(6, '0')

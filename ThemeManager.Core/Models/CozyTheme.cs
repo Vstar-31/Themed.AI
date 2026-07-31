@@ -104,8 +104,8 @@ public sealed class CozyTheme
         hex = hex.TrimStart('#').Trim();
         // Expand shorthand #RGB → #RRGGBB
         if (hex.Length == 3)
-            hex = string.Concat(hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]);
-        // Strip alpha if #AARRGGBB
+            hex = $"{hex[0]}{hex[0]}{hex[1]}{hex[1]}{hex[2]}{hex[2]}";
+        // Strip alpha if #AARRGGBB (WinUI default)
         if (hex.Length == 8)
             hex = hex[2..];
         // Pad to 6 with leading zeros (fixes the #66298 → #066298 problem)

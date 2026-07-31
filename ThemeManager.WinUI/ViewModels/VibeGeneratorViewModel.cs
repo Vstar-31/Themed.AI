@@ -185,9 +185,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
             // Run CPU-bound NLP on thread pool, keep UI responsive.
             var (theme, analysis) = await Task.Run(() =>
             {
-                var a = _generator.Explain(text);
-                var t = _generator.Generate(text);
-                return (t, a);
+                return _generator.GenerateAndExplain(text);
             });
 
             Analysis       = analysis;
@@ -210,7 +208,6 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
 
                 // Apply as the active theme for instant live preview across the app.
                 _themeService.SetActiveTheme(theme);
-                App.ApplyThemeToResources(theme);
             }
         }
         catch (Exception ex)

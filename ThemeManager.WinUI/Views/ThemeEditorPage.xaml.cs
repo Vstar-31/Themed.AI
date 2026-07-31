@@ -38,6 +38,8 @@ public sealed partial class ThemeEditorPage : Page
         };
 
         RefreshContrastProxies();
+
+        Unloaded += (_, _) => ViewModel.Dispose();
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

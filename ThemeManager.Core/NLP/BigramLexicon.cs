@@ -124,7 +124,6 @@ public static class BigramLexicon
         Add("los",     "angeles",  C( 30, .65f, .65f, .5f, .38f, .6f,  .5f, "place"));
         Add("san",     "francisco",C(200, .65f, .58f, .5f, .35f, .6f, -.2f, "place"));
         Add("hong",    "kong",     C(220, .65f, .22f, .6f, .35f, .6f, -.2f, "place"));
-        Add("hong",    "kong",     C(220, .65f, .22f, .6f, .35f, .6f, -.2f, "place"));
 
         Entries = d;
     }

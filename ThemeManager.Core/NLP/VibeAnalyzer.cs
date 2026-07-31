@@ -79,14 +79,20 @@ public static class VibeAnalyzer
             i++; // skip next token — it's been consumed by this bigram
         }
 
+        var wordCounts = new Dictionary<string, int>();
+
         // ── Pass B: unigram + fuzzy for remaining tokens ───────────────────────
         for (int i = 0; i < stemmed.Count; i++)
         {
             if (consumed.Contains(i)) continue;
 
             string rawWord = i < raw.Count ? raw[i] : stemmed[i];
-            float  freq    = stemmed.Take(i + 1).Count(t => t == stemmed[i]);
-            float  boost   = 1f + 0.3f * (freq - 1f);
+            
+            wordCounts.TryGetValue(stemmed[i], out int count);
+            count++;
+            wordCounts[stemmed[i]] = count;
+
+            float  boost   = 1f + 0.3f * (count - 1f);
 
             // 2a. Exact / stem match
             var usig = ColorLexicon.Lookup(stemmed[i]);

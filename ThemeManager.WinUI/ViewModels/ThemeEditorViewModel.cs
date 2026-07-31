@@ -16,17 +16,24 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     private readonly ThemeService    _themeService;
     private readonly PaletteHistory  _history = new();
     private CozyTheme _working = CozyDefaults.CreateDefault();
+    private readonly EventHandler _historyChangedHandler;
 
     public ThemeEditorViewModel(ThemeService themeService)
     {
         _themeService = themeService;
-        _history.HistoryChanged += (_, _) =>
+        _historyChangedHandler = (_, _) =>
         {
             OnPropertyChanged(nameof(CanUndo));
             OnPropertyChanged(nameof(CanRedo));
             OnPropertyChanged(nameof(UndoDepthLabel));
         };
+        _history.HistoryChanged += _historyChangedHandler;
         LoadTheme(themeService.ActiveTheme);
+    }
+
+    public void Dispose()
+    {
+        _history.HistoryChanged -= _historyChangedHandler;
     }
 
     // ── Identity ──────────────────────────────────────────────────────────────

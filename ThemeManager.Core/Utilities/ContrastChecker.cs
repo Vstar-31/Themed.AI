@@ -1,5 +1,4 @@
 using ThemeManager.Core.Models;
-using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Core.Utilities;
 

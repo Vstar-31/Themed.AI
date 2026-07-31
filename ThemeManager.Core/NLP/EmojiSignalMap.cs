@@ -38,14 +38,14 @@ public static class EmojiSignalMap
         ("⭐", "star"),         ("🌟", "star glow"),   ("✨", "glow sparkle"),
         ("💫", "glow ethereal"),("🌙","midnight night"),("🌛","crescent night"),
         ("☀️",  "sunny warm"),  ("⛅", "cloudy soft"),  ("🌤","warm sunny"),
-        ("🌈", "vibrant colorful"),("🌊","ocean wave"),
+        ("🌈", "vibrant colorful"),
 
         // ── Materials / textures ──────────────────────────────────────────────
         ("🪨", "stone rock"),  ("🪵","wood timber"),  ("🧱","brick rustic"),
         ("💎", "crystal"),     ("🔮","mystic crystal"),("🪙","gold copper"),
         ("🥇", "gold"),        ("🥈","silver"),        ("🥉","bronze copper"),
-        ("🔥", "fire ember warm"),("💧","water"),      ("🌊","ocean"),
-        ("❄️",  "ice frost cold"),("⚡","electric neon"),
+        ("🔥", "fire ember warm"),("💧","water"),
+        ("⚡","electric neon"),
 
         // ── Food & drink ──────────────────────────────────────────────────────
         ("☕", "coffee espresso warm"),("🍵","tea matcha"),
@@ -57,7 +57,7 @@ public static class EmojiSignalMap
 
         // ── Moods / feelings ──────────────────────────────────────────────────
         ("😌", "serene calm"), ("🥰","warm romantic"), ("😎","cool bold"),
-        ("🌙", "midnight mysterious"),("👻","dark mysterious"),
+        ("👻","dark mysterious"),
         ("🖤", "dark noir"),   ("🤍","soft white minimal"),("💜","purple"),
         ("💙", "blue calm"),   ("💚","green"),         ("💛","yellow warm"),
         ("🧡", "orange warm"), ("❤️",  "red passionate"),("🩵","light blue soft"),

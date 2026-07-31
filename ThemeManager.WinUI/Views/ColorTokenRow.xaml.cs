@@ -168,10 +168,10 @@ public sealed partial class ColorTokenRow : UserControl
     private static bool TryParseHex(string hex, out Color color)
     {
         color = Colors.Black;
-        hex = hex?.TrimStart('#') ?? string.Empty;
-        if (hex.Length == 6)
+        try
         {
-            try
+            hex = ThemeManager.Core.Models.CozyTheme.NormalizeHex(hex ?? string.Empty).TrimStart('#');
+            if (hex.Length == 6)
             {
                 color = Color.FromArgb(0xFF,
                     Convert.ToByte(hex[0..2], 16),
@@ -179,8 +179,8 @@ public sealed partial class ColorTokenRow : UserControl
                     Convert.ToByte(hex[4..6], 16));
                 return true;
             }
-            catch { }
         }
+        catch { }
         return false;
     }
 

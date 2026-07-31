@@ -24,6 +24,19 @@ public sealed partial class VibePage : Page
         InitializeComponent();
         ViewModel = new VibeGeneratorViewModel(App.ThemeService);
         ViewModel.PreviewSwatches.CollectionChanged += (_, _) => UpdateSwatchStrip();
+
+        _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
+        _debounceTimer.Tick += async (_, _) =>
+        {
+            _debounceTimer.Stop();
+            if (!string.IsNullOrWhiteSpace(ViewModel.VibeText))
+            {
+                var analysis = await Task.Run(
+                    () => new ThemeManager.Core.NLP.VibeThemeGenerator()
+                              .Explain(ViewModel.VibeText));
+                ViewModel.Analysis = analysis;
+            }
+        };
     }
 
     // ── Global keyboard shortcut: Ctrl+G anywhere in the app → generate ───────
@@ -53,20 +66,7 @@ public sealed partial class VibePage : Page
     private void VibeInput_TextChanged(object sender, TextChangedEventArgs e)
     {
         _debounceTimer?.Stop();
-        _debounceTimer = new DispatcherTimer
-            { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
-        _debounceTimer.Tick += async (_, _) =>
-        {
-            _debounceTimer.Stop();
-            if (!string.IsNullOrWhiteSpace(ViewModel.VibeText))
-            {
-                var analysis = await Task.Run(
-                    () => new ThemeManager.Core.NLP.VibeThemeGenerator()
-                              .Explain(ViewModel.VibeText));
-                ViewModel.Analysis = analysis;
-            }
-        };
-        _debounceTimer.Start();
+        _debounceTimer?.Start();
     }
 
     private async void VibeInput_KeyDown(object sender, KeyRoutedEventArgs e)

@@ -10,21 +10,16 @@ public sealed partial class ThemesPage : Page
 {
     public ThemesViewModel ViewModel { get; }
 
-    private readonly SystemIntegrationViewModel _sysVm;
-
     public ThemesPage()
     {
         InitializeComponent();
         ViewModel = new ThemesViewModel(App.ThemeService);
-        _sysVm = new SystemIntegrationViewModel(App.SystemIntegrator);
-        _sysVm.AdvancedEnabled = true;
 
         ThemesRepeater.ElementPrepared += ThemesRepeater_ElementPrepared;
 
         Unloaded += (_, _) =>
         {
             ViewModel.Dispose();
-            _sysVm.Dispose();
         };
     }
 
@@ -86,10 +81,10 @@ public sealed partial class ThemesPage : Page
         // AccentPrimary is the theme's main interactive color — now that
         // ColorizationColorBalance=100 renders it exactly, this is correct.
         string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
-        await _sysVm.ApplyAccentColorAsync(safeAccent);
+        await App.SystemIntegrator.ApplyAccentColorAsync(safeAccent);
 
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
-            await _sysVm.ApplyWallpaperAsync(theme.WallpaperPath);
+            await App.SystemIntegrator.ApplyWallpaperAsync(theme.WallpaperPath);
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)

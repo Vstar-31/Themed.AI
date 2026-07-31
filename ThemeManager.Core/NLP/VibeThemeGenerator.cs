@@ -55,6 +55,48 @@ public sealed class VibeThemeGenerator
             Swatches:           palette?.Swatches().ToList() ?? new()
         );
     }
+
+    public (CozyTheme Theme, VibeAnalysisResult Analysis) GenerateAndExplain(string vibeText)
+    {
+        var signal = VibeAnalyzer.Analyze(vibeText);
+
+        GeneratedPalette palette = signal.HasSignal
+            ? PaletteHarmonizer.Generate(signal)
+            : new GeneratedPalette(
+                "#F5F2EE","#E8E2D8","#C4AE98",
+                "#8B6E58","#5C4035","#2E2018",
+                "#7A6A60","#DDD5C8", false);
+
+        var (name, description) = ThemeNameGenerator.Generate(signal);
+
+        var theme = new CozyTheme
+        {
+            Id           = Guid.NewGuid().ToString(),
+            Name         = name,
+            Description  = description,
+            IsBuiltIn    = false,
+            LastModified = DateTimeOffset.UtcNow,
+        };
+        palette.ApplyTo(theme);
+
+        var analysis = new VibeAnalysisResult(
+            MatchedKeywords:    signal.MatchedKeywords,
+            KeywordCategories:  signal.KeywordCategories,
+            BigramMatches:      signal.BigramMatches,
+            FuzzyCorrections:   signal.FuzzyCorrections,
+            HadEmojiInput:      signal.HadEmojiInput,
+            SentimentScore:     signal.SentimentValence,
+            ComputedHue:        signal.Hue,
+            ComputedLightness:  signal.Lightness,
+            ComputedSaturation: signal.Saturation,
+            WarmthBias:         signal.Warmth,
+            IsDark:             signal.IsDark,
+            GeneratedName:      name,
+            Swatches:           palette.Swatches().ToList()
+        );
+
+        return (theme, analysis);
+    }
 }
 
 public sealed record VibeAnalysisResult(

@@ -146,7 +146,7 @@ public static class PorterStemmer
         foreach (var s in suffixes)
             if (w.EndsWith(s) && Measure(w[..^s.Length]) > 1)
                 return w[..^s.Length];
-        if (w.EndsWith("ion") && Measure(w[..^3]) > 1 && w[^4] is 's' or 't')
+        if (w.EndsWith("ion") && w.Length >= 4 && Measure(w[..^3]) > 1 && w[^4] is 's' or 't')
             return w[..^3];
         return w;
     }
