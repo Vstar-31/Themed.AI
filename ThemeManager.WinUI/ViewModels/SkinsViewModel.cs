@@ -67,6 +67,8 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
 
     private void RefreshList()
     {
+        if (Skins.Count == _manager.Skins.Count) return; // avoid destroying UI on every property change
+
         Skins.Clear();
         foreach (var s in _manager.Skins)
             Skins.Add(s);

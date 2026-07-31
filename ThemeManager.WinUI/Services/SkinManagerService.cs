@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.Extensions.Logging;
 using ThemeManager.Core.Skins;
@@ -31,6 +32,7 @@ public sealed class SkinManagerService : IDisposable
 
     private readonly Dictionary<string, (SkinHostWindow Window, SkinHostViewModel ViewModel)> _open = new();
     private DispatcherQueueTimer? _timer;
+    private CancellationTokenSource? _persistCts;
 
     public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
     {
@@ -108,11 +110,11 @@ public sealed class SkinManagerService : IDisposable
     }
 
     /// <summary>Called by a <see cref="SkinHostWindow"/> when the user finishes dragging it.</summary>
-    private async void OnWindowMoved(SkinDefinition skin, double x, double y)
+    private void OnWindowMoved(SkinDefinition skin, double x, double y)
     {
         skin.X = x;
         skin.Y = y;
-        await PersistAsync();
+        _ = PersistAsync();
     }
 
     // ── Window lifecycle ──────────────────────────────────────────────────────────
@@ -144,17 +146,32 @@ public sealed class SkinManagerService : IDisposable
         entry.Window.Close();
     }
 
-    private async Task PersistAsync()
+    private Task PersistAsync()
+    {
+        SkinsChanged?.Invoke(this, EventArgs.Empty);
+
+        _persistCts?.Cancel();
+        _persistCts = new CancellationTokenSource();
+        _ = SaveDebouncedAsync(_persistCts.Token);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveDebouncedAsync(CancellationToken token)
     {
         try
         {
+            await Task.Delay(500, token);
             await _repo.SaveAllAsync(_skins);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer save is queued, ignore
         }
         catch (IOException ex)
         {
             _logger.LogWarning(ex, "Failed to persist skins to disk");
         }
-        SkinsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()
