@@ -92,8 +92,15 @@ public sealed class ThemesViewModel : ViewModelBase, IDisposable
 
     private void RefreshList()
     {
-        Themes.Clear();
-        foreach (var t in _themeService.Themes)
-            Themes.Add(t);
+        var source = _themeService.Themes;
+        for (int i = 0; i < source.Count; i++)
+        {
+            if (Themes.Count > i)
+                Themes[i] = source[i];
+            else
+                Themes.Add(source[i]);
+        }
+        while (Themes.Count > source.Count)
+            Themes.RemoveAt(Themes.Count - 1);
     }
 }

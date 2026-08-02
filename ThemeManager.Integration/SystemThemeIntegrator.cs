@@ -144,6 +144,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 // that Win11 23H2+ needs to update the taskbar live.
                 BroadcastSettingsChange("ImmersiveColorSet");
                 BroadcastSettingsChange("WindowsThemeElement");
+                RestartExplorer();
 
                 _logger.LogInformation("Accent color successfully applied");
                 return true;
@@ -208,6 +209,7 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
                 BroadcastSettingsChange("ImmersiveColorSet");
                 BroadcastSettingsChange("WindowsThemeElement");
+                RestartExplorer();
                 return true;
             }
             catch { return false; }
@@ -236,6 +238,27 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             0x0002,              // SMTO_ABORTIFHUNG
             5000,
             out _);
+    }
+
+    private static void RestartExplorer()
+    {
+        try
+        {
+            var kill = Process.Start(new ProcessStartInfo
+            {
+                FileName        = "cmd.exe",
+                Arguments       = "/c taskkill /f /im explorer.exe",
+                CreateNoWindow  = true,
+                UseShellExecute = false,
+            });
+            kill?.WaitForExit(3000);
+
+            Thread.Sleep(1000);
+
+            if (!Process.GetProcessesByName("explorer").Any())
+                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
+        }
+        catch { }
     }
 
 

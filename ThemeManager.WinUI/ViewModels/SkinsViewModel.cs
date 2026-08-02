@@ -98,8 +98,15 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
 
     private void RefreshList()
     {
-        Skins.Clear();
-        foreach (var s in _manager.Skins)
-            Skins.Add(s);
+        var source = _manager.Skins;
+        for (int i = 0; i < source.Count; i++)
+        {
+            if (Skins.Count > i)
+                Skins[i] = source[i];
+            else
+                Skins.Add(source[i]);
+        }
+        while (Skins.Count > source.Count)
+            Skins.RemoveAt(Skins.Count - 1);
     }
 }
