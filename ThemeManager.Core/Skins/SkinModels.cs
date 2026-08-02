@@ -13,6 +13,9 @@ public enum MeasureType
     Time,
     Date,
     Uptime,
+    NetworkDown,
+    NetworkUp,
+    Battery,
 }
 
 /// <summary>The visual kind a <see cref="MeterDefinition"/> renders as.</summary>
@@ -23,6 +26,9 @@ public enum MeterKind
 
     /// <summary>A horizontal fill bar showing a measure's value against <see cref="MeterDefinition.BarMax"/>.</summary>
     Bar,
+
+    /// <summary>A scrolling line graph of a measure's recent values, against <see cref="MeterDefinition.BarMax"/>.</summary>
+    Graph,
 }
 
 /// <summary>
@@ -77,8 +83,11 @@ public sealed class MeterDefinition
     public double FontSize { get; set; } = 13;
     public bool Bold { get; set; }
 
-    /// <summary>Value a <see cref="MeterKind.Bar"/> meter treats as "100% full". Ignored by String meters.</summary>
+    /// <summary>Value a <see cref="MeterKind.Bar"/>/<see cref="MeterKind.Graph"/> meter treats as "100% full".</summary>
     public double BarMax { get; set; } = 100;
+
+    /// <summary>How many recent samples a <see cref="MeterKind.Graph"/> meter keeps on screen. Ignored otherwise.</summary>
+    public int HistoryLength { get; set; } = 60;
 }
 
 /// <summary>

@@ -80,7 +80,32 @@ public static class SkinDefaults
         }
     };
 
+    /// <summary>Download speed as a live graph, plus current down/up speed as text.</summary>
+    public static SkinDefinition CreateNetworkMonitor() => new()
+    {
+        Id = "builtin-network",
+        Name = "Network",
+        X = 280,
+        Y = 160,
+        Width = 220,
+        Height = 128,
+        Measures =
+        {
+            new MeasureDefinition { Name = "Down", Type = MeasureType.NetworkDown },
+            new MeasureDefinition { Name = "Up",   Type = MeasureType.NetworkUp },
+        },
+        Meters =
+        {
+            new MeterDefinition { Kind = MeterKind.String, MeasureName = "Down", Format = "↓ {1}", X = 16,  Y = 12, Width = 96, Height = 18, FontSize = 13 },
+            new MeterDefinition { Kind = MeterKind.String, MeasureName = "Up",   Format = "↑ {1}", X = 114, Y = 12, Width = 96, Height = 18, FontSize = 13 },
+            // BarMax = 2048 KB/s (2 MB/s) is a reasonable ceiling for everyday browsing — a bigger
+            // download just clips the graph at full height rather than doing anything wrong; the
+            // editor lets you raise it if your connection regularly blows past that.
+            new MeterDefinition { Kind = MeterKind.Graph, MeasureName = "Down", BarMax = 2048, HistoryLength = 60, X = 16, Y = 36, Width = 188, Height = 74 },
+        }
+    };
+
     /// <summary>All built-in widgets, in the order they should appear on first run.</summary>
     public static List<SkinDefinition> CreateAllDefaults() =>
-        [CreateClock(), CreateSystemMonitor(), CreateUptime()];
+        [CreateClock(), CreateSystemMonitor(), CreateUptime(), CreateNetworkMonitor()];
 }

@@ -33,6 +33,7 @@ public sealed class SkinHostViewModel : ViewModelBase
             MeterViewModelBase vm = meterDef.Kind switch
             {
                 MeterKind.Bar => new BarMeterViewModel(meterDef),
+                MeterKind.Graph => new GraphMeterViewModel(meterDef),
                 _ => new StringMeterViewModel(meterDef),
             };
             Meters.Add(vm);

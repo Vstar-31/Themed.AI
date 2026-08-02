@@ -77,6 +77,44 @@ public sealed class StringMeterViewModel : MeterViewModelBase
     }
 }
 
+/// <summary>
+/// A scrolling line graph of a measure's recent values, normalized against
+/// <see cref="MeterDefinition.BarMax"/>. Keeps its own small ring buffer — the rendering side
+/// (<see cref="Views.SkinHostWindow"/>) subscribes to <see cref="HistoryUpdated"/> and redraws.
+/// </summary>
+public sealed class GraphMeterViewModel : MeterViewModelBase
+{
+    private readonly string? _measureName;
+    private readonly double _barMax;
+    private readonly int _historyLength;
+    private readonly Queue<double> _history = new();
+
+    /// <summary>Raised after every <see cref="Tick"/> that has a new sample to show.</summary>
+    public event Action? HistoryUpdated;
+
+    public GraphMeterViewModel(MeterDefinition definition) : base(definition)
+    {
+        _measureName = definition.MeasureName;
+        _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
+        _historyLength = definition.HistoryLength <= 1 ? 60 : definition.HistoryLength;
+    }
+
+    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
+    {
+        if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
+            return;
+
+        _history.Enqueue(Math.Clamp(measure.Value / _barMax, 0.0, 1.0));
+        while (_history.Count > _historyLength)
+            _history.Dequeue();
+
+        HistoryUpdated?.Invoke();
+    }
+
+    /// <summary>Current samples, oldest first, each already normalized to 0.0–1.0.</summary>
+    public double[] Snapshot() => _history.ToArray();
+}
+
 /// <summary>A horizontal fill bar showing a measure's value against <see cref="MeterDefinition.BarMax"/>.</summary>
 public sealed class BarMeterViewModel : MeterViewModelBase
 {

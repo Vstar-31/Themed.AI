@@ -51,7 +51,10 @@ public sealed class MemoryMeasure : IMeasure
             {
                 // dwMemoryLoad is already an approximate 0-100 percentage — no math needed.
                 Value = status.dwMemoryLoad;
-                Text = $"{Value:F0}%";
+
+                double usedGb = (status.ullTotalPhys - status.ullAvailPhys) / 1024.0 / 1024.0 / 1024.0;
+                double totalGb = status.ullTotalPhys / 1024.0 / 1024.0 / 1024.0;
+                Text = $"{Value:F0}% ({usedGb:F1}/{totalGb:F1} GB)";
             }
         }
         catch (Exception ex)

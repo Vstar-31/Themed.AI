@@ -1,4 +1,3 @@
-using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.Extensions.Logging;
 using ThemeManager.Core.Skins;
@@ -32,7 +31,6 @@ public sealed class SkinManagerService : IDisposable
 
     private readonly Dictionary<string, (SkinHostWindow Window, SkinHostViewModel ViewModel)> _open = new();
     private DispatcherQueueTimer? _timer;
-    private CancellationTokenSource? _persistCts;
 
     public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
     {
@@ -110,11 +108,66 @@ public sealed class SkinManagerService : IDisposable
     }
 
     /// <summary>Called by a <see cref="SkinHostWindow"/> when the user finishes dragging it.</summary>
-    private void OnWindowMoved(SkinDefinition skin, double x, double y)
+    private async void OnWindowMoved(SkinDefinition skin, double x, double y)
     {
         skin.X = x;
         skin.Y = y;
-        _ = PersistAsync();
+        await PersistAsync();
+    }
+
+    // ── Editor support (create / save / delete a whole widget) ──────────────────────
+
+    /// <summary>
+    /// Creates a small blank widget, adds it to the list, and persists it immediately —
+    /// mirrors <c>ThemesViewModel.CreateThemeAsync</c>'s "create now, refine in the editor"
+    /// pattern, so there's never a half-created widget floating around unsaved.
+    /// Starts disabled: an empty widget with zero meters has nothing worth showing yet.
+    /// </summary>
+    public async Task<SkinDefinition> CreateNewSkinAsync()
+    {
+        var skin = new SkinDefinition
+        {
+            Name = "New Widget",
+            Enabled = false,
+            X = 60,
+            Y = 60,
+            Width = 200,
+            Height = 100,
+        };
+
+        _skins.Add(skin);
+        await PersistAsync();
+        return skin;
+    }
+
+    /// <summary>
+    /// Call after editing a skin's meters/measures/name/size in place. The editor mutates the
+    /// same <see cref="SkinDefinition"/> instance that's already in <see cref="Skins"/> (same
+    /// approach <c>ThemeEditorViewModel</c> uses for themes), so this just needs to persist and,
+    /// if the widget is currently showing, rebuild its window so the new layout actually appears —
+    /// simpler and far more robust than trying to hot-patch a running window's meter list.
+    /// </summary>
+    public async Task SaveSkinAsync(SkinDefinition skin)
+    {
+        if (_open.ContainsKey(skin.Id))
+        {
+            CloseWindowFor(skin);
+            if (skin.Enabled) OpenWindowFor(skin);
+        }
+        else if (skin.Enabled)
+        {
+            OpenWindowFor(skin);
+        }
+
+        await PersistAsync();
+    }
+
+    /// <summary>Removes a widget entirely — closes its window first if it's open.</summary>
+    public async Task DeleteSkinAsync(SkinDefinition skin)
+    {
+        CloseWindowFor(skin);
+        _skins.RemoveAll(s => s.Id == skin.Id);
+        await PersistAsync();
     }
 
     // ── Window lifecycle ──────────────────────────────────────────────────────────
@@ -146,32 +199,10 @@ public sealed class SkinManagerService : IDisposable
         entry.Window.Close();
     }
 
-    private Task PersistAsync()
+    private async Task PersistAsync()
     {
+        await _repo.SaveAllAsync(_skins);
         SkinsChanged?.Invoke(this, EventArgs.Empty);
-
-        _persistCts?.Cancel();
-        _persistCts = new CancellationTokenSource();
-        _ = SaveDebouncedAsync(_persistCts.Token);
-
-        return Task.CompletedTask;
-    }
-
-    private async Task SaveDebouncedAsync(CancellationToken token)
-    {
-        try
-        {
-            await Task.Delay(500, token);
-            await _repo.SaveAllAsync(_skins);
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer save is queued, ignore
-        }
-        catch (IOException ex)
-        {
-            _logger.LogWarning(ex, "Failed to persist skins to disk");
-        }
     }
 
     public void Dispose()

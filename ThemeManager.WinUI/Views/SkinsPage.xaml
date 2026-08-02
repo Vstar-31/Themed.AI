@@ -17,15 +17,23 @@
              Page header
         ══════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="0" Padding="32,28,32,16">
-            <StackPanel Spacing="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Spacing="2">
                 <TextBlock Text="Widgets"
                            FontSize="{StaticResource FontSizeTitle}"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Rainmeter-style desktop widgets — Phase 1: toggle, tint, lock, and drag the built-ins. Hand-edit skins.json for anything more custom for now."
+                <TextBlock Text="Rainmeter-style desktop widgets. Toggle, tint, lock, and drag the built-ins here — click Edit to change what a widget actually shows."
                            Style="{StaticResource CaptionStyle}"
                            TextWrapping="Wrap" />
             </StackPanel>
+            <Button Grid.Column="1" Content="+ New Widget"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    VerticalAlignment="Top"
+                    Click="NewWidgetButton_Click" />
         </Grid>
 
         <!-- ══════════════════════════════════════════════════════════
@@ -106,11 +114,15 @@
                                     </StackPanel>
                                 </StackPanel>
 
-                                <!-- Reset position -->
-                                <Button Grid.Row="3"
-                                        Content="Reset position"
-                                        Tag="{x:Bind}"
-                                        Click="ResetPositionButton_Click" />
+                                <!-- Reset position / Edit -->
+                                <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Reset position"
+                                            Tag="{x:Bind}"
+                                            Click="ResetPositionButton_Click" />
+                                    <Button Content="Edit"
+                                            Tag="{x:Bind}"
+                                            Click="EditButton_Click" />
+                                </StackPanel>
 
                             </Grid>
                         </Border>

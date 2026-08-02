@@ -8,14 +8,17 @@ public static class MeasureFactory
 {
     public static IMeasure Create(MeasureDefinition definition, ILogger? logger = null) => definition.Type switch
     {
-        MeasureType.Cpu      => new CpuMeasure(definition.Name, logger),
-        MeasureType.Memory   => new MemoryMeasure(definition.Name, logger),
-        MeasureType.DiskFree => new DiskMeasure(definition.Name, definition.Target, reportFreeSpace: true, logger),
-        MeasureType.DiskUsed => new DiskMeasure(definition.Name, definition.Target, reportFreeSpace: false, logger),
-        MeasureType.Time     => new TimeMeasure(definition.Name, isDate: false),
-        MeasureType.Date     => new TimeMeasure(definition.Name, isDate: true),
-        MeasureType.Uptime   => new UptimeMeasure(definition.Name),
-        _                    => new UnknownMeasure(definition.Name),
+        MeasureType.Cpu         => new CpuMeasure(definition.Name, logger),
+        MeasureType.Memory      => new MemoryMeasure(definition.Name, logger),
+        MeasureType.DiskFree    => new DiskMeasure(definition.Name, definition.Target, reportFreeSpace: true, logger),
+        MeasureType.DiskUsed    => new DiskMeasure(definition.Name, definition.Target, reportFreeSpace: false, logger),
+        MeasureType.Time        => new TimeMeasure(definition.Name, isDate: false),
+        MeasureType.Date        => new TimeMeasure(definition.Name, isDate: true),
+        MeasureType.Uptime      => new UptimeMeasure(definition.Name),
+        MeasureType.NetworkDown => new NetworkMeasure(definition.Name, measureUpload: false, logger),
+        MeasureType.NetworkUp   => new NetworkMeasure(definition.Name, measureUpload: true, logger),
+        MeasureType.Battery     => new BatteryMeasure(definition.Name, logger),
+        _                       => new UnknownMeasure(definition.Name),
     };
 
     /// <summary>

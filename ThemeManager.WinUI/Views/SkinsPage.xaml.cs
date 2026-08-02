@@ -52,4 +52,18 @@ public sealed partial class SkinsPage : Page
         if (skin is null) return;
         await ViewModel.ResetPositionAsync(skin);
     }
+
+    private async void NewWidgetButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.CreateSkinAsync();
+        if (ViewModel.SelectedSkin is not null)
+            Frame.Navigate(typeof(SkinEditorPage), ViewModel.SelectedSkin);
+    }
+
+    private void EditButton_Click(object sender, RoutedEventArgs e)
+    {
+        var skin = (sender as FrameworkElement)?.Tag as SkinDefinition;
+        if (skin is null) return;
+        Frame.Navigate(typeof(SkinEditorPage), skin);
+    }
 }

@@ -60,6 +60,21 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         StatusMessage = $"\"{skin.Name}\" moved back to the top-left corner.";
     }
 
+    private SkinDefinition? _selectedSkin;
+    public SkinDefinition? SelectedSkin
+    {
+        get => _selectedSkin;
+        private set => SetProperty(ref _selectedSkin, value);
+    }
+
+    /// <summary>Creates a new blank widget and stores it in <see cref="SelectedSkin"/> so the
+    /// page can navigate straight to the editor for it.</summary>
+    public async Task CreateSkinAsync()
+    {
+        SelectedSkin = await _manager.CreateNewSkinAsync();
+        StatusMessage = "New widget created — open the editor to add measures and meters.";
+    }
+
     public void Dispose()
     {
         _manager.SkinsChanged -= _skinsChangedHandler;
@@ -67,8 +82,6 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
 
     private void RefreshList()
     {
-        if (Skins.Count == _manager.Skins.Count) return; // avoid destroying UI on every property change
-
         Skins.Clear();
         foreach (var s in _manager.Skins)
             Skins.Add(s);

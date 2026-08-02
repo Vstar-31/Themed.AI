@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Microsoft.Extensions.Logging;
 using Windows.Graphics;
 using WinRT;
@@ -141,6 +142,7 @@ public sealed partial class SkinHostWindow : Window
             FrameworkElement element = meter switch
             {
                 BarMeterViewModel bar => BuildBarVisual(bar),
+                GraphMeterViewModel graph => BuildGraphVisual(graph),
                 StringMeterViewModel str => BuildStringVisual(str),
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };
@@ -202,6 +204,49 @@ public sealed partial class SkinHostWindow : Window
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
         grid.Children.Add(track);
         grid.Children.Add(fill);
+        return grid;
+    }
+
+    /// <summary>A rounded background plate + a Polyline redrawn every time the meter gets a new sample.</summary>
+    private static Grid BuildGraphVisual(GraphMeterViewModel vm)
+    {
+        var background = new Border
+        {
+            Width = vm.Width,
+            Height = vm.Height,
+            CornerRadius = new CornerRadius(6),
+            Background = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"],
+        };
+
+        var line = new Polyline
+        {
+            Stroke = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"],
+            StrokeThickness = 2,
+            StrokeLineJoin = PenLineJoin.Round,
+        };
+
+        void Redraw()
+        {
+            var samples = vm.Snapshot();
+            var points = new PointCollection();
+            if (samples.Length > 1)
+            {
+                double stepX = vm.Width / (samples.Length - 1);
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    double x = i * stepX;
+                    double y = vm.Height - (samples[i] * vm.Height);
+                    points.Add(new Windows.Foundation.Point(x, y));
+                }
+            }
+            line.Points = points;
+        }
+
+        vm.HistoryUpdated += Redraw;
+
+        var grid = new Grid { Width = vm.Width, Height = vm.Height };
+        grid.Children.Add(background);
+        grid.Children.Add(line);
         return grid;
     }
 
