@@ -58,23 +58,33 @@ public sealed class SkinRepository
         }
     }
 
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
+
     /// <summary>Persists the full list of skins to disk atomically (write-then-rename).</summary>
     /// <exception cref="IOException">Thrown after one retry if the file is locked or disk is full.</exception>
     public async Task SaveAllAsync(IEnumerable<SkinDefinition> skins)
     {
         EnsureStorageFolderExists();
 
-        var list = skins.ToList();
-        var tempPath = SkinsFilePath + ".tmp";
-
+        await _saveLock.WaitAsync();
         try
         {
-            await WriteAndMoveAsync(list, tempPath);
+            var list = skins.ToList();
+            var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
+
+            try
+            {
+                await WriteAndMoveAsync(list, tempPath);
+            }
+            catch (IOException)
+            {
+                await Task.Delay(200);
+                await WriteAndMoveAsync(list, tempPath);
+            }
         }
-        catch (IOException)
+        finally
         {
-            await Task.Delay(200);
-            await WriteAndMoveAsync(list, tempPath);
+            _saveLock.Release();
         }
     }
 

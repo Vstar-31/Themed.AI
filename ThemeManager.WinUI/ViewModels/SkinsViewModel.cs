@@ -54,6 +54,22 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         StatusMessage = locked ? $"\"{skin.Name}\" position locked." : $"\"{skin.Name}\" can be dragged again.";
     }
 
+    public async Task ToggleDesktopLayerAsync(SkinDefinition skin, bool enabled)
+    {
+        if (!enabled)
+        {
+            await _manager.SetDesktopLayerAsync(skin, false);
+            StatusMessage = $"\"{skin.Name}\" back to normal always-on-top mode.";
+            return;
+        }
+
+        StatusMessage = $"Attaching \"{skin.Name}\" behind your desktop icons…";
+        bool succeeded = await _manager.SetDesktopLayerAsync(skin, true);
+        StatusMessage = succeeded
+            ? $"\"{skin.Name}\" is now behind your desktop icons."
+            : $"Couldn't attach \"{skin.Name}\" behind the desktop icons on this system — it's staying always-on-top instead.";
+    }
+
     public async Task ResetPositionAsync(SkinDefinition skin)
     {
         await _manager.ResetPositionAsync(skin);

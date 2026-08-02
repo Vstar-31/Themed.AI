@@ -98,9 +98,7 @@ public sealed partial class SkinHostWindow : Window
     {
         try
         {
-            var compositor = ElementCompositionPreview.GetElementVisual(RootCanvas).Compositor;
-            var transparentBrush = compositor.CreateColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
-            this.As<ICompositionSupportsSystemBackdrop>().SystemBackdrop = (Windows.UI.Composition.CompositionBrush)(object)transparentBrush;
+            this.SystemBackdrop = new TransparentBackdrop();
         }
         catch (Exception ex)
         {
@@ -116,13 +114,21 @@ public sealed partial class SkinHostWindow : Window
 
     public void ApplyOpacity(double opacity)
     {
-        var surface = ((SolidColorBrush)Application.Current.Resources["SurfaceBrush"]).Color;
-        byte alpha = (byte)Math.Clamp(opacity * 255.0, 0, 255);
-        CardBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(alpha, surface.R, surface.G, surface.B));
+        CardBorder.Opacity = opacity;
     }
 
     public void ApplyClickThrough(bool enabled) =>
         SkinWindowInterop.SetClickThrough(_hwnd, enabled);
+
+    public Task<bool> ApplyDesktopLayerAsync(bool enabled)
+    {
+        return Task.Run(() =>
+        {
+            if (enabled) return DesktopLayerInterop.TryAttach(_hwnd);
+            DesktopLayerInterop.Detach(_hwnd);
+            return true;
+        });
+    }
 
     public void ApplyLocked(bool locked)
     {
@@ -160,6 +166,7 @@ public sealed partial class SkinHostWindow : Window
             Width = vm.Width,
             Height = vm.Height,
             FontSize = vm.FontSize,
+            FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontFamily"],
             FontWeight = vm.Bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
             Foreground = (SolidColorBrush)Application.Current.Resources["TextPrimaryBrush"],
             Text = vm.DisplayText,

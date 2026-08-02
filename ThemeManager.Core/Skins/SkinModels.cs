@@ -118,6 +118,14 @@ public sealed class SkinDefinition
     public bool Locked { get; set; }
 
     /// <summary>
+    /// Experimental "Rainmeter behind icons" mode — attaches the widget behind the desktop
+    /// icons instead of floating always-on-top. Relies on an undocumented Explorer trick that's
+    /// confirmed flaky on some Windows 11 builds; if it can't attach, the widget silently stays
+    /// always-on-top instead (see DesktopLayerInterop for the full story).
+    /// </summary>
+    public bool DesktopLayer { get; set; }
+
+    /// <summary>
     /// Reserved for future per-skin refresh cadence. Phase 1 ticks every active skin on one shared
     /// 1-second timer in <c>SkinManagerService</c> regardless of this value — see the roadmap notes.
     /// </summary>

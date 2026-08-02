@@ -54,7 +54,7 @@ public static class SkinWindowInterop
         try
         {
             long current = GetExStyle(hwnd).ToInt64();
-            long updated = enabled ? current | WS_EX_TRANSPARENT : current & ~WS_EX_TRANSPARENT;
+            long updated = enabled ? current | WS_EX_TRANSPARENT | 0x00080000 : current & ~(WS_EX_TRANSPARENT | 0x00080000);
             SetExStyle(hwnd, new IntPtr(updated));
         }
         catch (Exception ex)

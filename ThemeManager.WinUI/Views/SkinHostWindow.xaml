@@ -10,7 +10,7 @@
         trades a little XAML purity for code that's much easier to hand-verify without a live
         WinUI3 designer — see the remarks at the top of SkinHostWindow.xaml.cs.
     -->
-    <Border x:Name="CardBorder" CornerRadius="{StaticResource CornerRadiusLarge}">
+    <Border x:Name="CardBorder" CornerRadius="{StaticResource CornerRadiusLarge}" Background="{StaticResource SurfaceBrush}">
         <Canvas x:Name="RootCanvas" Background="Transparent" />
     </Border>
 </Window>

@@ -81,8 +81,8 @@ public sealed class MeterEditorItem : ViewModelBase
 
     public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
     public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
-    public double Width { get => _width; set { if (SetProperty(ref _width, value)) { Definition.Width = value; _onChanged(); } } }
-    public double Height { get => _height; set { if (SetProperty(ref _height, value)) { Definition.Height = value; _onChanged(); } } }
+    public double Width { get => _width; set { var v = Math.Max(0, value); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
+    public double Height { get => _height; set { var v = Math.Max(0, value); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
     public double FontSize { get => _fontSize; set { if (SetProperty(ref _fontSize, value)) { Definition.FontSize = value; _onChanged(); } } }
     public double BarMax { get => _barMax; set { if (SetProperty(ref _barMax, value)) { Definition.BarMax = value; _onChanged(); } } }
     public int HistoryLength { get => _historyLength; set { if (SetProperty(ref _historyLength, value)) { Definition.HistoryLength = value; _onChanged(); } } }
@@ -208,14 +208,14 @@ public sealed class SkinEditorViewModel : ViewModelBase
     public double Width
     {
         get => _width;
-        set { if (SetProperty(ref _width, value)) { _working.Width = value; Dirty = true; } }
+        set { var v = Math.Max(0, value); if (SetProperty(ref _width, v)) { _working.Width = v; Dirty = true; } }
     }
 
     private double _height = 100;
     public double Height
     {
         get => _height;
-        set { if (SetProperty(ref _height, value)) { _working.Height = value; Dirty = true; } }
+        set { var v = Math.Max(0, value); if (SetProperty(ref _height, v)) { _working.Height = v; Dirty = true; } }
     }
 
     private bool _dirty;

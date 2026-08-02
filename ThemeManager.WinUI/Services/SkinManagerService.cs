@@ -71,7 +71,7 @@ public sealed class SkinManagerService : IDisposable
         if (enabled) OpenWindowFor(skin);
         else CloseWindowFor(skin);
 
-        await PersistAsync();
+        await PersistAsync(false);
     }
 
     public async Task SetOpacityAsync(SkinDefinition skin, double opacity)
@@ -79,7 +79,7 @@ public sealed class SkinManagerService : IDisposable
         skin.Opacity = Math.Clamp(opacity, 0.0, 1.0);
         if (_open.TryGetValue(skin.Id, out var entry))
             entry.Window.ApplyOpacity(skin.Opacity);
-        await PersistAsync();
+        await PersistAsync(false);
     }
 
     public async Task SetClickThroughAsync(SkinDefinition skin, bool enabled)
@@ -87,7 +87,7 @@ public sealed class SkinManagerService : IDisposable
         skin.ClickThrough = enabled;
         if (_open.TryGetValue(skin.Id, out var entry))
             entry.Window.ApplyClickThrough(skin.ClickThrough);
-        await PersistAsync();
+        await PersistAsync(false);
     }
 
     public async Task SetLockedAsync(SkinDefinition skin, bool locked)
@@ -95,7 +95,26 @@ public sealed class SkinManagerService : IDisposable
         skin.Locked = locked;
         if (_open.TryGetValue(skin.Id, out var entry))
             entry.Window.ApplyLocked(skin.Locked);
-        await PersistAsync();
+        await PersistAsync(false);
+    }
+
+    /// <summary>
+    /// Experimental — see <c>DesktopLayerInterop</c>. Returns whether attachment actually
+    /// succeeded so the UI can say so; <see cref="SkinDefinition.DesktopLayer"/> still gets set
+    /// to the requested value either way (it's what gets *retried* on next launch), but a
+    /// failed attach leaves the widget visibly in its normal always-on-top mode regardless of
+    /// what the toggle says.
+    /// </summary>
+    public async Task<bool> SetDesktopLayerAsync(SkinDefinition skin, bool enabled)
+    {
+        skin.DesktopLayer = enabled;
+        bool succeeded = true;
+
+        if (_open.TryGetValue(skin.Id, out var entry))
+            succeeded = await entry.Window.ApplyDesktopLayerAsync(enabled);
+
+        await PersistAsync(false);
+        return succeeded;
     }
 
     public async Task ResetPositionAsync(SkinDefinition skin)
@@ -104,15 +123,14 @@ public sealed class SkinManagerService : IDisposable
         skin.Y = 60;
         if (_open.TryGetValue(skin.Id, out var entry))
             entry.Window.ApplyPosition(skin.X, skin.Y);
-        await PersistAsync();
+        await PersistAsync(false);
     }
 
-    /// <summary>Called by a <see cref="SkinHostWindow"/> when the user finishes dragging it.</summary>
     private async void OnWindowMoved(SkinDefinition skin, double x, double y)
     {
         skin.X = x;
         skin.Y = y;
-        await PersistAsync();
+        await PersistAsync(false);
     }
 
     // ── Editor support (create / save / delete a whole widget) ──────────────────────
@@ -136,7 +154,7 @@ public sealed class SkinManagerService : IDisposable
         };
 
         _skins.Add(skin);
-        await PersistAsync();
+        await PersistAsync(true);
         return skin;
     }
 
@@ -159,15 +177,14 @@ public sealed class SkinManagerService : IDisposable
             OpenWindowFor(skin);
         }
 
-        await PersistAsync();
+        await PersistAsync(true);
     }
 
-    /// <summary>Removes a widget entirely — closes its window first if it's open.</summary>
     public async Task DeleteSkinAsync(SkinDefinition skin)
     {
         CloseWindowFor(skin);
         _skins.RemoveAll(s => s.Id == skin.Id);
-        await PersistAsync();
+        await PersistAsync(true);
     }
 
     // ── Window lifecycle ──────────────────────────────────────────────────────────
@@ -199,10 +216,19 @@ public sealed class SkinManagerService : IDisposable
         entry.Window.Close();
     }
 
-    private async Task PersistAsync()
+    private async Task PersistAsync(bool notifyListChanged)
     {
-        await _repo.SaveAllAsync(_skins);
-        SkinsChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            await _repo.SaveAllAsync(_skins);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist skins.json (file locked). It will be saved on the next edit.");
+        }
+        
+        if (notifyListChanged)
+            SkinsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()

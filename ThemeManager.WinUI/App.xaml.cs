@@ -5,6 +5,7 @@ using ThemeManager.Core.Services;
 using ThemeManager.Integration;
 using ThemeManager.WinUI.Services;
 using Windows.UI;
+using Windows.UI.ViewManagement;
 using Serilog;
 using Microsoft.Extensions.Logging;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
@@ -25,7 +26,18 @@ public partial class App : Application
     /// <summary>Skins (desktop widgets) — see ThemeManager.WinUI.Services.SkinManagerService.</summary>
     public static SkinManagerService SkinManager { get; private set; } = null!;
 
+    /// <summary>System tray icon — see ThemeManager.Integration.TrayIcon.</summary>
+    public static TrayIcon Tray { get; private set; } = null!;
+
     public static ILoggerFactory LoggerFactory { get; private set; } = null!;
+
+    /// <summary>
+    /// Set right before we deliberately let the main window actually close (from the tray's
+    /// Exit command). While false, the AppWindow.Closing handler below intercepts every close
+    /// request and hides the window instead — that's what makes "closing" the app really just
+    /// minimize it to the tray.
+    /// </summary>
+    private static bool _isExiting;
 
     /// <summary>
     /// Exposed so any page can retrieve the HWND for file pickers without
@@ -73,12 +85,37 @@ public partial class App : Application
         SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory);
         await SkinManager.InitializeAsync();
 
-        // Phase 1 has no system tray yet (that's a Phase 2 item — see the roadmap notes),
-        // so widgets are only ever visible while the main window is open. Without this,
-        // closing MainWindow would leave widget windows running invisibly in the
-        // background with no way back to the UI, since WinUI3 only exits once *every*
-        // window is closed, not just the main one.
-        MainWindow.Closed += (_, _) => SkinManager.Dispose();
+        // ── System tray: closing the main window now minimizes to tray instead of quitting ──
+        Tray = new TrayIcon(LoggerFactory.CreateLogger<TrayIcon>());
+        Tray.OpenRequested += () =>
+        {
+            MainWindow.AppWindow.Show();
+            MainWindow.Activate();
+        };
+        Tray.ExitRequested += () =>
+        {
+            _isExiting = true;
+            MainWindow.Close();
+        };
+        Tray.Show();
+
+        // AppWindow.Closing (not the older Window.Closed) is the one that can actually be
+        // cancelled — this is the documented way to turn "the X button" into "hide to tray"
+        // instead of "quit". Must stay synchronous: it decides Cancel before returning.
+        MainWindow.AppWindow.Closing += (_, closingArgs) =>
+        {
+            if (_isExiting) return; // Exit was chosen from the tray — let the real close proceed
+            closingArgs.Cancel = true;
+            MainWindow.AppWindow.Hide();
+        };
+
+        // Only reached once a close was actually allowed through (i.e. after Exit) —
+        // final cleanup so widgets and the tray icon don't outlive the main process.
+        MainWindow.Closed += (_, _) =>
+        {
+            SkinManager.Dispose();
+            Tray.Dispose();
+        };
     }
 
     // ── Live theming ──────────────────────────────────────────────────────────
@@ -92,34 +129,46 @@ public partial class App : Application
     {
         var resources = Current.Resources;
 
-        // Helper: parse hex → Windows.UI.Color → SolidColorBrush.
-        SolidColorBrush Brush(string hex) => new(HexToColor(hex));
-        Color Col(string hex) => HexToColor(hex);
+        // Helper: mutate the existing brush (so StaticResource bindings update instantly)
+        // AND explicitly place it in the top-level dictionary (so it survives WinUI 3's
+        // automatic dictionary wipe during a system WM_SETTINGCHANGE broadcast).
+        void UpdateBrush(string key, Color color)
+        {
+            if (resources.TryGetValue(key, out var obj) && obj is SolidColorBrush b)
+            {
+                b.Color = color;
+                resources[key] = b;
+            }
+            else
+            {
+                resources[key] = new SolidColorBrush(color);
+            }
+        }
 
-        // Colors
-        resources["ColorBackgroundBase"] = Col(theme.BackgroundBase);
-        resources["ColorBackgroundAlt"] = Col(theme.BackgroundAlt);
-        resources["ColorSurface"] = Col(theme.Surface);
-        resources["ColorAccentPrimary"] = Col(theme.AccentPrimary);
-        resources["ColorAccentStrong"] = Col(theme.AccentStrong);
-        resources["ColorTextPrimary"] = Col(theme.TextPrimary);
-        resources["ColorTextMuted"] = Col(theme.TextMuted);
-        resources["ColorBorderSubtle"] = Col(theme.BorderSubtle);
+        // Colors (these are boxed structs, so just overwriting them is fine)
+        resources["ColorBackgroundBase"] = HexToColor(theme.BackgroundBase);
+        resources["ColorBackgroundAlt"] = HexToColor(theme.BackgroundAlt);
+        resources["ColorSurface"] = HexToColor(theme.Surface);
+        resources["ColorAccentPrimary"] = HexToColor(theme.AccentPrimary);
+        resources["ColorAccentStrong"] = HexToColor(theme.AccentStrong);
+        resources["ColorTextPrimary"] = HexToColor(theme.TextPrimary);
+        resources["ColorTextMuted"] = HexToColor(theme.TextMuted);
+        resources["ColorBorderSubtle"] = HexToColor(theme.BorderSubtle);
 
         // Brushes (the binding targets throughout the visual tree)
-        resources["AppBackgroundBrush"] = Brush(theme.BackgroundBase);
-        resources["SidebarBackgroundBrush"] = Brush(theme.BackgroundAlt);
-        resources["CardBackgroundBrush"] = Brush(theme.BackgroundBase);
-        resources["SurfaceBrush"] = Brush(theme.Surface);
-        resources["PrimaryAccentBrush"] = Brush(theme.AccentPrimary);
-        resources["StrongAccentBrush"] = Brush(theme.AccentStrong);
-        resources["TextPrimaryBrush"] = Brush(theme.TextPrimary);
-        resources["TextMutedBrush"] = Brush(theme.TextMuted);
-        resources["BorderSubtleBrush"] = Brush(theme.BorderSubtle);
+        UpdateBrush("AppBackgroundBrush", HexToColor(theme.BackgroundBase));
+        UpdateBrush("SidebarBackgroundBrush", HexToColor(theme.BackgroundAlt));
+        UpdateBrush("CardBackgroundBrush", HexToColor(theme.BackgroundBase));
+        UpdateBrush("SurfaceBrush", HexToColor(theme.Surface));
+        UpdateBrush("PrimaryAccentBrush", HexToColor(theme.AccentPrimary));
+        UpdateBrush("StrongAccentBrush", HexToColor(theme.AccentStrong));
+        UpdateBrush("TextPrimaryBrush", HexToColor(theme.TextPrimary));
+        UpdateBrush("TextMutedBrush", HexToColor(theme.TextMuted));
+        UpdateBrush("BorderSubtleBrush", HexToColor(theme.BorderSubtle));
 
         // Hover/pressed variants (auto-computed from base surface color).
-        resources["SurfaceHoverBrush"] = Brush(LightenHex(theme.Surface, 0.15));
-        resources["SurfacePressedBrush"] = Brush(DarkenHex(theme.Surface, 0.10));
+        UpdateBrush("SurfaceHoverBrush", HexToColor(LightenHex(theme.Surface, 0.15)));
+        UpdateBrush("SurfacePressedBrush", HexToColor(DarkenHex(theme.Surface, 0.10)));
 
         // Corner radius tokens (scaled by theme preference)
         double s = Math.Clamp(theme.CornerRadiusScale, 0.25, 2.0);

@@ -60,24 +60,34 @@ public sealed class ThemeRepository
         }
     }
 
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
+
     /// <summary>Persists the full list of themes to disk atomically (write-then-rename).</summary>
     /// <exception cref="IOException">Thrown after one retry if the file is locked or disk is full.</exception>
     public async Task SaveAllAsync(IEnumerable<CozyTheme> themes)
     {
         EnsureStorageFolderExists();
 
-        var list = themes.ToList();
-        var tempPath = ThemesFilePath + ".tmp";
-
+        await _saveLock.WaitAsync();
         try
         {
-            await WriteAndMoveAsync(list, tempPath);
+            var list = themes.ToList();
+            var tempPath = $"{ThemesFilePath}.{Guid.NewGuid():N}.tmp";
+
+            try
+            {
+                await WriteAndMoveAsync(list, tempPath);
+            }
+            catch (IOException)
+            {
+                // One retry after a short delay – covers transient antivirus / file-lock races.
+                await Task.Delay(200);
+                await WriteAndMoveAsync(list, tempPath);
+            }
         }
-        catch (IOException)
+        finally
         {
-            // One retry after a short delay – covers transient antivirus / file-lock races.
-            await Task.Delay(200);
-            await WriteAndMoveAsync(list, tempPath);
+            _saveLock.Release();
         }
     }
 
