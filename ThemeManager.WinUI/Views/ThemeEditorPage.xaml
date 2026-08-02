@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="ThemeManager.WinUI.Views.ThemeEditorPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -214,7 +214,7 @@
                                 </Border>
                             </StackPanel>
 
-                            <ItemsRepeater ItemsSource="{x:Bind ContrastProxies, Mode=OneWay}">
+                            <ItemsRepeater ItemsSource="{x:Bind ContrastProxies, Mode=OneTime}">
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate x:DataType="local:ContrastResultProxy">
                                         <Grid Margin="0,2,0,2" ColumnSpacing="8">

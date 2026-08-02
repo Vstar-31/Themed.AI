@@ -227,7 +227,8 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         try
         {
             await _themeService.SaveThemeAsync(GeneratedTheme);
-            Status = $"\"{GeneratedTheme.Name}\" saved to your themes.";
+            _themeService.SetActiveTheme(GeneratedTheme);
+            Status = $"\"{GeneratedTheme.Name}\" saved and applied to your widgets.";
         }
         catch (IOException ex)
         {

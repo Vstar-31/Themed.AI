@@ -71,14 +71,14 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0"
-                                               Text="{x:Bind Name, Mode=OneWay}"
+                                               Text="{x:Bind Name, Mode=OneTime}"
                                                FontSize="{StaticResource FontSizeSubtitle}"
                                                FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                VerticalAlignment="Center" />
                                     <ToggleSwitch Grid.Column="1"
                                                   Tag="{x:Bind}"
-                                                  IsOn="{x:Bind Enabled, Mode=OneWay}"
+                                                  IsOn="{x:Bind Enabled, Mode=OneTime}"
                                                   Style="{StaticResource CozyToggleStyle}"
                                                   OnContent="On" OffContent="Off"
                                                   Toggled="EnabledToggle_Toggled" />
@@ -89,7 +89,7 @@
                                     <TextBlock Text="Card opacity" Style="{StaticResource CaptionStyle}" />
                                     <Slider Tag="{x:Bind}"
                                             Minimum="0.2" Maximum="1.0" StepFrequency="0.05"
-                                            Value="{x:Bind Opacity, Mode=OneWay}"
+                                            Value="{x:Bind Opacity, Mode=OneTime}"
                                             Foreground="{StaticResource PrimaryAccentBrush}"
                                             ValueChanged="OpacitySlider_ValueChanged" />
                                 </StackPanel>
@@ -99,7 +99,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="Click-through" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
-                                                      IsOn="{x:Bind ClickThrough, Mode=OneWay}"
+                                                      IsOn="{x:Bind ClickThrough, Mode=OneTime}"
                                                       Style="{StaticResource CozyToggleStyle}"
                                                       OnContent="" OffContent=""
                                                       Toggled="ClickThroughToggle_Toggled" />
@@ -107,7 +107,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="Locked" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
-                                                      IsOn="{x:Bind Locked, Mode=OneWay}"
+                                                      IsOn="{x:Bind Locked, Mode=OneTime}"
                                                       Style="{StaticResource CozyToggleStyle}"
                                                       OnContent="" OffContent=""
                                                       Toggled="LockedToggle_Toggled" />

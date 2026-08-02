@@ -23,7 +23,13 @@ public sealed partial class VibePage : Page
     {
         InitializeComponent();
         ViewModel = new VibeGeneratorViewModel(App.ThemeService);
-        ViewModel.PreviewSwatches.CollectionChanged += (_, _) => UpdateSwatchStrip();
+        ViewModel.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(VibeGeneratorViewModel.HasResult))
+            {
+                UpdateSwatchStrip();
+            }
+        };
 
         _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
         _debounceTimer.Tick += async (_, _) =>
@@ -84,7 +90,14 @@ public sealed partial class VibePage : Page
         => await ViewModel.GenerateAsync();
 
     private async void SaveButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SaveGeneratedThemeAsync();
+    {
+        await ViewModel.SaveGeneratedThemeAsync();
+        if (ViewModel.GeneratedTheme != null)
+        {
+            var safeAccent = ThemeManager.Core.Models.CozyTheme.NormalizeHex(ViewModel.GeneratedTheme.AccentPrimary);
+            await App.SystemIntegrator.ApplyAccentColorAsync(safeAccent);
+        }
+    }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
     {
