@@ -142,11 +142,15 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
                 // "ImmersiveColorSet" refreshes the DWM/accent colour.
                 // "WindowsThemeElement" triggers a secondary shell repaint pass
                 // that Win11 23H2+ needs to update the taskbar live.
+                //
+                // NOTE: Do NOT restart Explorer here. When Explorer restarts it
+                // re-reads the active .theme file, which overwrites the registry
+                // values we just wrote — causing the accent to revert after ~1 s.
                 BroadcastSettingsChange("ImmersiveColorSet");
                 BroadcastSettingsChange("WindowsThemeElement");
-                RestartExplorer();
 
                 _logger.LogInformation("Accent color successfully applied");
+
                 return true;
             }
             catch (Exception ex)
@@ -209,7 +213,6 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
 
                 BroadcastSettingsChange("ImmersiveColorSet");
                 BroadcastSettingsChange("WindowsThemeElement");
-                RestartExplorer();
                 return true;
             }
             catch { return false; }
@@ -240,25 +243,43 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             out _);
     }
 
-    private static void RestartExplorer()
+    /// <returns>True if explorer.exe is confirmed running again afterward.</returns>
+    private bool RestartExplorer()
     {
         try
         {
-            var kill = Process.Start(new ProcessStartInfo
+            foreach (var proc in Process.GetProcessesByName("explorer"))
             {
-                FileName        = "cmd.exe",
-                Arguments       = "/c taskkill /f /im explorer.exe",
-                CreateNoWindow  = true,
-                UseShellExecute = false,
-            });
-            kill?.WaitForExit(3000);
+                try { proc.Kill(); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Failed to stop an explorer.exe process (PID {Pid})", proc.Id); }
+            }
 
-            Thread.Sleep(1000);
+            // Windows itself sometimes relaunches explorer.exe on its own within a beat —
+            // poll briefly before assuming we need to start it ourselves.
+            for (int i = 0; i < 10 && !Process.GetProcessesByName("explorer").Any(); i++)
+                Thread.Sleep(200);
 
             if (!Process.GetProcessesByName("explorer").Any())
+            {
                 Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
+                Thread.Sleep(500);
+            }
+
+            bool running = Process.GetProcessesByName("explorer").Any();
+            if (!running)
+                _logger.LogWarning("explorer.exe didn't come back up after restart — accent color was written but won't be visible until you sign out and back in, or start it manually");
+
+            return running;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // This used to be a bare catch {} that swallowed everything with zero logging —
+            // that's almost certainly why accent colors were reported as "applied" while
+            // never actually becoming visible: the one step that forces Windows to redraw
+            // with the new values was failing silently on some machines.
+            _logger.LogWarning(ex, "Failed to restart explorer.exe — accent color was written but won't be visible until you sign out and back in");
+            return false;
+        }
     }
 
 

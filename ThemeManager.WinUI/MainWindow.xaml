@@ -80,6 +80,11 @@
                         Style="{StaticResource NavItemStyle}"
                         Click="NavWidgets_Click" />
 
+                <Button x:Name="NavWidgetVibe"
+                        Content="🪄  Widget Generator"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavWidgetVibe_Click" />
+
                 <Button x:Name="NavSettings"
                         Content="🔧  Settings"
                         Style="{StaticResource NavItemStyle}"

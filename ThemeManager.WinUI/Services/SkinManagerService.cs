@@ -159,6 +159,18 @@ public sealed class SkinManagerService : IDisposable
     }
 
     /// <summary>
+    /// Same "create now, refine in the editor" pattern as <see cref="CreateNewSkinAsync"/>, but
+    /// for a fully-built <see cref="SkinDefinition"/> — used by the prompt-based widget
+    /// generator, which already knows the measures/meters/layout and just needs it added to the
+    /// list and persisted before handing off to the editor for final customization.
+    /// </summary>
+    public async Task AddGeneratedSkinAsync(SkinDefinition skin)
+    {
+        _skins.Add(skin);
+        await PersistAsync(true);
+    }
+
+    /// <summary>
     /// Call after editing a skin's meters/measures/name/size in place. The editor mutates the
     /// same <see cref="SkinDefinition"/> instance that's already in <see cref="Skins"/> (same
     /// approach <c>ThemeEditorViewModel</c> uses for themes), so this just needs to persist and,
