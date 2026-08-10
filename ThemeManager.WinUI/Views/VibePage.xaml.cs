@@ -28,6 +28,15 @@ public sealed partial class VibePage : Page
             if (e.PropertyName == nameof(VibeGeneratorViewModel.HasResult))
             {
                 UpdateSwatchStrip();
+
+                // Scroll the result card into view so the user can see swatches + Save/Edit buttons.
+                if (ViewModel.HasResult)
+                {
+                    DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                    {
+                        ResultCard.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true });
+                    });
+                }
             }
         };
 

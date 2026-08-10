@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="ThemeManager.WinUI.Views.VibePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -46,7 +46,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- ── LEFT ──────────────────────────────────────────────────── -->
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="LeftScroller" Grid.Column="0" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="20">
 
                     <!-- Prompt card -->
@@ -115,17 +115,17 @@
                     </Border>
 
                     <!-- Result card -->
-                    <Border Style="{StaticResource CardStyle}"
+                    <Border x:Name="ResultCard" Style="{StaticResource CardStyle}"
                             Visibility="{x:Bind ViewModel.HasResult, Mode=OneWay,
                                          Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Spacing="16">
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="{x:Bind ViewModel.GeneratedTheme.Name, Mode=OneWay}"
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedTheme.Name, Mode=OneWay, FallbackValue=''}"
                                            FontSize="{StaticResource FontSizeTitle}"
                                            FontWeight="Bold"
                                            Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBlock Text="{x:Bind ViewModel.GeneratedTheme.Description, Mode=OneWay}"
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedTheme.Description, Mode=OneWay, FallbackValue=''}"
                                            Style="{StaticResource CaptionStyle}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
@@ -195,21 +195,21 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <local:MiniColorRow Grid.Row="0" Grid.Column="0" Label="Background Base"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.BackgroundBase, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.BackgroundBase, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="0" Grid.Column="1" Label="Background Alt"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.BackgroundAlt, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.BackgroundAlt, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="1" Grid.Column="0" Label="Surface"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.Surface, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.Surface, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="1" Grid.Column="1" Label="Accent Primary"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.AccentPrimary, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.AccentPrimary, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="2" Grid.Column="0" Label="Accent Strong"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.AccentStrong, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.AccentStrong, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="2" Grid.Column="1" Label="Text Primary"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.TextPrimary, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.TextPrimary, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="3" Grid.Column="0" Label="Text Muted"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.TextMuted, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.TextMuted, Mode=OneWay, FallbackValue=''}" />
                                 <local:MiniColorRow Grid.Row="3" Grid.Column="1" Label="Border Subtle"
-                                    Hex="{x:Bind ViewModel.GeneratedTheme.BorderSubtle, Mode=OneWay}" />
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.BorderSubtle, Mode=OneWay, FallbackValue=''}" />
                             </Grid>
 
                             <!-- Actions -->

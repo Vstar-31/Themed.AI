@@ -206,8 +206,11 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 HasResult = true;
                 Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
 
-                // Apply as the active theme for instant live preview across the app.
-                _themeService.SetActiveTheme(theme);
+                // NOTE: Do NOT call SetActiveTheme here. Applying the generated
+                // theme immediately re-skins the entire app (including the result
+                // card itself), making the swatches, token details, and Save/Edit
+                // buttons effectively invisible. The user applies the theme
+                // explicitly via Save or Edit.
             }
         }
         catch (Exception ex)
