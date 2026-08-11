@@ -89,6 +89,37 @@ public sealed partial class SkinHostWindow : Window
         }
     }
 
+    // ── DispatcherQueue Helper for System Compositor ─────────────────────────
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct DispatcherQueueOptions
+    {
+        public int dwSize;
+        public int threadType;
+        public int apartmentType;
+    }
+
+    [System.Runtime.InteropServices.DllImport("CoreMessaging.dll")]
+    private static extern int CreateDispatcherQueueController(
+        [System.Runtime.InteropServices.In] DispatcherQueueOptions options,
+        [System.Runtime.InteropServices.In, System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.IUnknown)] ref object dispatcherQueueController);
+
+    private object? _dispatcherQueueController = null;
+
+    private void EnsureDispatcherQueue()
+    {
+        if (Windows.System.DispatcherQueue.GetForCurrentThread() != null) return;
+        if (_dispatcherQueueController != null) return;
+
+        var options = new DispatcherQueueOptions
+        {
+            dwSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(DispatcherQueueOptions)),
+            threadType = 2,    // DQTYPE_THREAD_CURRENT
+            apartmentType = 2  // DQTAT_COM_STA
+        };
+        CreateDispatcherQueueController(options, ref _dispatcherQueueController!);
+    }
+
     /// <summary>
     /// Enables true per-pixel transparency via a fully-transparent Composition color brush as the
     /// window's SystemBackdrop — the WinUI3-native technique (see the class remarks above for why
@@ -98,6 +129,7 @@ public sealed partial class SkinHostWindow : Window
     {
         try
         {
+            EnsureDispatcherQueue();
             var winCompositor = new Windows.UI.Composition.Compositor();
             var transparentBrush = winCompositor.CreateColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
             this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = transparentBrush;
@@ -170,7 +202,7 @@ public sealed partial class SkinHostWindow : Window
             FontSize = vm.FontSize,
             FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontFamily"],
             FontWeight = vm.Bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
-            Foreground = (SolidColorBrush)Application.Current.Resources["TextPrimaryBrush"],
+            Foreground = GetWidgetTextBrush(),
             Text = vm.DisplayText,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -183,6 +215,47 @@ public sealed partial class SkinHostWindow : Window
 
         return text;
     }
+
+    /// <summary>
+    /// Returns a foreground brush that is guaranteed to be readable against the current
+    /// theme's surface color. If TextPrimaryBrush and SurfaceBrush have insufficient contrast,
+    /// falls back to pure white or black depending on which contrasts better.
+    /// </summary>
+    private static SolidColorBrush GetWidgetTextBrush()
+    {
+        var surfaceBrush = Application.Current.Resources["SurfaceBrush"] as SolidColorBrush;
+        var textBrush = Application.Current.Resources["TextPrimaryBrush"] as SolidColorBrush;
+
+        if (surfaceBrush is null || textBrush is null)
+            return textBrush ?? new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00));
+
+        double surfaceLum = RelativeLuminance(surfaceBrush.Color);
+        double textLum = RelativeLuminance(textBrush.Color);
+
+        // WCAG contrast ratio: (L1 + 0.05) / (L2 + 0.05) where L1 > L2
+        double lighter = Math.Max(surfaceLum, textLum);
+        double darker = Math.Min(surfaceLum, textLum);
+        double contrast = (lighter + 0.05) / (darker + 0.05);
+
+        // If contrast is acceptable (≥3:1 for large text), use the theme's own text color
+        if (contrast >= 3.0) return textBrush;
+
+        // Otherwise pick white or black, whichever has higher contrast against the surface
+        return surfaceLum > 0.4
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1A))  // dark text on light surface
+            : new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xF5, 0xF5, 0xF5)); // light text on dark surface
+    }
+
+    private static double RelativeLuminance(Windows.UI.Color c)
+    {
+        double r = SrgbToLinear(c.R / 255.0);
+        double g = SrgbToLinear(c.G / 255.0);
+        double b = SrgbToLinear(c.B / 255.0);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    private static double SrgbToLinear(double v) =>
+        v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
 
     /// <summary>A track + fill pair wrapped in one Grid, so it can be positioned as a single element.</summary>
     private static Grid BuildBarVisual(BarMeterViewModel vm)

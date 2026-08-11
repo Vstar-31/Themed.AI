@@ -80,11 +80,29 @@ public sealed class WidgetVibeGenerator
         if (usedFallback)
             measures.Add(MeasureType.Time); // simplest, always-meaningful default — a clock
 
+        // Consumer expectation: a "clock" widget should show time AND date, not just bare digits.
+        // Auto-add Date if Time is present but Date wasn't explicitly requested.
+        if (measures.Contains(MeasureType.Time) && !measures.Contains(MeasureType.Date))
+            measures.Add(MeasureType.Date);
+
         double sizeScale = Math.Clamp(sizeVotes.Count > 0 ? sizeVotes.Average() : 1.0, 0.5, 2.0);
         MeterKind? kindPreference = kindVotes.Count == 0 ? null
             : kindVotes.GroupBy(k => k).OrderByDescending(g => g.Count()).First().Key;
 
-        var skin = BuildSkin(measures, kindPreference, sizeScale, preferBold, vertical, horizontal, usedFallback);
+        // Find a matching emoji decoration based on matched keywords
+        string? emoji = null;
+        if (matchedKeywords.Contains("cat")) emoji = "🐱";
+        else if (matchedKeywords.Contains("dog")) emoji = "🐶";
+        else if (matchedKeywords.Contains("star")) emoji = "⭐";
+        else if (matchedKeywords.Contains("floral")) emoji = "🌸";
+        else if (matchedKeywords.Contains("magic") || matchedKeywords.Contains("dream")) emoji = "✨";
+        else if (matchedKeywords.Contains("cyber") || matchedKeywords.Contains("neon")) emoji = "⚡";
+        else if (matchedKeywords.Contains("cozi") || matchedKeywords.Contains("warm")) emoji = "☕";
+        else if (matchedKeywords.Contains("retro")) emoji = "📻";
+        else if (matchedKeywords.Contains("anim")) emoji = "🎌";
+        else if (matchedKeywords.Contains("cute") || matchedKeywords.Contains("kawaii") || matchedKeywords.Contains("chibi")) emoji = "🎀";
+
+        var skin = BuildSkin(measures, kindPreference, sizeScale, preferBold, vertical, horizontal, usedFallback, promptText, emoji);
 
         var analysis = new WidgetAnalysisResult(
             matchedKeywords, fuzzyCorrections, measures, usedFallback, sizeScale, kindPreference, vertical, horizontal);
@@ -96,16 +114,33 @@ public sealed class WidgetVibeGenerator
 
     private static SkinDefinition BuildSkin(
         List<MeasureType> measures, MeterKind? kindPreference, double sizeScale, bool bold,
-        string? vertical, string? horizontal, bool usedFallback)
+        string? vertical, string? horizontal, bool usedFallback, string promptText, string? emoji)
     {
         var skin = new SkinDefinition
         {
-            Name = GenerateName(measures, usedFallback),
-            Enabled = false, // matches CreateNewSkinAsync's own convention — confirm in the editor before it appears on your desktop
+            Name = GenerateName(measures, usedFallback, promptText),
+            Enabled = false,
         };
 
         double y = DefaultMargin;
         double meterWidth = 188 * sizeScale;
+
+        // If an emoji decoration was triggered by the prompt, add a large text meter for it at the top
+        if (emoji != null)
+        {
+            skin.Meters.Add(new MeterDefinition
+            {
+                Kind = MeterKind.String,
+                StaticText = emoji,
+                X = DefaultMargin,
+                Y = y,
+                Width = meterWidth,
+                Height = 36 * sizeScale,
+                FontSize = 28 * sizeScale,
+                Bold = false,
+            });
+            y += (36 * sizeScale) + (4 * sizeScale);
+        }
 
         foreach (var type in measures)
         {
@@ -155,6 +190,26 @@ public sealed class WidgetVibeGenerator
         // the clock doesn't mean anything, so they stay text-only unless a bar/graph was
         // explicitly requested (kindPreference), in which case we respect the ask anyway.
         bool naturallyTextOnly = type is MeasureType.Time or MeasureType.Date or MeasureType.Uptime or MeasureType.Battery;
+
+        // For Time measures, use a bigger, bolder font by default — consumers expect a clock
+        // to look like a clock, not a tiny label. Date gets a smaller companion size.
+        if (type == MeasureType.Time)
+        {
+            // Override the label meter we just added with clock-appropriate sizing
+            var timeMeter = skin.Meters.Last();
+            timeMeter.FontSize = Math.Max(fontSize, 26 * sizeScale);
+            timeMeter.Bold = true;
+            timeMeter.Height = Math.Max(labelHeight, 34 * sizeScale);
+            y = timeMeter.Y + timeMeter.Height + rowGap;
+        }
+        else if (type == MeasureType.Date)
+        {
+            // Date as companion to time — slightly smaller, not bold
+            var dateMeter = skin.Meters.Last();
+            dateMeter.FontSize = Math.Max(12, 12 * sizeScale);
+            dateMeter.Bold = false;
+        }
+
         MeterKind? effectiveKind = kindPreference ?? (naturallyTextOnly ? null : MeterKind.Bar);
 
         if (effectiveKind == MeterKind.Bar)
@@ -208,8 +263,19 @@ public sealed class WidgetVibeGenerator
     private static double DefaultBarMax(MeasureType type) =>
         type is MeasureType.NetworkDown or MeasureType.NetworkUp ? 2048 : 100;
 
-    private static string GenerateName(List<MeasureType> measures, bool usedFallback)
+    private static string GenerateName(List<MeasureType> measures, bool usedFallback, string promptText)
     {
+        // Use the user's original prompt to create a more personal name
+        var trimmed = promptText.Trim();
+        if (trimmed.Length > 0 && trimmed.Length <= 40)
+        {
+            // Title-case the first letter of each word
+            var words = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var titled = string.Join(' ', words.Select(w =>
+                char.ToUpper(w[0]) + (w.Length > 1 ? w[1..] : "")));
+            return titled;
+        }
+
         if (usedFallback) return "Custom Widget";
 
         var labels = measures.Select(m => LabelAndFormat(m).Label).Where(l => l.Length > 0).Distinct().ToList();

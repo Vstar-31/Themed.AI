@@ -47,6 +47,7 @@ public static class WidgetLexicon
 
         ["clock"] = ForMeasure(MeasureType.Time),
         ["time"] = ForMeasure(MeasureType.Time),
+        ["watch"] = ForMeasure(MeasureType.Time),
 
         ["date"] = ForMeasure(MeasureType.Date),
         ["calendar"] = ForMeasure(MeasureType.Date),
@@ -69,6 +70,46 @@ public static class WidgetLexicon
         ["bold"] = ForStyle(1.15, bold: true),
         ["mass"] = ForStyle(1.50, bold: true),         // "massive"
         ["chunki"] = ForStyle(1.30, bold: true),       // "chunky"
+
+        // ════ CONSUMER-FRIENDLY AESTHETICS ════════════════════════════════════
+        // Normal users describe *feelings*, not specs — "cute cat clock" not "13px time meter"
+        ["cute"] = ForStyle(1.10, bold: true),
+        ["chibi"] = ForStyle(0.90, bold: true),
+        ["kawaii"] = ForStyle(1.10, bold: true),
+        ["pretti"] = ForStyle(1.10, bold: false),      // "pretty"
+        ["beauti"] = ForStyle(1.10, bold: false),      // "beautiful"
+        ["aesthet"] = ForStyle(1.05, bold: false),     // "aesthetic"
+        ["cozi"] = ForStyle(1.10, bold: true),         // "cozy"
+        ["warm"] = ForStyle(1.05, bold: true),
+        ["retro"] = ForStyle(1.15, bold: true),
+        ["vintag"] = ForStyle(1.10, bold: true),       // "vintage"
+        ["neon"] = ForStyle(1.20, bold: true),
+        ["glow"] = ForStyle(1.10, bold: true),
+        ["cyber"] = ForStyle(1.15, bold: true),
+        ["futurist"] = ForStyle(1.20, bold: true),     // "futuristic"
+        ["modern"] = ForStyle(1.05, bold: false),
+        ["sleek"] = ForStyle(0.90, bold: false),
+        ["eleg"] = ForStyle(1.05, bold: false),        // "elegant"
+        ["luxuri"] = ForStyle(1.15, bold: true),       // "luxury"/"luxurious"
+        ["premium"] = ForStyle(1.15, bold: true),
+        ["play"] = ForStyle(1.10, bold: true),         // "playful"
+        ["funki"] = ForStyle(1.10, bold: true),        // "funky"
+        ["cool"] = ForStyle(1.05, bold: false),
+        ["pasti"] = ForStyle(1.00, bold: false),       // "pastel"
+        ["dark"] = ForStyle(1.00, bold: true),
+        ["moodi"] = ForStyle(1.00, bold: true),        // "moody"
+        ["bright"] = ForStyle(1.10, bold: true),
+        ["pixel"] = ForStyle(0.85, bold: true),
+        ["round"] = ForStyle(1.10, bold: false),       // "rounded"
+        ["flat"] = ForStyle(0.90, bold: false),
+        ["glass"] = ForStyle(1.05, bold: false),       // "glassmorphism"
+        ["anim"] = ForStyle(1.00, bold: false),        // "anime"
+        ["cat"] = ForStyle(1.05, bold: true),          // decorative — maps to style, not measure
+        ["dog"] = ForStyle(1.05, bold: true),
+        ["star"] = ForStyle(1.10, bold: true),
+        ["floral"] = ForStyle(1.05, bold: false),
+        ["dream"] = ForStyle(1.10, bold: false),       // "dreamy"
+        ["magic"] = ForStyle(1.10, bold: true),        // "magical"
 
         // ════ METER KIND PREFERENCE ═══════════════════════════════════════════
         ["graph"] = ForKind(MeterKind.Graph),
