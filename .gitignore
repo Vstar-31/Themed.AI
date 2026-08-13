@@ -29,3 +29,7 @@ _ReSharper*/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+## Stray artifacts ##
+*.etl
+build.txt

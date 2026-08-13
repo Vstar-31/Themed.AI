@@ -35,9 +35,13 @@ public sealed partial class SkinHostWindow : Window
 {
     private readonly SkinHostViewModel _viewModel;
     private readonly IntPtr _hwnd;
+    private readonly double _scaleFactor;
 
     private bool _dragging;
     private Windows.Foundation.Point _dragAnchorLocal;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     /// <summary>Raised when the user finishes dragging the widget to a new spot (screen coordinates).</summary>
     public event Action<double, double>? PositionChanged;
@@ -54,9 +58,18 @@ public sealed partial class SkinHostWindow : Window
         EnableTransparency();
         SkinWindowInterop.HideFromTaskbarAndAltTab(_hwnd);
 
+        // Query the window's DPI so we can convert between DIPs (used in SkinDefinition,
+        // pointer events, and all user-facing coordinates) and physical pixels (used by
+        // AppWindow.Move / Resize). Most Windows 11 laptops run at 125–150% scaling.
+        try { _scaleFactor = GetDpiForWindow(_hwnd) / 96.0; }
+        catch { _scaleFactor = 1.0; }
+        if (_scaleFactor <= 0) _scaleFactor = 1.0;
+
         var def = viewModel.Definition;
         ApplyPosition(def.X, def.Y);
-        AppWindow.Resize(new SizeInt32((int)def.Width, (int)def.Height));
+        AppWindow.Resize(new SizeInt32(
+            (int)(def.Width * _scaleFactor),
+            (int)(def.Height * _scaleFactor)));
         ApplyOpacity(def.Opacity);
         ApplyClickThrough(def.ClickThrough);
 
@@ -144,7 +157,7 @@ public sealed partial class SkinHostWindow : Window
     // ── Applied live by SkinManagerService when a setting changes ─────────────
 
     public void ApplyPosition(double x, double y) =>
-        AppWindow.Move(new PointInt32((int)x, (int)y));
+        AppWindow.Move(new PointInt32((int)(x * _scaleFactor), (int)(y * _scaleFactor)));
 
     public void ApplyOpacity(double opacity)
     {
@@ -348,8 +361,9 @@ public sealed partial class SkinHostWindow : Window
         if (!_dragging) return;
 
         var current = e.GetCurrentPoint(RootCanvas).Position;
-        int deltaX = (int)Math.Round(current.X - _dragAnchorLocal.X);
-        int deltaY = (int)Math.Round(current.Y - _dragAnchorLocal.Y);
+        // Pointer deltas are in DIPs; AppWindow.Position is in physical pixels.
+        int deltaX = (int)Math.Round((current.X - _dragAnchorLocal.X) * _scaleFactor);
+        int deltaY = (int)Math.Round((current.Y - _dragAnchorLocal.Y) * _scaleFactor);
         if (deltaX == 0 && deltaY == 0) return;
 
         var pos = AppWindow.Position;
@@ -362,7 +376,8 @@ public sealed partial class SkinHostWindow : Window
         _dragging = false;
         RootCanvas.ReleasePointerCapture(e.Pointer);
 
+        // Convert physical-pixel position back to DIPs for storage in SkinDefinition.
         var pos = AppWindow.Position;
-        PositionChanged?.Invoke(pos.X, pos.Y);
+        PositionChanged?.Invoke(pos.X / _scaleFactor, pos.Y / _scaleFactor);
     }
 }

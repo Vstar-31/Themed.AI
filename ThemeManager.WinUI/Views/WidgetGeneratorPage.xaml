@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="ThemeManager.WinUI.Views.WidgetGeneratorPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -43,7 +43,8 @@
 
                         <ItemsRepeater ItemsSource="{x:Bind ViewModel.SuggestionChips}">
                             <ItemsRepeater.Layout>
-                                <LinedFlowLayout MinItemSpacing="8" LineSpacing="8" />
+                                <UniformGridLayout MinItemWidth="200" MinItemHeight="36"
+                                                   MinColumnSpacing="8" MinRowSpacing="8" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
