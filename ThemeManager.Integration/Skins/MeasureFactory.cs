@@ -18,6 +18,11 @@ public static class MeasureFactory
         MeasureType.NetworkDown => new NetworkMeasure(definition.Name, measureUpload: false, logger),
         MeasureType.NetworkUp   => new NetworkMeasure(definition.Name, measureUpload: true, logger),
         MeasureType.Battery     => new BatteryMeasure(definition.Name, logger),
+        MeasureType.MediaTitle  => new MediaMeasure(definition.Name, MeasureType.MediaTitle, logger),
+        MeasureType.MediaArtist => new MediaMeasure(definition.Name, MeasureType.MediaArtist, logger),
+        MeasureType.MediaState  => new MediaMeasure(definition.Name, MeasureType.MediaState, logger),
+        MeasureType.WeatherTemp => new WeatherMeasure(definition.Name, MeasureType.WeatherTemp, definition.Target, logger),
+        MeasureType.WeatherDesc => new WeatherMeasure(definition.Name, MeasureType.WeatherDesc, definition.Target, logger),
         _                       => new UnknownMeasure(definition.Name),
     };
 

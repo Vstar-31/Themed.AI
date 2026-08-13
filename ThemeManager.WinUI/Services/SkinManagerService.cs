@@ -55,10 +55,20 @@ public sealed class SkinManagerService : IDisposable
 
     private void TickAll()
     {
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
         foreach (var (_, viewModel) in _open.Values)
         {
-            try { viewModel.Tick(); }
-            catch (Exception ex) { _logger.LogWarning(ex, "A widget failed to refresh this tick; skipping it until next tick"); }
+            Task.Run(() =>
+            {
+                try { viewModel.RefreshMeasures(); }
+                catch (Exception ex) { _logger.LogWarning(ex, "A widget failed to refresh its measures this tick"); }
+                
+                dispatcher.TryEnqueue(() =>
+                {
+                    try { viewModel.UpdateMeters(); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "A widget failed to update its meters this tick"); }
+                });
+            });
         }
     }
 
@@ -218,7 +228,8 @@ public sealed class SkinManagerService : IDisposable
 
         _open[skin.Id] = (window, viewModel);
         window.Activate();
-        viewModel.Tick(); // paint real values immediately instead of waiting up to 1s for the first tick
+        viewModel.RefreshMeasures(); // safe to call synchronously on first open since there's no data yet
+        viewModel.UpdateMeters(); // paint real values immediately instead of waiting up to 1s for the first tick
     }
 
     private void CloseWindowFor(SkinDefinition skin)

@@ -40,12 +40,16 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Refreshes every measure this skin owns, then updates every meter from the new values.</summary>
-    public void Tick()
+    /// <summary>Refreshes every measure this skin owns. Safe to call on a background thread.</summary>
+    public void RefreshMeasures()
     {
         foreach (var measure in _measuresByName.Values)
             measure.Refresh();
+    }
 
+    /// <summary>Updates every meter from the new values. Must be called on the UI thread.</summary>
+    public void UpdateMeters()
+    {
         foreach (var meter in Meters)
             meter.Tick(_measuresByName);
     }

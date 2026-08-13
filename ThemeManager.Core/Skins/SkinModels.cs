@@ -16,6 +16,11 @@ public enum MeasureType
     NetworkDown,
     NetworkUp,
     Battery,
+    MediaTitle,
+    MediaArtist,
+    MediaState,
+    WeatherTemp,
+    WeatherDesc,
 }
 
 /// <summary>The visual kind a <see cref="MeterDefinition"/> renders as.</summary>
