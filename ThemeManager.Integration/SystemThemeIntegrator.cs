@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using ThemeManager.Core.Services;
@@ -243,44 +242,12 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
             out _);
     }
 
-    /// <returns>True if explorer.exe is confirmed running again afterward.</returns>
-    private bool RestartExplorer()
-    {
-        try
-        {
-            foreach (var proc in Process.GetProcessesByName("explorer"))
-            {
-                try { proc.Kill(); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Failed to stop an explorer.exe process (PID {Pid})", proc.Id); }
-            }
-
-            // Windows itself sometimes relaunches explorer.exe on its own within a beat —
-            // poll briefly before assuming we need to start it ourselves.
-            for (int i = 0; i < 10 && !Process.GetProcessesByName("explorer").Any(); i++)
-                Thread.Sleep(200);
-
-            if (!Process.GetProcessesByName("explorer").Any())
-            {
-                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
-                Thread.Sleep(500);
-            }
-
-            bool running = Process.GetProcessesByName("explorer").Any();
-            if (!running)
-                _logger.LogWarning("explorer.exe didn't come back up after restart — accent color was written but won't be visible until you sign out and back in, or start it manually");
-
-            return running;
-        }
-        catch (Exception ex)
-        {
-            // This used to be a bare catch {} that swallowed everything with zero logging —
-            // that's almost certainly why accent colors were reported as "applied" while
-            // never actually becoming visible: the one step that forces Windows to redraw
-            // with the new values was failing silently on some machines.
-            _logger.LogWarning(ex, "Failed to restart explorer.exe — accent color was written but won't be visible until you sign out and back in");
-            return false;
-        }
-    }
+    // Note: an earlier approach restarted explorer.exe to force a redraw after writing accent
+    // registry values. That's no longer needed — BroadcastSettingsChange (WM_SETTINGCHANGE)
+    // above is what actually makes DWM pick up the new color — and killing/relaunching Explorer
+    // is disruptive (closes open Explorer windows) for no benefit. Deleted rather than left
+    // dead: if it's ever called again it silently reintroduces the exact "accent reverts a
+    // second later" bug the ColorizationColorBalance/WM_SETTINGCHANGE fixes resolved.
 
 
     private static byte[] BuildAccentPalette(byte r, byte g, byte b)

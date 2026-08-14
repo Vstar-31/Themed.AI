@@ -1,0 +1,379 @@
+diff --git a/ThemeManager.Core/NLP/WidgetVibeGenerator.cs b/ThemeManager.Core/NLP/WidgetVibeGenerator.cs
+index e93d114..842d69b 100644
+--- a/ThemeManager.Core/NLP/WidgetVibeGenerator.cs
++++ b/ThemeManager.Core/NLP/WidgetVibeGenerator.cs
+@@ -32,11 +32,20 @@ public sealed class WidgetVibeGenerator
+     private const double AssumedScreenWidth = 1920;  // most common resolution; drag it in the
+     private const double AssumedScreenHeight = 1080; // editor in seconds if yours is different
+ 
+-    public SkinDefinition Generate(string promptText) => GenerateAndExplain(promptText).Skin;
+-
+-    public WidgetAnalysisResult Explain(string promptText) => GenerateAndExplain(promptText).Analysis;
+-
+-    public (SkinDefinition Skin, WidgetAnalysisResult Analysis) GenerateAndExplain(string promptText)
++    public SkinDefinition Generate(string promptText, double? screenWidth = null, double? screenHeight = null) =>
++        GenerateAndExplain(promptText, screenWidth, screenHeight).Skin;
++
++    public WidgetAnalysisResult Explain(string promptText, double? screenWidth = null, double? screenHeight = null) =>
++        GenerateAndExplain(promptText, screenWidth, screenHeight).Analysis;
++
++    /// <param name="promptText">The plain-English widget description.</param>
++    /// <param name="screenWidth">Target monitor's work-area width, in DIPs. Defaults to
++    /// <see cref="AssumedScreenWidth"/> when null. Callers with a live window (see
++    /// WidgetGeneratorViewModel.GetScreenSizeDips) should pass the real size so "top right" /
++    /// "bottom left" land correctly on anything other than a 1920x1080 primary display.</param>
++    /// <param name="screenHeight">Same as <paramref name="screenWidth"/>, for height.</param>
++    public (SkinDefinition Skin, WidgetAnalysisResult Analysis) GenerateAndExplain(
++        string promptText, double? screenWidth = null, double? screenHeight = null)
+     {
+         var tokens = VibeTokenizer.TokenizeFull(promptText);
+ 
+@@ -102,7 +111,7 @@ public sealed class WidgetVibeGenerator
+         else if (matchedKeywords.Contains("anim")) emoji = "🎌";
+         else if (matchedKeywords.Contains("cute") || matchedKeywords.Contains("kawaii") || matchedKeywords.Contains("chibi")) emoji = "🎀";
+ 
+-        var skin = BuildSkin(measures, kindPreference, sizeScale, preferBold, vertical, horizontal, usedFallback, promptText, emoji);
++        var skin = BuildSkin(measures, kindPreference, sizeScale, preferBold, vertical, horizontal, usedFallback, promptText, emoji, screenWidth, screenHeight);
+ 
+         var analysis = new WidgetAnalysisResult(
+             matchedKeywords, fuzzyCorrections, measures, usedFallback, sizeScale, kindPreference, vertical, horizontal);
+@@ -114,7 +123,8 @@ public sealed class WidgetVibeGenerator
+ 
+     private static SkinDefinition BuildSkin(
+         List<MeasureType> measures, MeterKind? kindPreference, double sizeScale, bool bold,
+-        string? vertical, string? horizontal, bool usedFallback, string promptText, string? emoji)
++        string? vertical, string? horizontal, bool usedFallback, string promptText, string? emoji,
++        double? screenWidth, double? screenHeight)
+     {
+         var skin = new SkinDefinition
+         {
+@@ -150,7 +160,7 @@ public sealed class WidgetVibeGenerator
+         skin.Width = meterWidth + DefaultMargin * 2;
+         skin.Height = y + DefaultMargin;
+ 
+-        (skin.X, skin.Y) = ComputePosition(vertical, horizontal, skin.Width, skin.Height);
++        (skin.X, skin.Y) = ComputePosition(vertical, horizontal, skin.Width, skin.Height, screenWidth, screenHeight);
+ 
+         return skin;
+     }
+@@ -238,10 +248,14 @@ public sealed class WidgetVibeGenerator
+         }
+     }
+ 
+-    private static (double X, double Y) ComputePosition(string? vertical, string? horizontal, double width, double height)
++    private static (double X, double Y) ComputePosition(
++        string? vertical, string? horizontal, double width, double height,
++        double? screenWidth, double? screenHeight)
+     {
+-        double x = horizontal == "right" ? AssumedScreenWidth - width - 40 : 40;
+-        double yPos = vertical == "bottom" ? AssumedScreenHeight - height - 40 : 40;
++        double sw = screenWidth is > 0 ? screenWidth.Value : AssumedScreenWidth;
++        double sh = screenHeight is > 0 ? screenHeight.Value : AssumedScreenHeight;
++        double x = horizontal == "right" ? sw - width - 40 : 40;
++        double yPos = vertical == "bottom" ? sh - height - 40 : 40;
+         return (x, yPos);
+     }
+ 
+diff --git a/ThemeManager.Integration/Skins/WeatherMeasure.cs b/ThemeManager.Integration/Skins/WeatherMeasure.cs
+index be4cb7a..f404a33 100644
+--- a/ThemeManager.Integration/Skins/WeatherMeasure.cs
++++ b/ThemeManager.Integration/Skins/WeatherMeasure.cs
+@@ -20,12 +20,22 @@ public sealed class WeatherMeasure : IMeasure
+     private readonly MeasureType _type;
+     private readonly string _target;
+     private readonly ILogger _logger;
+-    
+-    private static readonly HttpClient _http = new();
+-    private static DateTime _lastFetch = DateTime.MinValue;
+-    private static JsonElement? _lastWeatherData;
+-    private static DateTime _lastDataFetch = DateTime.MinValue;
+-    private static readonly object _fetchLock = new();
++
++    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
++
++    // Keyed by the exact target string (city+key), NOT a single shared slot — otherwise two
++    // widgets configured for two different cities would silently show whichever one fetched
++    // most recently. Widgets that share the same target still correctly share one cache entry,
++    // so pointing several meters (temp + description) at the same city only costs one API call.
++    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CacheEntry> _cache = new();
++
++    private sealed class CacheEntry
++    {
++        public JsonElement? Data;
++        public DateTime LastAttempt = DateTime.MinValue;
++        public DateTime LastSuccess = DateTime.MinValue;
++        public readonly object Lock = new();
++    }
+ 
+     public WeatherMeasure(string name, MeasureType type, string? target, ILogger? logger = null)
+     {
+@@ -44,63 +54,78 @@ public sealed class WeatherMeasure : IMeasure
+             return;
+         }
+ 
+-        // Only fetch weather every 10 minutes to save API calls
+-        if ((DateTime.UtcNow - _lastDataFetch).TotalMinutes > 10)
++        var entry = _cache.GetOrAdd(_target, _ => new CacheEntry());
++
++        // Only fetch weather every 10 minutes per city+key to save API calls.
++        if ((DateTime.UtcNow - entry.LastSuccess).TotalMinutes > 10)
+         {
+-            Task.Run(FetchWeatherAsync);
++            Task.Run(() => FetchWeatherAsync(entry));
+         }
+ 
+-        UpdateFromCache();
++        UpdateFromCache(entry);
+     }
+-    
+-    private void UpdateFromCache()
++
++    private void UpdateFromCache(CacheEntry entry)
+     {
+-        if (_lastWeatherData == null) return;
+-        
++        if (entry.Data == null) return;
++
+         try
+         {
+             if (_type == MeasureType.WeatherTemp)
+             {
+-                double temp = _lastWeatherData.Value.GetProperty("main").GetProperty("temp").GetDouble();
++                double temp = entry.Data.Value.GetProperty("main").GetProperty("temp").GetDouble();
+                 Value = temp;
+                 Text = $"{temp:F0}°";
+             }
+             else if (_type == MeasureType.WeatherDesc)
+             {
+-                var weatherArray = _lastWeatherData.Value.GetProperty("weather");
++                var weatherArray = entry.Data.Value.GetProperty("weather");
+                 if (weatherArray.GetArrayLength() > 0)
+                 {
+                     Text = weatherArray[0].GetProperty("description").GetString() ?? "—";
+                 }
+             }
+         }
+-        catch { }
++        catch
++        {
++            Text = "Parse Err";
++        }
+     }
+ 
+-    private async Task FetchWeatherAsync()
++    private async Task FetchWeatherAsync(CacheEntry entry)
+     {
+-        lock (_fetchLock)
++        lock (entry.Lock)
+         {
+-            if ((DateTime.UtcNow - _lastFetch).TotalMinutes < 10) return;
+-            _lastFetch = DateTime.UtcNow;
++            if ((DateTime.UtcNow - entry.LastAttempt).TotalMinutes < 10) return;
++            entry.LastAttempt = DateTime.UtcNow;
+         }
+ 
++        // Split before the try so the city (but never the key) is still available to log if the
++        // request itself fails. Refresh() already guarantees '|' is present.
++        var parts = _target.Split('|', 2);
++        var cityRaw = parts[0];
++
+         try
+         {
+-            var parts = _target.Split('|');
+-            var city = Uri.EscapeDataString(parts[0]);
++            var city = Uri.EscapeDataString(cityRaw);
+             var apiKey = Uri.EscapeDataString(parts[1]);
+-            
++
+             var url = $"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={apiKey}&units=metric";
+             var json = await _http.GetStringAsync(url);
+-            
++
+             using var doc = JsonDocument.Parse(json);
+-            _lastWeatherData = doc.RootElement.Clone();
+-            _lastDataFetch = DateTime.UtcNow;
++            entry.Data = doc.RootElement.Clone();
++            entry.LastSuccess = DateTime.UtcNow;
+         }
+         catch (Exception ex)
+         {
+-            _logger.LogWarning(ex, "Failed to fetch weather data");
++            // Text deliberately isn't set to an error string here — entry.Data (and therefore
++            // the last good reading) is left in place so a transient failure doesn't blank out
++            // a widget that was working a moment ago. A persistent misconfiguration (bad key,
++            // unknown city) will keep showing "—" from the initial state, which is a known gap:
++            // see the "silent save/fetch failures have no UI feedback" note in the audit — worth
++            // the same StatusMessage-style treatment as skins.json save failures at some point.
++            _logger.LogWarning(ex, "Failed to fetch weather data for city \"{City}\"", cityRaw);
+         }
+     }
+ }
+diff --git a/ThemeManager.Integration/SystemThemeIntegrator.cs b/ThemeManager.Integration/SystemThemeIntegrator.cs
+index c36fa50..e5a939d 100644
+--- a/ThemeManager.Integration/SystemThemeIntegrator.cs
++++ b/ThemeManager.Integration/SystemThemeIntegrator.cs
+@@ -1,4 +1,3 @@
+-using System.Diagnostics;
+ using System.Runtime.InteropServices;
+ using Microsoft.Win32;
+ using ThemeManager.Core.Services;
+@@ -243,44 +242,12 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
+             out _);
+     }
+ 
+-    /// <returns>True if explorer.exe is confirmed running again afterward.</returns>
+-    private bool RestartExplorer()
+-    {
+-        try
+-        {
+-            foreach (var proc in Process.GetProcessesByName("explorer"))
+-            {
+-                try { proc.Kill(); }
+-                catch (Exception ex) { _logger.LogWarning(ex, "Failed to stop an explorer.exe process (PID {Pid})", proc.Id); }
+-            }
+-
+-            // Windows itself sometimes relaunches explorer.exe on its own within a beat —
+-            // poll briefly before assuming we need to start it ourselves.
+-            for (int i = 0; i < 10 && !Process.GetProcessesByName("explorer").Any(); i++)
+-                Thread.Sleep(200);
+-
+-            if (!Process.GetProcessesByName("explorer").Any())
+-            {
+-                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
+-                Thread.Sleep(500);
+-            }
+-
+-            bool running = Process.GetProcessesByName("explorer").Any();
+-            if (!running)
+-                _logger.LogWarning("explorer.exe didn't come back up after restart — accent color was written but won't be visible until you sign out and back in, or start it manually");
+-
+-            return running;
+-        }
+-        catch (Exception ex)
+-        {
+-            // This used to be a bare catch {} that swallowed everything with zero logging —
+-            // that's almost certainly why accent colors were reported as "applied" while
+-            // never actually becoming visible: the one step that forces Windows to redraw
+-            // with the new values was failing silently on some machines.
+-            _logger.LogWarning(ex, "Failed to restart explorer.exe — accent color was written but won't be visible until you sign out and back in");
+-            return false;
+-        }
+-    }
++    // Note: an earlier approach restarted explorer.exe to force a redraw after writing accent
++    // registry values. That's no longer needed — BroadcastSettingsChange (WM_SETTINGCHANGE)
++    // above is what actually makes DWM pick up the new color — and killing/relaunching Explorer
++    // is disruptive (closes open Explorer windows) for no benefit. Deleted rather than left
++    // dead: if it's ever called again it silently reintroduces the exact "accent reverts a
++    // second later" bug the ColorizationColorBalance/WM_SETTINGCHANGE fixes resolved.
+ 
+ 
+     private static byte[] BuildAccentPalette(byte r, byte g, byte b)
+diff --git a/ThemeManager.WinUI/ViewModels/SkinEditorViewModel.cs b/ThemeManager.WinUI/ViewModels/SkinEditorViewModel.cs
+index 601f39b..3ec5b4e 100644
+--- a/ThemeManager.WinUI/ViewModels/SkinEditorViewModel.cs
++++ b/ThemeManager.WinUI/ViewModels/SkinEditorViewModel.cs
+@@ -31,6 +31,7 @@ public sealed class MeasureEditorItem : ViewModelBase
+             if (!SetProperty(ref _type, value)) return;
+             Definition.Type = value;
+             OnPropertyChanged(nameof(NeedsTarget));
++            OnPropertyChanged(nameof(TargetPlaceholder));
+             _onChanged();
+         }
+     }
+@@ -42,8 +43,17 @@ public sealed class MeasureEditorItem : ViewModelBase
+         set { if (SetProperty(ref _target, value)) { Definition.Target = value; _onChanged(); } }
+     }
+ 
+-    /// <summary>Only DiskFree/DiskUsed care about a drive path — the property panel shows the field only then.</summary>
+-    public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed;
++    /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
++    /// other measure type is self-contained, so the property panel only shows the field then.</summary>
++    public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed
++        or MeasureType.WeatherTemp or MeasureType.WeatherDesc;
++
++    /// <summary>Hint text for the Target field, since what it means depends on the measure type.</summary>
++    public string TargetPlaceholder => Type switch
++    {
++        MeasureType.WeatherTemp or MeasureType.WeatherDesc => "City|API key, e.g. London,GB|your_openweathermap_key",
++        _ => @"Drive, e.g. C:\",
++    };
+ 
+     public MeasureEditorItem(MeasureDefinition definition, Action onChanged)
+     {
+diff --git a/ThemeManager.WinUI/ViewModels/WidgetGeneratorViewModel.cs b/ThemeManager.WinUI/ViewModels/WidgetGeneratorViewModel.cs
+index 3ed7be2..f67bf69 100644
+--- a/ThemeManager.WinUI/ViewModels/WidgetGeneratorViewModel.cs
++++ b/ThemeManager.WinUI/ViewModels/WidgetGeneratorViewModel.cs
+@@ -1,7 +1,11 @@
+ using System.Collections.ObjectModel;
++using System.Runtime.InteropServices;
++using Microsoft.UI;
++using Microsoft.UI.Windowing;
+ using ThemeManager.Core.NLP;
+ using ThemeManager.Core.Skins;
+ using ThemeManager.WinUI.Services;
++using WinRT.Interop;
+ 
+ namespace ThemeManager.WinUI.ViewModels;
+ 
+@@ -104,6 +108,36 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
+ 
+     public WidgetGeneratorViewModel(SkinManagerService manager) => _manager = manager;
+ 
++    [DllImport("user32.dll")]
++    private static extern uint GetDpiForWindow(IntPtr hwnd);
++
++    /// <summary>
++    /// Work-area size (in DIPs) of the monitor the main window is currently on, so a prompt like
++    /// "top right" lands on the screen the user is actually looking at instead of an assumed
++    /// 1920x1080. Same DPI-conversion approach as SkinHostWindow's _scaleFactor. Returns null on
++    /// any failure — WidgetVibeGenerator falls back to its own default in that case, so a bad
++    /// lookup here can never block generation, only make positioning less precise.
++    /// </summary>
++    private static (double Width, double Height)? GetScreenSizeDips()
++    {
++        try
++        {
++            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
++            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
++            var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
++            if (displayArea is null) return null;
++
++            double scale = GetDpiForWindow(hwnd) / 96.0;
++            if (scale <= 0) scale = 1.0;
++
++            return (displayArea.WorkArea.Width / scale, displayArea.WorkArea.Height / scale);
++        }
++        catch
++        {
++            return null;
++        }
++    }
++
+     /// <summary>Sets the prompt text from a suggestion chip and generates immediately — same UX as VibeGeneratorViewModel.UseChipAsync.</summary>
+     public async Task UseChipAsync(string chip)
+     {
+@@ -124,7 +158,9 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
+         try
+         {
+             var text = PromptText.Trim();
+-            var (skin, analysis) = await Task.Run(() => _generator.GenerateAndExplain(text));
++            var screen = GetScreenSizeDips();
++            var (skin, analysis) = await Task.Run(() =>
++                _generator.GenerateAndExplain(text, screen?.Width, screen?.Height));
+ 
+             Analysis = analysis;
+             GeneratedSkin = skin;
+diff --git a/ThemeManager.WinUI/Views/SkinEditorPage.xaml b/ThemeManager.WinUI/Views/SkinEditorPage.xaml
+index bccc9f1..3ec844c 100644
+--- a/ThemeManager.WinUI/Views/SkinEditorPage.xaml
++++ b/ThemeManager.WinUI/Views/SkinEditorPage.xaml
+@@ -107,7 +107,7 @@
+                                                           SelectedItem="{x:Bind Type, Mode=TwoWay}"
+                                                           HorizontalAlignment="Stretch" />
+                                                 <TextBox Text="{x:Bind Target, Mode=TwoWay}"
+-                                                         PlaceholderText="Drive, e.g. C:\"
++                                                         PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
+                                                          Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                             </StackPanel>
+                                         </Border>

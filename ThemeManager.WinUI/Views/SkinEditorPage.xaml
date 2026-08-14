@@ -107,7 +107,7 @@
                                                           SelectedItem="{x:Bind Type, Mode=TwoWay}"
                                                           HorizontalAlignment="Stretch" />
                                                 <TextBox Text="{x:Bind Target, Mode=TwoWay}"
-                                                         PlaceholderText="Drive, e.g. C:\"
+                                                         PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
                                                          Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                             </StackPanel>
                                         </Border>

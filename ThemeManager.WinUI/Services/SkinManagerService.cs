@@ -248,11 +248,15 @@ public sealed class SkinManagerService : IDisposable
         catch (IOException ex)
         {
             _logger.LogWarning(ex, "Failed to persist skins.json (file locked). It will be saved on the next edit.");
+            SaveFailed?.Invoke(this, "Widget changes couldn't be saved (file was locked) — they'll be saved with the next edit.");
         }
         
         if (notifyListChanged)
             SkinsChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised when a save fails so the UI can show a transient warning.</summary>
+    public event EventHandler<string>? SaveFailed;
 
     public void Dispose()
     {

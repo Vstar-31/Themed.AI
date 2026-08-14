@@ -1,7 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.Services;
+using WinRT.Interop;
 
 namespace ThemeManager.WinUI.ViewModels;
 
@@ -104,6 +108,36 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
 
     public WidgetGeneratorViewModel(SkinManagerService manager) => _manager = manager;
 
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    /// <summary>
+    /// Work-area size (in DIPs) of the monitor the main window is currently on, so a prompt like
+    /// "top right" lands on the screen the user is actually looking at instead of an assumed
+    /// 1920x1080. Same DPI-conversion approach as SkinHostWindow's _scaleFactor. Returns null on
+    /// any failure — WidgetVibeGenerator falls back to its own default in that case, so a bad
+    /// lookup here can never block generation, only make positioning less precise.
+    /// </summary>
+    private static (double Width, double Height)? GetScreenSizeDips()
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+            var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+            if (displayArea is null) return null;
+
+            double scale = GetDpiForWindow(hwnd) / 96.0;
+            if (scale <= 0) scale = 1.0;
+
+            return (displayArea.WorkArea.Width / scale, displayArea.WorkArea.Height / scale);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Sets the prompt text from a suggestion chip and generates immediately — same UX as VibeGeneratorViewModel.UseChipAsync.</summary>
     public async Task UseChipAsync(string chip)
     {
@@ -124,7 +158,9 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
         try
         {
             var text = PromptText.Trim();
-            var (skin, analysis) = await Task.Run(() => _generator.GenerateAndExplain(text));
+            var screen = GetScreenSizeDips();
+            var (skin, analysis) = await Task.Run(() =>
+                _generator.GenerateAndExplain(text, screen?.Width, screen?.Height));
 
             Analysis = analysis;
             GeneratedSkin = skin;

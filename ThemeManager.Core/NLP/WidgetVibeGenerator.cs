@@ -29,14 +29,37 @@ public sealed record WidgetAnalysisResult(
 public sealed class WidgetVibeGenerator
 {
     private const double DefaultMargin = 16;
-    private const double AssumedScreenWidth = 1920;  // most common resolution; drag it in the
-    private const double AssumedScreenHeight = 1080; // editor in seconds if yours is different
+    private static readonly double AssumedScreenWidth = GetScreenWidth();
+    private static readonly double AssumedScreenHeight = GetScreenHeight();
 
-    public SkinDefinition Generate(string promptText) => GenerateAndExplain(promptText).Skin;
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
 
-    public WidgetAnalysisResult Explain(string promptText) => GenerateAndExplain(promptText).Analysis;
+    private static double GetScreenWidth()
+    {
+        try { return GetSystemMetrics(0); } // SM_CXSCREEN
+        catch { return 1920; }
+    }
+    private static double GetScreenHeight()
+    {
+        try { return GetSystemMetrics(1); } // SM_CYSCREEN
+        catch { return 1080; }
+    }
 
-    public (SkinDefinition Skin, WidgetAnalysisResult Analysis) GenerateAndExplain(string promptText)
+    public SkinDefinition Generate(string promptText, double? screenWidth = null, double? screenHeight = null) =>
+        GenerateAndExplain(promptText, screenWidth, screenHeight).Skin;
+
+    public WidgetAnalysisResult Explain(string promptText, double? screenWidth = null, double? screenHeight = null) =>
+        GenerateAndExplain(promptText, screenWidth, screenHeight).Analysis;
+
+    /// <param name="promptText">The plain-English widget description.</param>
+    /// <param name="screenWidth">Target monitor's work-area width, in DIPs. Defaults to
+    /// <see cref="AssumedScreenWidth"/> when null. Callers with a live window (see
+    /// WidgetGeneratorViewModel.GetScreenSizeDips) should pass the real size so "top right" /
+    /// "bottom left" land correctly on anything other than a 1920x1080 primary display.</param>
+    /// <param name="screenHeight">Same as <paramref name="screenWidth"/>, for height.</param>
+    public (SkinDefinition Skin, WidgetAnalysisResult Analysis) GenerateAndExplain(
+        string promptText, double? screenWidth = null, double? screenHeight = null)
     {
         var tokens = VibeTokenizer.TokenizeFull(promptText);
 
@@ -102,7 +125,7 @@ public sealed class WidgetVibeGenerator
         else if (matchedKeywords.Contains("anim")) emoji = "🎌";
         else if (matchedKeywords.Contains("cute") || matchedKeywords.Contains("kawaii") || matchedKeywords.Contains("chibi")) emoji = "🎀";
 
-        var skin = BuildSkin(measures, kindPreference, sizeScale, preferBold, vertical, horizontal, usedFallback, promptText, emoji);
+        var skin = BuildSkin(measures, kindPreference, sizeScale, preferBold, vertical, horizontal, usedFallback, promptText, emoji, screenWidth, screenHeight);
 
         var analysis = new WidgetAnalysisResult(
             matchedKeywords, fuzzyCorrections, measures, usedFallback, sizeScale, kindPreference, vertical, horizontal);
@@ -114,7 +137,8 @@ public sealed class WidgetVibeGenerator
 
     private static SkinDefinition BuildSkin(
         List<MeasureType> measures, MeterKind? kindPreference, double sizeScale, bool bold,
-        string? vertical, string? horizontal, bool usedFallback, string promptText, string? emoji)
+        string? vertical, string? horizontal, bool usedFallback, string promptText, string? emoji,
+        double? screenWidth, double? screenHeight)
     {
         var skin = new SkinDefinition
         {
@@ -150,7 +174,7 @@ public sealed class WidgetVibeGenerator
         skin.Width = meterWidth + DefaultMargin * 2;
         skin.Height = y + DefaultMargin;
 
-        (skin.X, skin.Y) = ComputePosition(vertical, horizontal, skin.Width, skin.Height);
+        (skin.X, skin.Y) = ComputePosition(vertical, horizontal, skin.Width, skin.Height, screenWidth, screenHeight);
 
         return skin;
     }
@@ -238,10 +262,14 @@ public sealed class WidgetVibeGenerator
         }
     }
 
-    private static (double X, double Y) ComputePosition(string? vertical, string? horizontal, double width, double height)
+    private static (double X, double Y) ComputePosition(
+        string? vertical, string? horizontal, double width, double height,
+        double? screenWidth, double? screenHeight)
     {
-        double x = horizontal == "right" ? AssumedScreenWidth - width - 40 : 40;
-        double yPos = vertical == "bottom" ? AssumedScreenHeight - height - 40 : 40;
+        double sw = screenWidth is > 0 ? screenWidth.Value : AssumedScreenWidth;
+        double sh = screenHeight is > 0 ? screenHeight.Value : AssumedScreenHeight;
+        double x = horizontal == "right" ? sw - width - 40 : 40;
+        double yPos = vertical == "bottom" ? sh - height - 40 : 40;
         return (x, yPos);
     }
 

@@ -8,6 +8,7 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
 {
     private readonly SkinManagerService _manager;
     private readonly EventHandler _skinsChangedHandler;
+    private readonly EventHandler<string> _saveFailedHandler;
 
     public ObservableCollection<SkinDefinition> Skins { get; } = new();
 
@@ -27,6 +28,9 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         // navigation would add another permanent listener.
         _skinsChangedHandler = (_, _) => RefreshList();
         _manager.SkinsChanged += _skinsChangedHandler;
+
+        _saveFailedHandler = (_, msg) => StatusMessage = msg;
+        _manager.SaveFailed += _saveFailedHandler;
 
         RefreshList();
     }
@@ -94,6 +98,7 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         _manager.SkinsChanged -= _skinsChangedHandler;
+        _manager.SaveFailed -= _saveFailedHandler;
     }
 
     private void RefreshList()

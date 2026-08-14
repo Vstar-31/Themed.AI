@@ -31,6 +31,7 @@ public sealed class MeasureEditorItem : ViewModelBase
             if (!SetProperty(ref _type, value)) return;
             Definition.Type = value;
             OnPropertyChanged(nameof(NeedsTarget));
+            OnPropertyChanged(nameof(TargetPlaceholder));
             _onChanged();
         }
     }
@@ -42,8 +43,17 @@ public sealed class MeasureEditorItem : ViewModelBase
         set { if (SetProperty(ref _target, value)) { Definition.Target = value; _onChanged(); } }
     }
 
-    /// <summary>Only DiskFree/DiskUsed care about a drive path — the property panel shows the field only then.</summary>
-    public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed;
+    /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
+    /// other measure type is self-contained, so the property panel only shows the field then.</summary>
+    public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed
+        or MeasureType.WeatherTemp or MeasureType.WeatherDesc;
+
+    /// <summary>Hint text for the Target field, since what it means depends on the measure type.</summary>
+    public string TargetPlaceholder => Type switch
+    {
+        MeasureType.WeatherTemp or MeasureType.WeatherDesc => "City|API key, e.g. London,GB|your_openweathermap_key",
+        _ => @"Drive, e.g. C:\",
+    };
 
     public MeasureEditorItem(MeasureDefinition definition, Action onChanged)
     {
