@@ -29,22 +29,8 @@ public sealed record WidgetAnalysisResult(
 public sealed class WidgetVibeGenerator
 {
     private const double DefaultMargin = 16;
-    private static readonly double AssumedScreenWidth = GetScreenWidth();
-    private static readonly double AssumedScreenHeight = GetScreenHeight();
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int nIndex);
-
-    private static double GetScreenWidth()
-    {
-        try { return GetSystemMetrics(0); } // SM_CXSCREEN
-        catch { return 1920; }
-    }
-    private static double GetScreenHeight()
-    {
-        try { return GetSystemMetrics(1); } // SM_CYSCREEN
-        catch { return 1080; }
-    }
+    private const double AssumedScreenWidth = 1920;  // most common resolution; drag it in the
+    private const double AssumedScreenHeight = 1080; // editor in seconds if yours is different
 
     public SkinDefinition Generate(string promptText, double? screenWidth = null, double? screenHeight = null) =>
         GenerateAndExplain(promptText, screenWidth, screenHeight).Skin;
