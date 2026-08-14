@@ -126,6 +126,12 @@ public sealed partial class SkinEditorPage : Page
 
     private void RebuildPreview()
     {
+        // Unsubscribe from old elements before clearing to prevent memory leaks and redundant layout cycles
+        foreach (var meter in _previewElements.Keys)
+        {
+            meter.PropertyChanged -= Meter_PreviewPropertyChangedHandler;
+        }
+
         PreviewCanvas.Children.Clear();
         _previewElements.Clear();
 
@@ -149,14 +155,19 @@ public sealed partial class SkinEditorPage : Page
             PreviewCanvas.Children.Add(container);
             _previewElements[meter] = container;
 
-            // Re-subscribed on every rebuild, including for meters that survive it — a meter
-            // that's been through several add/remove cycles this session ends up with a few
-            // redundant (but harmless — Canvas.SetLeft/Top are idempotent) extra subscriptions.
-            // Not worth the extra bookkeeping to avoid given how few meters a widget realistically has.
-            meter.PropertyChanged += (_, args) => Meter_PreviewPropertyChanged(meter, container, args.PropertyName);
+            // Use a dedicated handler method so we can unsubscribe later
+            meter.PropertyChanged += Meter_PreviewPropertyChangedHandler;
         }
 
         HighlightSelection();
+    }
+
+    private void Meter_PreviewPropertyChangedHandler(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (sender is MeterEditorItem meter && _previewElements.TryGetValue(meter, out var container))
+        {
+            Meter_PreviewPropertyChanged(meter, container, args.PropertyName);
+        }
     }
 
     private static FrameworkElement BuildPreviewContent(MeterEditorItem meter)

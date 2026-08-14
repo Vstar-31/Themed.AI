@@ -65,6 +65,7 @@ public sealed class SkinManagerService : IDisposable
                 
                 dispatcher.TryEnqueue(() =>
                 {
+                    if (viewModel.IsClosed) return;
                     try { viewModel.UpdateMeters(); }
                     catch (Exception ex) { _logger.LogWarning(ex, "A widget failed to update its meters this tick"); }
                 });
@@ -236,6 +237,8 @@ public sealed class SkinManagerService : IDisposable
     {
         if (!_open.TryGetValue(skin.Id, out var entry)) return;
         _open.Remove(skin.Id);
+        entry.ViewModel.IsClosed = true;
+        entry.Window.PrepareForClose();
         entry.Window.Close();
     }
 

@@ -25,8 +25,22 @@ public sealed partial class WidgetGeneratorPage : Page
 
     private async void OpenEditorButton_Click(object sender, RoutedEventArgs e)
     {
-        var skin = await ViewModel.AcceptAndOpenEditorAsync();
-        if (skin is not null)
-            Frame.Navigate(typeof(SkinEditorPage), skin);
+        try
+        {
+            var skin = await ViewModel.AcceptAndOpenEditorAsync();
+            if (skin is not null)
+                Frame.Navigate(typeof(SkinEditorPage), skin);
+        }
+        catch (Exception ex)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Error opening editor",
+                Content = $"An error occurred while preparing the widget:\n\n{ex.Message}",
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
     }
 }

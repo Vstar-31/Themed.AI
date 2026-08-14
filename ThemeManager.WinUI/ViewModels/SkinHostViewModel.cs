@@ -16,6 +16,7 @@ public sealed class SkinHostViewModel : ViewModelBase
 {
     public SkinDefinition Definition { get; }
     public ObservableCollection<MeterViewModelBase> Meters { get; } = new();
+    public bool IsClosed { get; set; }
 
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
     private readonly ILogger? _logger;

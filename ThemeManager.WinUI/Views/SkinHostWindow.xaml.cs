@@ -154,6 +154,15 @@ public sealed partial class SkinHostWindow : Window
         }
     }
 
+    public void PrepareForClose()
+    {
+        try
+        {
+            this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = null;
+        }
+        catch { }
+    }
+
     // ── Applied live by SkinManagerService when a setting changes ─────────────
 
     public void ApplyPosition(double x, double y) =>
