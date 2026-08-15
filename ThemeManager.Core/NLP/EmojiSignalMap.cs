@@ -62,6 +62,7 @@ public static class EmojiSignalMap
         ("💙", "blue calm"),   ("💚","green"),         ("💛","yellow warm"),
         ("🧡", "orange warm"), ("❤️",  "red passionate"),("🩵","light blue soft"),
         ("🩷", "pink soft"),   ("🤎","brown earthy"),  ("🪷","lavender"),
+        ("📚", "study book"),
 
         // ── Places / scenes ───────────────────────────────────────────────────
         ("🗼", "paris"),       ("⛩",  "japan"),       ("🕌","moroccan"),

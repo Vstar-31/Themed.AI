@@ -2,6 +2,7 @@ using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Services;
 using ThemeManager.Core.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace ThemeManager.WinUI.ViewModels;
 
@@ -17,6 +18,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     private readonly PaletteHistory  _history = new();
     private CozyTheme _working = CozyDefaults.CreateDefault();
     private readonly EventHandler _historyChangedHandler;
+    private readonly ILogger<ThemeEditorViewModel> _logger;
 
     public ThemeEditorViewModel(ThemeService themeService)
     {
@@ -28,6 +30,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
             OnPropertyChanged(nameof(UndoDepthLabel));
         };
         _history.HistoryChanged += _historyChangedHandler;
+        _logger = App.LoggerFactory.CreateLogger<ThemeEditorViewModel>();
         LoadTheme(themeService.ActiveTheme);
     }
 
@@ -175,6 +178,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         _themeService.NotifyThemeTokenChanged();
         StatusMessage = "Undone.";
         Dirty = true;
+        _logger.LogInformation("User undid previous theme action.");
     }
 
     public void Redo()
@@ -186,6 +190,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         _themeService.NotifyThemeTokenChanged();
         StatusMessage = "Redone.";
         Dirty = true;
+        _logger.LogInformation("User redid next theme action.");
     }
 
     // ── Contrast results ──────────────────────────────────────────────────────
@@ -215,6 +220,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         SyncPropertiesFromWorking();
         RefreshContrast();
         Dirty = false;
+        _logger.LogInformation("Loaded theme into editor: {ThemeName}", theme.Name);
     }
 
     public async Task SaveAsync()
@@ -224,10 +230,12 @@ public sealed class ThemeEditorViewModel : ViewModelBase
             await _themeService.SaveThemeAsync(_working);
             Dirty = false;
             StatusMessage = $"\"{_working.Name}\" saved.";
+            _logger.LogInformation("User saved theme: {ThemeName}", _working.Name);
         }
         catch (IOException ex)
         {
             StatusMessage = $"Save failed: {ex.Message}";
+            _logger.LogError(ex, "Failed to save theme: {ThemeName}", _working.Name);
         }
     }
 
@@ -240,6 +248,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         RefreshContrast();
         StatusMessage = "Reverted to Cozy Café defaults.";
         Dirty = true;
+        _logger.LogInformation("User reverted theme to Cozy defaults.");
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -254,6 +263,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         Dirty = true;
         RefreshContrast();
         _themeService.NotifyThemeTokenChanged();
+        _logger.LogDebug("User manually modified a theme token.");
     }
 
     /// <summary>
@@ -272,6 +282,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         Dirty = true;
         RefreshContrast();
         _themeService.NotifyThemeTokenChanged();
+        _logger.LogInformation("Harmony lock applied: regenerated entire palette from Accent hex {AccentHex}", newAccentHex);
     }
 
     private void SyncPropertiesFromWorking()

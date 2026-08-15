@@ -29,7 +29,10 @@ public sealed partial class WidgetGeneratorPage : Page
         {
             var skin = await ViewModel.AcceptAndOpenEditorAsync();
             if (skin is not null)
-                Frame.Navigate(typeof(SkinEditorPage), skin);
+            {
+                var editorWindow = new WidgetEditorWindow();
+                editorWindow.Activate();
+            }
         }
         catch (Exception ex)
         {

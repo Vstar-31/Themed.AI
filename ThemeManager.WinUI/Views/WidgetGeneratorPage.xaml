@@ -73,6 +73,8 @@
 
                 <!-- Result / insights -->
                 <Border Style="{StaticResource CardStyle}"
+                        BorderBrush="{StaticResource PrimaryAccentBrush}"
+                        BorderThickness="2"
                         Visibility="{x:Bind ViewModel.HasResult, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel Spacing="10">
                         <TextBlock Text="{x:Bind ViewModel.GeneratedSkin.Name, Mode=OneWay}"

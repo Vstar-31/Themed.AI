@@ -56,13 +56,37 @@ public partial class App : Application
     {
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
-            .WriteTo.Debug()
-            .WriteTo.File(System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "ThemeManager.AI", "logs", "app-.log"), rollingInterval: RollingInterval.Day)
+            .Enrich.FromLogContext()
+            .Enrich.WithThreadId()
+            .Enrich.WithMachineName()
+            .WriteTo.Debug(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj} (Thread:{ThreadId}){NewLine}{Exception}")
+            .WriteTo.File(System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "ThemeManager.AI", "logs", "app-.log"), 
+                          rollingInterval: RollingInterval.Day,
+                          outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj} (Thread:{ThreadId}){NewLine}{Exception}")
             .CreateLogger();
 
         LoggerFactory = new LoggerFactory().AddSerilog(Log.Logger);
         var logger = LoggerFactory.CreateLogger<App>();
         logger.LogInformation("Application Starting...");
+
+        // ── Global Exception Handling ──
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            logger.LogCritical((Exception)e.ExceptionObject, "AppDomain Unhandled Exception. Terminating: {IsTerminating}", e.IsTerminating);
+            Log.CloseAndFlush();
+        };
+
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            logger.LogCritical(e.Exception, "Unobserved Task Exception");
+            e.SetObserved();
+        };
+
+        this.UnhandledException += (s, e) =>
+        {
+            logger.LogCritical(e.Exception, "WinUI Unhandled Exception: {Message}", e.Message);
+            e.Handled = true; // Attempt to keep running if possible
+        };
 
         SystemIntegrator = new SystemThemeIntegrator(LoggerFactory.CreateLogger<SystemThemeIntegrator>());
 
@@ -122,6 +146,8 @@ public partial class App : Application
         {
             SkinManager.Dispose();
             Tray.Dispose();
+            logger.LogInformation("Application Shutting Down...");
+            Log.CloseAndFlush();
         };
     }
 

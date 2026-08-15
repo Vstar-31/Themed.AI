@@ -5,6 +5,7 @@ using Microsoft.UI.Windowing;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.Services;
+using Microsoft.Extensions.Logging;
 using WinRT.Interop;
 
 namespace ThemeManager.WinUI.ViewModels;
@@ -20,6 +21,7 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
 {
     private readonly SkinManagerService _manager;
     private readonly WidgetVibeGenerator _generator = new();
+    private readonly ILogger<WidgetGeneratorViewModel> _logger;
 
     // ── Prompt text ───────────────────────────────────────────────────────────
     private string _promptText = "";
@@ -106,7 +108,11 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
         set => SetProperty(ref _status, value);
     }
 
-    public WidgetGeneratorViewModel(SkinManagerService manager) => _manager = manager;
+    public WidgetGeneratorViewModel(SkinManagerService manager)
+    {
+        _manager = manager;
+        _logger = App.LoggerFactory.CreateLogger<WidgetGeneratorViewModel>();
+    }
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -141,6 +147,7 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
     /// <summary>Sets the prompt text from a suggestion chip and generates immediately — same UX as VibeGeneratorViewModel.UseChipAsync.</summary>
     public async Task UseChipAsync(string chip)
     {
+        _logger.LogInformation("User selected widget suggestion chip: {Chip}", chip);
         PromptText = chip;
         await GenerateAsync();
     }
@@ -152,27 +159,48 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
         if (!CanGenerate) return;
 
         IsBusy = true;
-        HasResult = false;
         Status = "Reading your description…";
+        _logger.LogInformation("Generating/Refining widget for text: {PromptText}", PromptText);
 
         try
         {
             var text = PromptText.Trim();
-            var screen = GetScreenSizeDips();
-            var (skin, analysis) = await Task.Run(() =>
-                _generator.GenerateAndExplain(text, screen?.Width, screen?.Height));
 
-            Analysis = analysis;
-            GeneratedSkin = skin;
-            HasResult = true;
+            // Phase 5: Conversational Refinement
+            bool isRefinement = text.Contains("bigger") || text.Contains("smaller") || text.Contains("remove") || text.Contains("delete");
+            
+            if (HasResult && GeneratedSkin != null && isRefinement)
+            {
+                var skin = await Task.Run(() => _generator.Refine(GeneratedSkin, text));
+                // Force a property change notification
+                var temp = GeneratedSkin;
+                GeneratedSkin = null;
+                GeneratedSkin = skin;
+                
+                Status = $"Refined \"{skin.Name}\" based on conversational input.";
+                _logger.LogInformation("Widget conversational refinement succeeded. Refined skin: {SkinName}", skin.Name);
+            }
+            else
+            {
+                HasResult = false;
+                var screen = GetScreenSizeDips();
+                var (skin, analysis) = await Task.Run(() =>
+                    _generator.GenerateAndExplain(text, screen?.Width, screen?.Height));
 
-            Status = analysis.UsedFallback
-                ? $"Generated \"{skin.Name}\" — no specific measures detected, so this is a simple starting point."
-                : $"Generated \"{skin.Name}\" from {analysis.MatchedKeywords.Count} matched word(s).";
+                Analysis = analysis;
+                GeneratedSkin = skin;
+                HasResult = true;
+
+                Status = analysis.UsedFallback
+                    ? $"Generated \"{skin.Name}\" — no specific measures detected, so this is a simple starting point."
+                    : $"Generated \"{skin.Name}\" from {analysis.MatchedKeywords.Count} matched word(s).";
+                _logger.LogInformation("Widget generation succeeded. Generated skin: {SkinName}, UsedFallback: {UsedFallback}", skin.Name, analysis.UsedFallback);
+            }
         }
         catch (Exception ex)
         {
             Status = $"Error: {ex.Message}";
+            _logger.LogError(ex, "Failed to generate or refine widget.");
         }
         finally
         {
@@ -184,6 +212,7 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
     public async Task<SkinDefinition?> AcceptAndOpenEditorAsync()
     {
         if (GeneratedSkin is null) return null;
+        _logger.LogInformation("User opening generated skin in editor: {SkinName}", GeneratedSkin.Name);
         await _manager.AddGeneratedSkinAsync(GeneratedSkin);
         return GeneratedSkin;
     }

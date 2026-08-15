@@ -38,6 +38,76 @@ public sealed class WidgetVibeGenerator
     public WidgetAnalysisResult Explain(string promptText, double? screenWidth = null, double? screenHeight = null) =>
         GenerateAndExplain(promptText, screenWidth, screenHeight).Analysis;
 
+    /// <summary>
+    /// Phase 5 Conversational Refinement: Parses a follow-up prompt to modify an existing skin in place.
+    /// Example: "make the clock bigger", "remove the cpu graph"
+    /// </summary>
+    public SkinDefinition Refine(SkinDefinition baseSkin, string promptText)
+    {
+        var tokens = VibeTokenizer.TokenizeFull(promptText);
+        
+        bool makeBigger = false;
+        bool makeSmaller = false;
+        bool removeMode = false;
+        
+        foreach(var raw in tokens.Raw)
+        {
+            if (raw == "bigger" || raw == "large" || raw == "larger") makeBigger = true;
+            if (raw == "smaller" || raw == "small" || raw == "tiny") makeSmaller = true;
+            if (raw == "remove" || raw == "delete" || raw == "hide") removeMode = true;
+        }
+
+        var targetMeasures = new List<MeasureType>();
+        foreach (var stem in tokens.Stemmed)
+        {
+            if (WidgetLexicon.Entries.TryGetValue(stem, out var exact))
+            {
+                if (exact.Measure.HasValue) targetMeasures.Add(exact.Measure.Value);
+            }
+            else 
+            {
+                var fuzzy = WidgetFuzzyMatcher.FindClosest(stem, out var matchedKey);
+                if (fuzzy?.Measure != null) targetMeasures.Add(fuzzy.Measure.Value);
+            }
+        }
+
+        if (removeMode && targetMeasures.Count > 0)
+        {
+            foreach(var t in targetMeasures)
+            {
+                string targetName = t.ToString();
+                baseSkin.Meters.RemoveAll(m => m.MeasureName == targetName);
+                baseSkin.Measures.RemoveAll(m => m.Name == targetName);
+            }
+            return baseSkin;
+        }
+
+        double scaleFactor = 1.0;
+        if (makeBigger) scaleFactor = 1.25;
+        if (makeSmaller) scaleFactor = 0.8;
+
+        if (scaleFactor != 1.0)
+        {
+            foreach (var meter in baseSkin.Meters)
+            {
+                bool applies = targetMeasures.Count == 0 || (meter.MeasureName != null && targetMeasures.Select(m => m.ToString()).Contains(meter.MeasureName));
+                if (applies)
+                {
+                    meter.Width *= scaleFactor;
+                    meter.Height *= scaleFactor;
+                    meter.FontSize *= scaleFactor;
+                }
+            }
+            if (targetMeasures.Count == 0)
+            {
+                baseSkin.Width *= scaleFactor;
+                baseSkin.Height *= scaleFactor;
+            }
+        }
+
+        return baseSkin;
+    }
+
     /// <param name="promptText">The plain-English widget description.</param>
     /// <param name="screenWidth">Target monitor's work-area width, in DIPs. Defaults to
     /// <see cref="AssumedScreenWidth"/> when null. Callers with a live window (see

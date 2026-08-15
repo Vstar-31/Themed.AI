@@ -1,3 +1,5 @@
+using ThemeManager.Core.Services.NLP;
+
 namespace ThemeManager.Core.NLP;
 
 /// <summary>
@@ -17,120 +19,67 @@ public static class VibeAnalyzer
         var signal = new VibeSignal();
         if (string.IsNullOrWhiteSpace(rawText)) return signal;
 
-        // ── 1. Sentiment ──────────────────────────────────────────────────────
-        signal.SentimentValence = SentimentAnalyzer.Analyze(rawText);
-
-        // ── 2. Tokenize (includes emoji expansion in Stage 0) ─────────────────
-        var result  = VibeTokenizer.TokenizeFull(rawText);
-        var stemmed = result.Stemmed;
-        var raw     = result.Raw;
-        signal.HadEmojiInput = result.HadEmoji;
-
-        if (stemmed.Count == 0) return signal;
-
-        // ── 3. Signal accumulation ────────────────────────────────────────────
-        double sinSum = 0, cosSum = 0;
-        double lightnessSum = 0, lightnessWeightSum = 0;
-        double saturationSum = 0, saturationWeightSum = 0;
-        double warmthSum = 0, warmthWeightSum = 0;
-
-        // Track which indices have already been consumed by a bigram
-        // so we don't double-count them as unigrams.
-        var consumed = new HashSet<int>();
-
-        void Accumulate(ColorSignal s, float freqBoost, string displayWord, string category)
+        // ── 1. Leverage the Phase 4 Massive Custom NLP Engine ─────────────────
+        var emotionProfile = EmotionAnalyzer.AnalyzePrompt(rawText);
+        
+        signal.SentimentValence = (float)emotionProfile.Valence;
+        
+        foreach (var token in emotionProfile.MatchedTokens)
         {
-            double hueRad = s.HueDeg * Math.PI / 180.0;
-            double hw = s.HueWeight * freqBoost;
-            sinSum += Math.Sin(hueRad) * hw;
-            cosSum += Math.Cos(hueRad) * hw;
+            signal.MatchedKeywords.Add(token);
+        }
+        
+        signal.FuzzyCorrections = emotionProfile.FuzzyCorrections;
+        signal.BigramMatches = emotionProfile.BigramMatches;
+        signal.HadEmojiInput = emotionProfile.HadEmojiInput;
 
-            lightnessSum       += s.Lightness  * s.LightnessWeight  * freqBoost;
-            lightnessWeightSum += s.LightnessWeight  * freqBoost;
+        // If no tokens matched, we have no signal
+        if (emotionProfile.MatchedTokens.Count == 0) return signal;
 
-            saturationSum       += s.Saturation * s.SaturationWeight * freqBoost;
-            saturationWeightSum += s.SaturationWeight * freqBoost;
+        // ── 2. Derive Color Math from Emotion Matrix ──────────────────────────
+        // Valence maps to Lightness (Happy = Lighter, Sad = Darker)
+        // Arousal maps to Saturation (Energetic = Saturated, Calm = Muted)
+        
+        double baseLightness = 0.50 + (emotionProfile.Valence * 0.40); // Range 0.1 to 0.9
+        double baseSaturation = 0.50 + (emotionProfile.Arousal * 0.50); // Range 0.0 to 1.0
 
-            warmthSum       += s.Warmth * hw;
-            warmthWeightSum += hw;
+        // Add a small random jitter so clicking "Refresh" actually changes the vibe slightly
+        var rnd = new Random();
+        double jitterL = (rnd.NextDouble() - 0.5) * 0.1;
+        double jitterS = (rnd.NextDouble() - 0.5) * 0.1;
 
-            if (!signal.MatchedKeywords.Contains(displayWord))
+        signal.Lightness = (float)Math.Clamp(baseLightness + jitterL, 0.05, 0.95);
+        signal.Saturation = (float)Math.Clamp(baseSaturation + jitterS, 0.02, 1.0);
+        signal.Warmth = (float)emotionProfile.Arousal; // Rough heuristic
+
+        // ── 3. Hue Selection ──────────────────────────────────────────────────
+        // If the dictionary extracted explicit colors, average them
+        if (emotionProfile.ExtractedColors.Count > 0)
+        {
+            double sinSum = 0, cosSum = 0;
+            foreach (var hex in emotionProfile.ExtractedColors)
             {
-                signal.MatchedKeywords.Add(displayWord);
-                signal.KeywordCategories[displayWord] = category;
+                var (r, g, b) = ThemeManager.Core.Utilities.ColorMath.HexToRgb(hex);
+                var hsl = ThemeManager.Core.Utilities.ColorMath.RgbToHsl(r, g, b);
+                double hueRad = hsl.H * Math.PI / 180.0;
+                sinSum += Math.Sin(hueRad);
+                cosSum += Math.Cos(hueRad);
             }
+            double hueResult = Math.Atan2(sinSum, cosSum) * 180.0 / Math.PI;
+            if (hueResult < 0) hueResult += 360.0;
+            signal.Hue = (float)hueResult;
+        }
+        else
+        {
+            // Otherwise, dynamically generate Hue based on Emotion quadrant
+            if (emotionProfile.Valence >= 0 && emotionProfile.Arousal >= 0) signal.Hue = 15f; // Warm Orange (was 45, which drifted to green)
+            else if (emotionProfile.Valence >= 0 && emotionProfile.Arousal < 0) signal.Hue = 195f; // Calm Cyan/Blue
+            else if (emotionProfile.Valence < 0 && emotionProfile.Arousal >= 0) signal.Hue = 330f; // Intense Pink/Crimson
+            else signal.Hue = 230f; // Melancholic Blue
         }
 
-        // ── Pass A: bigram scan (highest priority) ────────────────────────────
-        for (int i = 0; i < stemmed.Count - 1; i++)
-        {
-            var bsig = BigramLexicon.Lookup(stemmed[i], stemmed[i + 1]);
-            if (bsig is null) continue;
-
-            string bigramDisplay = raw.Count > i + 1
-                ? $"{raw[i]} {raw[i + 1]}"
-                : $"{stemmed[i]} {stemmed[i + 1]}";
-
-            // Bigrams get a 1.4× frequency boost — they're more specific than unigrams.
-            Accumulate(bsig, 1.4f, bigramDisplay, bsig.Category);
-            signal.BigramMatches.Add(bigramDisplay);
-            consumed.Add(i);
-            consumed.Add(i + 1);
-            i++; // skip next token — it's been consumed by this bigram
-        }
-
-        var wordCounts = new Dictionary<string, int>();
-
-        // ── Pass B: unigram + fuzzy for remaining tokens ───────────────────────
-        for (int i = 0; i < stemmed.Count; i++)
-        {
-            if (consumed.Contains(i)) continue;
-
-            string rawWord = i < raw.Count ? raw[i] : stemmed[i];
-            
-            wordCounts.TryGetValue(stemmed[i], out int count);
-            count++;
-            wordCounts[stemmed[i]] = count;
-
-            float  boost   = 1f + 0.3f * (count - 1f);
-
-            // 2a. Exact / stem match
-            var usig = ColorLexicon.Lookup(stemmed[i]);
-            if (usig is not null)
-            {
-                Accumulate(usig, boost, rawWord, usig.Category);
-                continue;
-            }
-
-            // 2b. Fuzzy fallback — only for tokens that didn't match anything
-            var fsig = FuzzyMatcher.FindClosest(stemmed[i], out string? matchedKey);
-            if (fsig is not null && matchedKey is not null)
-            {
-                // Small weight penalty for a fuzzy match (0.7×) to reflect uncertainty.
-                Accumulate(fsig, boost * 0.7f, rawWord, fsig.Category);
-                signal.FuzzyCorrections[rawWord] = matchedKey;
-            }
-        }
-
-        if (!signal.HasSignal) return signal;
-
-        // ── 4. Circular mean for hue ──────────────────────────────────────────
-        double hueResult = Math.Atan2(sinSum, cosSum) * 180.0 / Math.PI;
-        if (hueResult < 0) hueResult += 360.0;
-        signal.Hue = (float)hueResult;
-
-        // ── 5. Weighted means ─────────────────────────────────────────────────
-        signal.Lightness  = lightnessWeightSum  > 0
-            ? (float)(lightnessSum  / lightnessWeightSum)  : 0.55f;
-        signal.Saturation = saturationWeightSum > 0
-            ? (float)(saturationSum / saturationWeightSum) : 0.35f;
-        signal.Warmth     = warmthWeightSum > 0
-            ? (float)(warmthSum / warmthWeightSum) : 0f;
-
-        // ── 6. Sentiment adjustment ───────────────────────────────────────────
-        float v = signal.SentimentValence;
-        signal.Lightness  = Math.Clamp(signal.Lightness  + v * 0.06f, 0.05f, 0.95f);
-        signal.Saturation = Math.Clamp(signal.Saturation + v * 0.04f, 0.02f, 0.95f);
+        // Add random hue jitter (±15 degrees) so refresh works
+        signal.Hue = (float)((signal.Hue + (rnd.NextDouble() - 0.5) * 30.0 + 360.0) % 360.0);
 
         return signal;
     }

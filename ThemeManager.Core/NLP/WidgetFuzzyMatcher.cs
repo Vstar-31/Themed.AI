@@ -19,9 +19,10 @@ public static class WidgetFuzzyMatcher
 
         int maxDist = len switch
         {
-            <= 3 => 0,
-            <= 5 => 1,
-            _ => 2,
+            <= 3 => 1,
+            <= 5 => 3,
+            <= 8 => 3,
+            _ => 4,
         };
 
         if (maxDist == 0) return null;

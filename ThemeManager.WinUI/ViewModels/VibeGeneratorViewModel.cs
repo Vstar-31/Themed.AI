@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Services;
+using Microsoft.Extensions.Logging;
+using ThemeManager.WinUI;
 
 namespace ThemeManager.WinUI.ViewModels;
 
@@ -16,6 +18,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
 {
     private readonly VibeThemeGenerator _generator = new();
     private readonly ThemeService       _themeService;
+    private readonly ILogger<VibeGeneratorViewModel> _logger;
 
     // ── Input ─────────────────────────────────────────────────────────────────
     private string _vibeText = string.Empty;
@@ -161,6 +164,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     public VibeGeneratorViewModel(ThemeService themeService)
     {
         _themeService = themeService;
+        _logger = App.LoggerFactory.CreateLogger<VibeGeneratorViewModel>();
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -177,6 +181,8 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         HasResult  = false;
         HasNoMatch = false;
         Status     = "Reading your vibe…";
+
+        _logger.LogInformation("Generating vibe theme for text: {VibeText}", VibeText);
 
         try
         {
@@ -200,11 +206,13 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
             {
                 HasNoMatch = true;
                 Status = "Couldn't find colour signals in that text. Try adding more descriptive words.";
+                _logger.LogWarning("Vibe generation resulted in no match for text: {VibeText}", text);
             }
             else
             {
                 HasResult = true;
                 Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
+                _logger.LogInformation("Vibe generation succeeded. Generated theme: {ThemeName}", theme.Name);
 
                 // NOTE: Do NOT call SetActiveTheme here. Applying the generated
                 // theme immediately re-skins the entire app (including the result
@@ -232,10 +240,12 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
             await _themeService.SaveThemeAsync(GeneratedTheme);
             _themeService.SetActiveTheme(GeneratedTheme);
             Status = $"\"{GeneratedTheme.Name}\" saved and applied to your widgets.";
+            _logger.LogInformation("User saved and applied generated theme: {ThemeName}", GeneratedTheme.Name);
         }
         catch (IOException ex)
         {
             Status = $"Save failed: {ex.Message}";
+            _logger.LogError(ex, "Failed to save generated theme: {ThemeName}", GeneratedTheme.Name);
         }
     }
 
@@ -250,6 +260,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         package.SetText(hex);
         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
         Status = $"Copied {hex} to clipboard.";
+        _logger.LogInformation("User copied hex to clipboard: {Hex}", hex);
     }
 
     /// <summary>Regenerates with a randomised variation on the same text.</summary>
@@ -264,6 +275,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     /// <summary>Sets the vibe text from a suggestion chip and triggers generation.</summary>
     public async Task UseChipAsync(string chip)
     {
+        _logger.LogInformation("User selected vibe suggestion chip: {Chip}", chip);
         VibeText = chip;
         await GenerateAsync();
     }

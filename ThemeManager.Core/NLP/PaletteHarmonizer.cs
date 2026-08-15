@@ -45,12 +45,12 @@ public static class PaletteHarmonizer
         if (isDark)
         {
             l = Math.Clamp(l, 0.05f, 0.38f);
-            s = Math.Clamp(s, 0.08f, 0.60f);
+            s = Math.Clamp(s, 0.08f, 1.0f); // Allow full saturation for neon dark themes!
         }
         else
         {
             l = Math.Clamp(l, 0.55f, 0.92f);
-            s = Math.Clamp(s, 0.05f, 0.55f);
+            s = Math.Clamp(s, 0.05f, 1.0f); // Allow full saturation
         }
 
         // ── Generate the 8 palette slots ──────────────────────────────────────
