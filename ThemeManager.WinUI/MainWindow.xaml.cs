@@ -3,6 +3,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.Views;
 using Windows.Graphics;
 
@@ -84,6 +85,17 @@ public sealed partial class MainWindow : Window
     {
         ContentFrame.Navigate(typeof(WidgetGeneratorPage));
         SetActiveNav(NavWidgetVibe);
+    }
+
+    /// <summary>Brings the window to the foreground (it may be hidden to the tray) and navigates
+    /// straight to the editor for a specific widget. Used by the right-click "Edit" item on a
+    /// floating widget itself, which lives in its own Window and has no Frame of its own.</summary>
+    public void NavigateToSkinEditor(SkinDefinition skin)
+    {
+        AppWindow.Show();
+        Activate();
+        ContentFrame.Navigate(typeof(SkinEditorPage), skin);
+        SetActiveNav(NavWidgets);
     }
 
     /// <summary>Swaps the visual state of sidebar buttons.</summary>

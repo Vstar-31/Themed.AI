@@ -1,3 +1,4 @@
+using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -45,6 +46,14 @@ public sealed partial class SkinHostWindow : Window
 
     /// <summary>Raised when the user finishes dragging the widget to a new spot (screen coordinates).</summary>
     public event Action<double, double>? PositionChanged;
+
+    /// <summary>Raised from the widget's own right-click menu. No payload needed — the owner
+    /// (SkinManagerService) already knows which SkinDefinition this window belongs to via its
+    /// own subscription closure, same as PositionChanged above.</summary>
+    public event Action? EditRequested;
+    public event Action? LockToggleRequested;
+    public event Action? ResetPositionRequested;
+    public event Action? DisableRequested;
 
     public SkinHostWindow(SkinHostViewModel viewModel)
     {
@@ -356,14 +365,26 @@ public sealed partial class SkinHostWindow : Window
 
     // ── Drag to move (disabled while locked; naturally inert while click-through is on,
     //     since a click-through window never receives pointer events in the first place) ──
+    //     Right-click shows a context menu instead of dragging — see ShowContextMenu below.
 
     private void RootCanvas_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
+        var point = e.GetCurrentPoint(RootCanvas);
+
+        if (point.Properties.IsRightButtonPressed)
+        {
+            ShowContextMenu(point.Position);
+            return;
+        }
+
+        if (!point.Properties.IsLeftButtonPressed) return; // ignore middle-click etc.
         if (_viewModel.Definition.Locked) return;
         _dragging = true;
-        _dragAnchorLocal = e.GetCurrentPoint(RootCanvas).Position;
+        _dragAnchorLocal = point.Position;
         RootCanvas.CapturePointer(e.Pointer);
     }
+
+    private const int SnapThresholdPhysicalPx = 24; // ~16 DIPs at 150% scaling
 
     private void RootCanvas_PointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
@@ -376,7 +397,42 @@ public sealed partial class SkinHostWindow : Window
         if (deltaX == 0 && deltaY == 0) return;
 
         var pos = AppWindow.Position;
-        AppWindow.Move(new PointInt32(pos.X + deltaX, pos.Y + deltaY));
+        var (newX, newY) = SnapToScreenEdges(pos.X + deltaX, pos.Y + deltaY);
+        AppWindow.Move(new PointInt32(newX, newY));
+    }
+
+    /// <summary>Pulls the widget flush against a screen edge once it's within a few DIPs of one,
+    /// using the work area (excludes the taskbar) of whichever monitor the widget is actually on
+    /// right now — not always the primary display. Snapping is a nicety, never worth breaking
+    /// the drag over, so any lookup failure just falls back to the unsnapped position.</summary>
+    private (int X, int Y) SnapToScreenEdges(int x, int y)
+    {
+        try
+        {
+            var windowId = Win32Interop.GetWindowIdFromWindow(_hwnd);
+            var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Nearest);
+            if (displayArea is null) return (x, y);
+
+            var work = displayArea.WorkArea;
+            int width = AppWindow.Size.Width;
+            int height = AppWindow.Size.Height;
+
+            if (Math.Abs(x - work.X) <= SnapThresholdPhysicalPx)
+                x = work.X;
+            else if (Math.Abs((x + width) - (work.X + work.Width)) <= SnapThresholdPhysicalPx)
+                x = work.X + work.Width - width;
+
+            if (Math.Abs(y - work.Y) <= SnapThresholdPhysicalPx)
+                y = work.Y;
+            else if (Math.Abs((y + height) - (work.Y + work.Height)) <= SnapThresholdPhysicalPx)
+                y = work.Y + work.Height - height;
+
+            return (x, y);
+        }
+        catch
+        {
+            return (x, y);
+        }
     }
 
     private void RootCanvas_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -388,5 +444,35 @@ public sealed partial class SkinHostWindow : Window
         // Convert physical-pixel position back to DIPs for storage in SkinDefinition.
         var pos = AppWindow.Position;
         PositionChanged?.Invoke(pos.X / _scaleFactor, pos.Y / _scaleFactor);
+    }
+
+    // ── Right-click menu ──────────────────────────────────────────────────────
+
+    /// <summary>Built fresh on every right-click (not cached) so the Lock/Unlock label always
+    /// reflects the widget's current state, including changes made elsewhere (e.g. the Widgets
+    /// page) while this window has stayed open.</summary>
+    private void ShowContextMenu(Windows.Foundation.Point position)
+    {
+        var menu = new MenuFlyout();
+
+        var edit = new MenuFlyoutItem { Text = "Edit" };
+        edit.Click += (_, _) => EditRequested?.Invoke();
+        menu.Items.Add(edit);
+
+        var lockItem = new MenuFlyoutItem { Text = _viewModel.Definition.Locked ? "Unlock" : "Lock" };
+        lockItem.Click += (_, _) => LockToggleRequested?.Invoke();
+        menu.Items.Add(lockItem);
+
+        var reset = new MenuFlyoutItem { Text = "Reset Position" };
+        reset.Click += (_, _) => ResetPositionRequested?.Invoke();
+        menu.Items.Add(reset);
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+
+        var disable = new MenuFlyoutItem { Text = "Disable" };
+        disable.Click += (_, _) => DisableRequested?.Invoke();
+        menu.Items.Add(disable);
+
+        menu.ShowAt(RootCanvas, new FlyoutShowOptions { Position = position });
     }
 }

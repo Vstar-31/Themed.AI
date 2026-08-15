@@ -220,6 +220,10 @@ public sealed class SkinManagerService : IDisposable
         var window = new SkinHostWindow(viewModel);
 
         window.PositionChanged += (x, y) => OnWindowMoved(skin, x, y);
+        window.EditRequested += () => App.MainWindow.NavigateToSkinEditor(skin);
+        window.LockToggleRequested += () => _ = SetLockedAsync(skin, !skin.Locked);
+        window.ResetPositionRequested += () => _ = ResetPositionAsync(skin);
+        window.DisableRequested += () => _ = SetEnabledAsync(skin, false);
         window.Closed += (_, _) =>
         {
             // Covers the unlikely case the OS closes it for us (e.g. explorer restart) —
