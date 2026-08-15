@@ -40,7 +40,14 @@ public sealed partial class SkinHostWindow : Window
     private readonly double _scaleFactor;
 
     private bool _dragging;
-    private Windows.Foundation.Point _dragAnchorLocal;
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
+    
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    private POINT _dragAnchorScreen;
+    private PointInt32 _dragWindowStart;
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -381,7 +388,8 @@ public sealed partial class SkinHostWindow : Window
         if (!point.Properties.IsLeftButtonPressed) return; // ignore middle-click etc.
         if (_viewModel.Definition.Locked) return;
         _dragging = true;
-        _dragAnchorLocal = point.Position;
+        GetCursorPos(out _dragAnchorScreen);
+        _dragWindowStart = AppWindow.Position;
         RootCanvas.CapturePointer(e.Pointer);
     }
 
@@ -391,14 +399,12 @@ public sealed partial class SkinHostWindow : Window
     {
         if (!_dragging) return;
 
-        var current = e.GetCurrentPoint(RootCanvas).Position;
-        // Pointer deltas are in DIPs; AppWindow.Position is in physical pixels.
-        int deltaX = (int)Math.Round((current.X - _dragAnchorLocal.X) * _scaleFactor);
-        int deltaY = (int)Math.Round((current.Y - _dragAnchorLocal.Y) * _scaleFactor);
+        GetCursorPos(out var currentScreen);
+        int deltaX = currentScreen.X - _dragAnchorScreen.X;
+        int deltaY = currentScreen.Y - _dragAnchorScreen.Y;
         if (deltaX == 0 && deltaY == 0) return;
 
-        var pos = AppWindow.Position;
-        var (newX, newY) = SnapToScreenEdges(pos.X + deltaX, pos.Y + deltaY);
+        var (newX, newY) = SnapToScreenEdges(_dragWindowStart.X + deltaX, _dragWindowStart.Y + deltaY);
         AppWindow.Move(new PointInt32(newX, newY));
     }
 
