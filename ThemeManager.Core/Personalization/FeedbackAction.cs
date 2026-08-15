@@ -1,3 +1,5 @@
+using ThemeManager.Core.Skins;
+
 namespace ThemeManager.Core.Personalization;
 
 public enum FeedbackType
@@ -17,5 +19,12 @@ public class FeedbackAction
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     
     // The context that led to this item being generated, to tie feedback back to inputs
-    public GenerationContext? Context { get; set; } 
+    public GenerationContext? Context { get; set; }
+
+    // What the item actually contained once generated. GenerationContext only has the *input*
+    // (the prompt) — this is the *output*, which is what RecordFeedback needs to know which
+    // specific measures/colors to reinforce. Populate at the point you already have the
+    // generated SkinDefinition/CozyTheme in hand (e.g. WidgetCandidate.Skin.Measures).
+    public List<MeasureType>? WidgetMeasures { get; set; }
+    public string? ThemeAccentColor { get; set; }
 }

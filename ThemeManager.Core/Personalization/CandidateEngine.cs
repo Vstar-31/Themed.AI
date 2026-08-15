@@ -46,10 +46,18 @@ public class CandidateEngine
 
         if (count > 1)
         {
-            // Variant 2: Minimalist variant
+            // Variant 2: Minimalist / detailed variant
             string minPrompt = context.Constraints.Minimalist ? $"minimal {context.Prompt}" : $"detailed {context.Prompt}";
             var minWidget = _widgetGen.Generate(minPrompt, screenWidth, screenHeight);
             candidates.Add(new WidgetCandidate { Skin = minWidget, GenerationSource = "StyleInjected" });
+        }
+
+        if (count > 2)
+        {
+            // Variant 3: Bigger, bolder sizing — a genuinely different option from variant 2
+            // rather than another wording tweak on the same idea.
+            var boldWidget = _widgetGen.Generate($"big bold {context.Prompt}", screenWidth, screenHeight);
+            candidates.Add(new WidgetCandidate { Skin = boldWidget, GenerationSource = "SizeInjected" });
         }
 
         // Ideally, we'd alter the prompt based on UserProfile history to generate more variants,

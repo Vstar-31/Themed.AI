@@ -47,8 +47,13 @@ public class UserProfileManager
         {
             Directory.CreateDirectory(dir);
         }
-        
-        File.WriteAllText(_profileFilePath, json);
+
+        // Write to a temp file then rename over the real one — a plain WriteAllText can leave a
+        // truncated/corrupt profile.json if the process dies mid-write; the rename is atomic so
+        // there's no window where the file exists but is only half-written.
+        var tempPath = _profileFilePath + ".tmp";
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, _profileFilePath, overwrite: true);
     }
 
     public void ExportProfile(string targetPath)
@@ -58,45 +63,75 @@ public class UserProfileManager
         File.WriteAllText(targetPath, json);
     }
 
+    private const float BoostStep = 1f;
+    private const float MinWeight = -5f;
+    private const float MaxWeight = 5f;
+
     public void ImportProfile(string sourcePath)
     {
         if (File.Exists(sourcePath))
         {
-            string json = File.ReadAllText(sourcePath);
-            var profile = JsonSerializer.Deserialize<UserProfile>(json);
-            if (profile != null)
+            try
             {
-                _currentProfile = profile;
-                Save(); // Overwrite local state
+                string json = File.ReadAllText(sourcePath);
+                var profile = JsonSerializer.Deserialize<UserProfile>(json);
+                if (profile != null)
+                {
+                    _currentProfile = profile;
+                    Save(); // Overwrite local state
+                }
+            }
+            catch
+            {
+                // A hand-edited or corrupted import file shouldn't crash the caller — this is
+                // untrusted external input (unlike Load(), which reads our own last-known-good
+                // save), so it's at least as important to fail soft here. Existing profile is
+                // left untouched on failure.
             }
         }
     }
 
     public void RecordFeedback(FeedbackAction action)
     {
-        // Simple heuristic feedback ingestion
-        if (action.Type == FeedbackType.ExplicitLike || action.Type == FeedbackType.ImplicitApplied)
+        bool positive = action.Type is FeedbackType.ExplicitLike or FeedbackType.ImplicitApplied;
+        bool negative = action.Type is FeedbackType.ExplicitDislike or FeedbackType.ImplicitDismissed;
+
+        if (positive && !string.IsNullOrEmpty(action.ItemId) && !_currentProfile.LikedThemeIds.Contains(action.ItemId))
         {
-            if (!string.IsNullOrEmpty(action.ItemId) && !_currentProfile.LikedThemeIds.Contains(action.ItemId))
+            _currentProfile.LikedThemeIds.Add(action.ItemId);
+        }
+        else if (negative && !string.IsNullOrEmpty(action.ItemId) && !_currentProfile.DislikedThemeIds.Contains(action.ItemId))
+        {
+            _currentProfile.DislikedThemeIds.Add(action.ItemId);
+        }
+
+        // Boost (or penalize) the specific measures/color that were actually in the generated
+        // item — this is the part that was a placeholder before. Clamped so spamming feedback
+        // on the same measure/color can't grow a weight without bound.
+        if (positive || negative)
+        {
+            float delta = positive ? BoostStep : -BoostStep;
+
+            if (action.WidgetMeasures is { Count: > 0 })
             {
-                _currentProfile.LikedThemeIds.Add(action.ItemId);
+                foreach (var measure in action.WidgetMeasures)
+                {
+                    _currentProfile.WidgetPreferences.TryGetValue(measure, out float weight);
+                    _currentProfile.WidgetPreferences[measure] = Math.Clamp(weight + delta, MinWeight, MaxWeight);
+                }
             }
-            
-            // If we have context about what was generated, boost those preferences
-            if (action.Context != null)
+
+            if (!string.IsNullOrEmpty(action.ThemeAccentColor))
             {
-                // In a real implementation, we would extract the specific measures/colors
-                // that were actually in the generated item and boost those.
-                // For now, we will add a placeholder for that logic.
+                _currentProfile.ColorPreferences.TryGetValue(action.ThemeAccentColor, out float weight);
+                _currentProfile.ColorPreferences[action.ThemeAccentColor] = Math.Clamp(weight + delta, MinWeight, MaxWeight);
             }
         }
-        else if (action.Type == FeedbackType.ExplicitDislike || action.Type == FeedbackType.ImplicitDismissed)
-        {
-            if (!string.IsNullOrEmpty(action.ItemId) && !_currentProfile.DislikedThemeIds.Contains(action.ItemId))
-            {
-                _currentProfile.DislikedThemeIds.Add(action.ItemId);
-            }
-        }
+        // FeedbackType.ImplicitEdited deliberately isn't scored yet — "the user changed it
+        // after generating" is a real signal but an ambiguous one (was the original wrong, or
+        // just not quite right?) and guessing wrong would train against the wrong thing. Left
+        // as a no-op (matching the pre-existing behavior for this case) until there's a clearer
+        // read on what it should mean.
 
         Save();
     }

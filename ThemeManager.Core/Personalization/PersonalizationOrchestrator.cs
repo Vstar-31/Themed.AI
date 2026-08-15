@@ -33,8 +33,12 @@ public class PersonalizationOrchestrator
 
     public ThemeCandidate GenerateBestTheme(GenerationContext context)
     {
-        // 1. Generate Candidates
-        var candidates = _candidateEngine.GenerateThemeCandidates(context, count: 5);
+        // 1. Generate Candidates — GenerateThemeCandidates implements exactly 3 distinct
+        //    strategies (base / mood-injected / constraint-injected) right now; asking for more
+        //    than that silently returned fewer than requested, so this matches what's actually
+        //    delivered rather than promising a number the method can't back up. Bump this once
+        //    a 4th/5th strategy is worth designing (e.g. profile-history-driven prompt variants).
+        var candidates = _candidateEngine.GenerateThemeCandidates(context, count: 3);
 
         // 2. Rank Candidates based on profile and context
         var ranked = _rankingEngine.RankThemes(candidates, _profileManager.GetProfile(), context);
