@@ -31,6 +31,7 @@ public sealed class SkinManagerService : IDisposable
 
     private readonly Dictionary<string, (SkinHostWindow Window, SkinHostViewModel ViewModel)> _open = new();
     private DispatcherQueueTimer? _timer;
+    private bool _widgetsHidden;
 
     public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
     {
@@ -142,6 +143,18 @@ public sealed class SkinManagerService : IDisposable
         skin.X = x;
         skin.Y = y;
         await PersistAsync(false);
+    }
+
+    public void ToggleAllWidgetsVisibility()
+    {
+        _widgetsHidden = !_widgetsHidden;
+        foreach (var (window, _) in _open.Values)
+        {
+            if (_widgetsHidden)
+                window.AppWindow.Hide();
+            else
+                window.AppWindow.Show();
+        }
     }
 
     // ── Editor support (create / save / delete a whole widget) ──────────────────────

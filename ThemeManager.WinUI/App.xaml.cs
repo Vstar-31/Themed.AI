@@ -97,6 +97,13 @@ public partial class App : Application
             _isExiting = true;
             MainWindow.Close();
         };
+        Tray.GlobalHotkeyActivated += () =>
+        {
+            MainWindow.DispatcherQueue.TryEnqueue(() =>
+            {
+                SkinManager.ToggleAllWidgetsVisibility();
+            });
+        };
         Tray.Show();
 
         // AppWindow.Closing (not the older Window.Closed) is the one that can actually be

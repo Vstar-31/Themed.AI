@@ -38,6 +38,7 @@ public sealed class TrayIcon : IDisposable
     private const uint WM_LBUTTONUP = 0x0202;
     private const uint WM_RBUTTONUP = 0x0205;
     private const uint WM_TRAYCALLBACK = 0x8001; // WM_APP + 1 — arbitrary but must stay >= WM_APP (0x8000)
+    private const uint WM_HOTKEY = 0x0312;
 
     private const uint MF_STRING = 0x00000000;
     private const uint TPM_RETURNCMD = 0x0100;
@@ -46,6 +47,11 @@ public sealed class TrayIcon : IDisposable
 
     private const int CMD_OPEN = 1;
     private const int CMD_EXIT = 2;
+
+    private const int HOTKEY_ID = 9000;
+    private const uint MOD_SHIFT = 0x0004;
+    private const uint MOD_WIN = 0x0008;
+    private const uint VK_W = 0x57;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
@@ -120,6 +126,12 @@ public sealed class TrayIcon : IDisposable
     [DllImport("user32.dll")]
     private static extern int TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
     private readonly ILogger _logger;
     private readonly WndProcDelegate _wndProcDelegate; // held for life — see class remarks
     private IntPtr _hwnd;
@@ -130,6 +142,9 @@ public sealed class TrayIcon : IDisposable
 
     /// <summary>"Exit" from the right-click menu.</summary>
     public event Action? ExitRequested;
+
+    /// <summary>Global hotkey pressed (Win+Shift+W).</summary>
+    public event Action? GlobalHotkeyActivated;
 
     public TrayIcon(ILogger? logger = null)
     {
@@ -159,6 +174,10 @@ public sealed class TrayIcon : IDisposable
                 _logger.LogWarning("Tray icon window creation failed; continuing without a tray icon");
                 return;
             }
+
+            // Register global hotkey (Win+Shift+W)
+            if (!RegisterHotKey(_hwnd, HOTKEY_ID, MOD_WIN | MOD_SHIFT, VK_W))
+                _logger.LogWarning("Failed to register global hotkey (Win+Shift+W); another app may be using it");
 
             var data = new NOTIFYICONDATA
             {
@@ -190,6 +209,11 @@ public sealed class TrayIcon : IDisposable
                 uint mouseMsg = (uint)(lParam.ToInt64() & 0xFFFF); // LOWORD — classic (pre-v4) tray callback layout
                 if (mouseMsg == WM_LBUTTONUP) OpenRequested?.Invoke();
                 else if (mouseMsg == WM_RBUTTONUP) ShowContextMenu();
+                return IntPtr.Zero;
+            }
+            else if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+            {
+                GlobalHotkeyActivated?.Invoke();
                 return IntPtr.Zero;
             }
         }
@@ -235,6 +259,9 @@ public sealed class TrayIcon : IDisposable
     {
         try
         {
+            if (_hwnd != IntPtr.Zero)
+                UnregisterHotKey(_hwnd, HOTKEY_ID);
+
             if (_iconAdded)
             {
                 var data = new NOTIFYICONDATA { cbSize = Marshal.SizeOf<NOTIFYICONDATA>(), hWnd = _hwnd, uID = 1 };

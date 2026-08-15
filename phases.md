@@ -111,3 +111,48 @@ Phase 4  ←── community angle, makes the project feel alive
 Phase 5  ←── the "wow" feature for regular users
 Phase 6  ←── opens a completely different audience (devs)
 Phase 7  ←── do this last, when the product is stable
+
+
+
+Phase W0 — Make it real (do this before anything else)
+
+Fix the build (bug #1)
+Fix DPI scaling and the hardcoded 1920×1080 assumption (bugs #2, #4)
+Actually run it on a Windows machine once — confirm transparency, WorkerW attach, and click-through behave as the code comments assume, since none of it has been tested live yet
+Clean the repo root
+
+Phase W1 — Widget interactivity
+
+Right-click menu directly on a desktop widget (Edit / Disable / Reset position) — Rainmeter's most-used gesture; currently only reachable from the in-app Widgets page
+Multi-monitor–aware placement — "top right" should mean the monitor under the cursor, not a hardcoded resolution
+Snap-to-edge/grid while dragging
+Global hotkey to toggle a widget even when the app isn't focused
+
+Phase W2 — Richer meters
+
+Conditional/threshold coloring (CPU bar turns red past 90%) — small addition to MeterDefinition + a check in Tick()
+Per-core CPU, multi-drive disk (currently one aggregate CPU number, one hardcoded C:\)
+Image/icon meter
+"Now playing" media meter via Windows' GlobalSystemMediaTransportControlsSessionManager
+
+Phase W3 — External data
+
+One generic Web/JSON measure (point at a URL + a JSON path, poll on an interval) — this single building block gets you weather, stock/crypto price, RSS headlines, GitHub stars, anything, instead of a bespoke integration per source
+Ship 2–3 presets on top of it — reuse the OpenWeatherMap integration already scoped in phases.md Phase 5 for an actual weather widget, not just theme-switching
+
+Phase W4 — Double down on the AI angle
+
+WidgetLexicon is ~85 entries vs. your 280-word ColorLexicon — same infrastructure (bigrams, fuzzy match, emoji already exist for widgets too), it just needs vocabulary
+One prompt → matching color theme and widget layout together, generated as a pair
+Conversational refinement — "make the clock bigger" patches the just-generated widget instead of starting over
+The insights panel (WidgetAnalysisResult — matched keywords, fuzzy corrections) is already built; make sure it's actually visible, it's easy to miss
+
+Phase W5 — Ecosystem
+
+Extend the theme-gallery mechanism already planned in phases.md Phase 4 to widgets too — one JSON-pack mechanism, two content types
+Single-file widget export (.aiwidget) with file association, same pattern as the planned .cozy file
+"Remix this widget," mirroring the planned "Remix this theme"
+
+Phase W6 — Packaging
+
+Rides on your existing Phase 7 (MSIX, winget, auto-update). One thing to test early: SetParent-based WorkerW reparenting may behave differently under a sandboxed MSIX package — worth confirming before the whole desktop-layer feature depends on it.
