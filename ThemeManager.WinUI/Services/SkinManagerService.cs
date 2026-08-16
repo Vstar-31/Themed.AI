@@ -246,6 +246,7 @@ public sealed class SkinManagerService : IDisposable
 
         _open[skin.Id] = (window, viewModel);
         window.Activate();
+        if (_widgetsHidden) window.AppWindow.Hide(); // stay consistent with a global hide from the hotkey
         viewModel.RefreshMeasures(); // safe to call synchronously on first open since there's no data yet
         viewModel.UpdateMeters(); // paint real values immediately instead of waiting up to 1s for the first tick
     }

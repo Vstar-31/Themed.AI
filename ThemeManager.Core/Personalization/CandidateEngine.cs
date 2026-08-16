@@ -41,23 +41,23 @@ public class CandidateEngine
         var candidates = new List<WidgetCandidate>();
 
         // Variant 1: Base prompt
-        var baseWidget = _widgetGen.Generate(context.Prompt, screenWidth, screenHeight);
-        candidates.Add(new WidgetCandidate { Skin = baseWidget, GenerationSource = "BasePrompt" });
+        var (baseWidget, baseAnalysis) = _widgetGen.GenerateAndExplain(context.Prompt, screenWidth, screenHeight);
+        candidates.Add(new WidgetCandidate { Skin = baseWidget, Analysis = baseAnalysis, GenerationSource = "BasePrompt" });
 
         if (count > 1)
         {
             // Variant 2: Minimalist / detailed variant
             string minPrompt = context.Constraints.Minimalist ? $"minimal {context.Prompt}" : $"detailed {context.Prompt}";
-            var minWidget = _widgetGen.Generate(minPrompt, screenWidth, screenHeight);
-            candidates.Add(new WidgetCandidate { Skin = minWidget, GenerationSource = "StyleInjected" });
+            var (minWidget, minAnalysis) = _widgetGen.GenerateAndExplain(minPrompt, screenWidth, screenHeight);
+            candidates.Add(new WidgetCandidate { Skin = minWidget, Analysis = minAnalysis, GenerationSource = "StyleInjected" });
         }
 
         if (count > 2)
         {
             // Variant 3: Bigger, bolder sizing — a genuinely different option from variant 2
             // rather than another wording tweak on the same idea.
-            var boldWidget = _widgetGen.Generate($"big bold {context.Prompt}", screenWidth, screenHeight);
-            candidates.Add(new WidgetCandidate { Skin = boldWidget, GenerationSource = "SizeInjected" });
+            var (boldWidget, boldAnalysis) = _widgetGen.GenerateAndExplain($"big bold {context.Prompt}", screenWidth, screenHeight);
+            candidates.Add(new WidgetCandidate { Skin = boldWidget, Analysis = boldAnalysis, GenerationSource = "SizeInjected" });
         }
 
         // Ideally, we'd alter the prompt based on UserProfile history to generate more variants,

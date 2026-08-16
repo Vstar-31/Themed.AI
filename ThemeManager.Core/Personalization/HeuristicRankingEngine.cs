@@ -1,4 +1,5 @@
 using ThemeManager.Core.Models;
+using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
 
 namespace ThemeManager.Core.Personalization;
@@ -13,6 +14,13 @@ public class WidgetCandidate
 {
     public required SkinDefinition Skin { get; set; }
     public string GenerationSource { get; set; } = string.Empty;
+
+    /// <summary>Matched keywords, fuzzy corrections, etc. from the generation that produced
+    /// <see cref="Skin"/> - the widget insights panel needs this. Populated by
+    /// <see cref="CandidateEngine.GenerateWidgetCandidates"/>, which calls
+    /// <c>GenerateAndExplain</c> rather than the bare <c>Generate</c> specifically so this
+    /// survives the trip through ranking.</summary>
+    public WidgetAnalysisResult? Analysis { get; set; }
 }
 
 public class HeuristicRankingEngine

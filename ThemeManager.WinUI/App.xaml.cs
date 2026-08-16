@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using ThemeManager.Core.Models;
+using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
 using ThemeManager.Integration;
 using ThemeManager.WinUI.Services;
@@ -25,6 +26,11 @@ public partial class App : Application
 
     /// <summary>Skins (desktop widgets) — see ThemeManager.WinUI.Services.SkinManagerService.</summary>
     public static SkinManagerService SkinManager { get; private set; } = null!;
+
+    /// <summary>Ranks/learns from generated themes and widgets — see PersonalizationOrchestrator.
+    /// Loaded synchronously on startup (it's one small JSON file); everything downstream of it
+    /// is designed to degrade gracefully to an empty profile if that file doesn't exist yet.</summary>
+    public static PersonalizationOrchestrator Personalization { get; private set; } = null!;
 
     /// <summary>System tray icon — see ThemeManager.Integration.TrayIcon.</summary>
     public static TrayIcon Tray { get; private set; } = null!;
@@ -107,6 +113,10 @@ public partial class App : Application
         // running (SkinManagerService's tick timer needs one). A widget that was left
         // enabled last session reappears on the desktop right away, same as Rainmeter.
         SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory);
+
+        Personalization = new PersonalizationOrchestrator(System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+            "ThemedAI", "profile.json"));
         await SkinManager.InitializeAsync();
 
         // ── System tray: closing the main window now minimizes to tray instead of quitting ──

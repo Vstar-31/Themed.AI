@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using ThemeManager.Core.NLP;
+using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.Services;
 using Microsoft.Extensions.Logging;
@@ -167,7 +168,11 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
             var text = PromptText.Trim();
 
             // Phase 5: Conversational Refinement
-            bool isRefinement = text.Contains("bigger") || text.Contains("smaller") || text.Contains("remove") || text.Contains("delete");
+            var promptWords = VibeTokenizer.TokenizeFull(text).Raw;
+            bool isRefinement = promptWords.Any(w => w is
+                "bigger" or "larger" or "large" or
+                "smaller" or "small" or "tiny" or
+                "remove" or "delete" or "hide");
             
             if (HasResult && GeneratedSkin != null && isRefinement)
             {
@@ -182,19 +187,34 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
             }
             else
             {
+                // A previous result that was generated but never accepted is a real, if soft,
+                // negative signal — the user saw it and moved on. Worth recording before it's
+                // overwritten and lost.
+                if (HasResult && GeneratedSkin != null)
+                {
+                    App.Personalization.SubmitFeedback(new FeedbackAction
+                    {
+                        ItemId = GeneratedSkin.Id,
+                        IsWidget = true,
+                        Type = FeedbackType.ImplicitDismissed,
+                        WidgetMeasures = GeneratedSkin.Measures.Select(m => m.Type).ToList(),
+                    });
+                }
+
                 HasResult = false;
                 var screen = GetScreenSizeDips();
-                var (skin, analysis) = await Task.Run(() =>
-                    _generator.GenerateAndExplain(text, screen?.Width, screen?.Height));
+                var context = new GenerationContext { Prompt = text };
+                var candidate = await Task.Run(() =>
+                    App.Personalization.GenerateBestWidget(context, screen?.Width, screen?.Height));
 
-                Analysis = analysis;
-                GeneratedSkin = skin;
+                Analysis = candidate.Analysis;
+                GeneratedSkin = candidate.Skin;
                 HasResult = true;
 
-                Status = analysis.UsedFallback
-                    ? $"Generated \"{skin.Name}\" — no specific measures detected, so this is a simple starting point."
-                    : $"Generated \"{skin.Name}\" from {analysis.MatchedKeywords.Count} matched word(s).";
-                _logger.LogInformation("Widget generation succeeded. Generated skin: {SkinName}, UsedFallback: {UsedFallback}", skin.Name, analysis.UsedFallback);
+                Status = candidate.Analysis?.UsedFallback == true
+                    ? $"Generated \"{candidate.Skin.Name}\" — no specific measures detected, so this is a simple starting point."
+                    : $"Generated \"{candidate.Skin.Name}\" from {candidate.Analysis?.MatchedKeywords.Count ?? 0} matched word(s).";
+                _logger.LogInformation("Widget generation succeeded via personalization pipeline. Generated skin: {SkinName}, Source: {Source}", candidate.Skin.Name, candidate.GenerationSource);
             }
         }
         catch (Exception ex)
@@ -213,6 +233,15 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
     {
         if (GeneratedSkin is null) return null;
         _logger.LogInformation("User opening generated skin in editor: {SkinName}", GeneratedSkin.Name);
+
+        App.Personalization.SubmitFeedback(new FeedbackAction
+        {
+            ItemId = GeneratedSkin.Id,
+            IsWidget = true,
+            Type = FeedbackType.ImplicitApplied,
+            WidgetMeasures = GeneratedSkin.Measures.Select(m => m.Type).ToList(),
+        });
+
         await _manager.AddGeneratedSkinAsync(GeneratedSkin);
         return GeneratedSkin;
     }

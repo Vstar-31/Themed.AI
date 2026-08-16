@@ -93,15 +93,18 @@ public sealed class WidgetVibeGenerator
                 bool applies = targetMeasures.Count == 0 || (meter.MeasureName != null && targetMeasures.Select(m => m.ToString()).Contains(meter.MeasureName));
                 if (applies)
                 {
-                    meter.Width *= scaleFactor;
-                    meter.Height *= scaleFactor;
-                    meter.FontSize *= scaleFactor;
+                    // Clamped so repeated refinements ("bigger" several times in a row) can't
+                    // compound into something absurd or illegible - same bounds as the widget
+                    // editor's own size controls.
+                    meter.Width = Math.Clamp(meter.Width * scaleFactor, 20, 800);
+                    meter.Height = Math.Clamp(meter.Height * scaleFactor, 20, 800);
+                    meter.FontSize = Math.Clamp(meter.FontSize * scaleFactor, 8, 72);
                 }
             }
             if (targetMeasures.Count == 0)
             {
-                baseSkin.Width *= scaleFactor;
-                baseSkin.Height *= scaleFactor;
+                baseSkin.Width = Math.Clamp(baseSkin.Width * scaleFactor, 80, 1200);
+                baseSkin.Height = Math.Clamp(baseSkin.Height * scaleFactor, 80, 1200);
             }
         }
 

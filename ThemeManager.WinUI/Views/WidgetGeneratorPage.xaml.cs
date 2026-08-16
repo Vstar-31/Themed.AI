@@ -30,8 +30,7 @@ public sealed partial class WidgetGeneratorPage : Page
             var skin = await ViewModel.AcceptAndOpenEditorAsync();
             if (skin is not null)
             {
-                var editorWindow = new WidgetEditorWindow();
-                editorWindow.Activate();
+                Frame.Navigate(typeof(SkinEditorPage), skin);
             }
         }
         catch (Exception ex)

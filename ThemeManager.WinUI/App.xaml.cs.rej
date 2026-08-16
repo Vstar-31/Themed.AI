@@ -1,0 +1,13 @@
+diff a/ThemeManager.WinUI/App.xaml.cs b/ThemeManager.WinUI/App.xaml.cs	(rejected hunks)
+@@ -26,6 +27,11 @@ public partial class App : Application
+     /// <summary>Skins (desktop widgets) - see ThemeManager.WinUI.Services.SkinManagerService.</summary>
+     public static SkinManagerService SkinManager { get; private set; } = null!;
+ 
++    /// <summary>Ranks/learns from generated themes and widgets - see PersonalizationOrchestrator.
++    /// Loaded synchronously on startup (it's one small JSON file); everything downstream of it
++    /// is designed to degrade gracefully to an empty profile if that file doesn't exist yet.</summary>
++    public static PersonalizationOrchestrator Personalization { get; private set; } = null!;
++
+     /// <summary>System tray icon - see ThemeManager.Integration.TrayIcon.</summary>
+     public static TrayIcon Tray { get; private set; } = null!;
+ 
