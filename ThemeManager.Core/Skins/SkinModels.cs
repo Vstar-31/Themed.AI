@@ -93,6 +93,19 @@ public sealed class MeterDefinition
 
     /// <summary>How many recent samples a <see cref="MeterKind.Graph"/> meter keeps on screen. Ignored otherwise.</summary>
     public int HistoryLength { get; set; } = 60;
+
+    // ── Threshold alert ───────────────────────────────────────────────────
+    /// <summary>When the measure value exceeds this percentage of <see cref="BarMax"/>, the meter
+    /// switches to <see cref="ThresholdColorHex"/>. Set to 0 to disable.</summary>
+    public double ThresholdPercent { get; set; }
+
+    /// <summary>Hex color to use when the threshold is crossed (e.g. "#FF4444").
+    /// Ignored when <see cref="ThresholdPercent"/> is 0.</summary>
+    public string ThresholdColorHex { get; set; } = "#FF4444";
+
+    /// <summary>When true, string meters also swap their foreground color on threshold cross.
+    /// Bar/Graph meters always swap — this flag only gates text meters.</summary>
+    public bool ThresholdAppliesToText { get; set; }
 }
 
 /// <summary>

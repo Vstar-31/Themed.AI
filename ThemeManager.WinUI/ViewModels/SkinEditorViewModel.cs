@@ -84,10 +84,10 @@ public sealed class MeterEditorItem : ViewModelBase
     public bool IsGraph => Kind == MeterKind.Graph;
     public bool UsesBarMax => Kind is MeterKind.Bar or MeterKind.Graph;
 
-    private double _x, _y, _width, _height, _fontSize, _barMax;
+    private double _x, _y, _width, _height, _fontSize, _barMax, _thresholdPercent;
     private int _historyLength;
-    private string _measureName, _staticText, _format;
-    private bool _bold;
+    private string _measureName, _staticText, _format, _thresholdColorHex;
+    private bool _bold, _thresholdAppliesToText;
 
     public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
     public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
@@ -99,6 +99,24 @@ public sealed class MeterEditorItem : ViewModelBase
     public bool Bold { get => _bold; set { if (SetProperty(ref _bold, value)) { Definition.Bold = value; _onChanged(); } } }
     public string StaticText { get => _staticText; set { if (SetProperty(ref _staticText, value)) { Definition.StaticText = value; _onChanged(); } } }
     public string Format { get => _format; set { if (SetProperty(ref _format, value)) { Definition.Format = value; _onChanged(); } } }
+
+    // ── Threshold alert ────────────────────────────────────────────────────
+    public double ThresholdPercent
+    {
+        get => _thresholdPercent;
+        set { var v = Math.Clamp(value, 0, 100); if (SetProperty(ref _thresholdPercent, v)) { Definition.ThresholdPercent = v; OnPropertyChanged(nameof(HasThreshold)); _onChanged(); } }
+    }
+    public string ThresholdColorHex
+    {
+        get => _thresholdColorHex;
+        set { if (SetProperty(ref _thresholdColorHex, value)) { Definition.ThresholdColorHex = value; _onChanged(); } }
+    }
+    public bool ThresholdAppliesToText
+    {
+        get => _thresholdAppliesToText;
+        set { if (SetProperty(ref _thresholdAppliesToText, value)) { Definition.ThresholdAppliesToText = value; _onChanged(); } }
+    }
+    public bool HasThreshold => ThresholdPercent > 0;
 
     /// <summary>Empty string means "static text, no measure" — the property panel's "measure" ComboBox
     /// has a matching blank entry for this at the top of its list.</summary>
@@ -134,6 +152,9 @@ public sealed class MeterEditorItem : ViewModelBase
         _staticText = definition.StaticText;
         _format = definition.Format;
         _measureName = definition.MeasureName ?? "";
+        _thresholdPercent = definition.ThresholdPercent;
+        _thresholdColorHex = definition.ThresholdColorHex;
+        _thresholdAppliesToText = definition.ThresholdAppliesToText;
     }
 
     /// <summary>Called by the drag handler in the editor's preview canvas — same anchor-delta math

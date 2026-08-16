@@ -206,6 +206,23 @@
                                            SpinButtonPlacementMode="Compact" Minimum="5" Maximum="600"
                                            Visibility="{x:Bind ViewModel.SelectedMeter.IsGraph, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </StackPanel>
+
+                            <!-- Threshold alert -->
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Threshold alert" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />
+                                <TextBlock Text="When the value exceeds this %, the meter changes to the alert color. Set to 0 to disable."
+                                           Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <NumberBox Header="Threshold %" Width="120"
+                                               Value="{x:Bind ViewModel.SelectedMeter.ThresholdPercent, Mode=TwoWay}"
+                                               SpinButtonPlacementMode="Compact" Minimum="0" Maximum="100" />
+                                    <TextBox Header="Alert color (hex)" Width="140"
+                                             Text="{x:Bind ViewModel.SelectedMeter.ThresholdColorHex, Mode=TwoWay}"
+                                             PlaceholderText="#FF4444" />
+                                </StackPanel>
+                                <CheckBox Content="Apply to text meters too"
+                                          IsChecked="{x:Bind ViewModel.SelectedMeter.ThresholdAppliesToText, Mode=TwoWay}" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

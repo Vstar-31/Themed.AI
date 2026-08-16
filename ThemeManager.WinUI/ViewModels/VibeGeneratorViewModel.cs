@@ -207,6 +207,10 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
             var theme = candidate.Theme;
             var analysis = candidate.Analysis;
 
+            // Infer mood from the generated analysis for future generations in this session.
+            if (analysis is not null)
+                context.Mood = MoodInferrer.InferMood(analysis);
+
             Analysis       = analysis;
             GeneratedTheme = theme;
 

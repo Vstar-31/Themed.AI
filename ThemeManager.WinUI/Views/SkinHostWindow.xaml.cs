@@ -234,6 +234,7 @@ public sealed partial class SkinHostWindow : Window
 
     private static TextBlock BuildStringVisual(StringMeterViewModel vm)
     {
+        var normalBrush = GetWidgetTextBrush();
         var text = new TextBlock
         {
             Width = vm.Width,
@@ -241,15 +242,19 @@ public sealed partial class SkinHostWindow : Window
             FontSize = vm.FontSize,
             FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontFamily"],
             FontWeight = vm.Bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
-            Foreground = GetWidgetTextBrush(),
+            Foreground = normalBrush,
             Text = vm.DisplayText,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
+
+        SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;
 
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(StringMeterViewModel.DisplayText))
                 text.Text = vm.DisplayText;
+            if (e.PropertyName == nameof(StringMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
+                text.Foreground = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
         };
 
         return text;
@@ -296,9 +301,42 @@ public sealed partial class SkinHostWindow : Window
     private static double SrgbToLinear(double v) =>
         v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
 
+    /// <summary>Parses a "#RRGGBB" or "#AARRGGBB" hex string into a <see cref="SolidColorBrush"/>.
+    /// Returns a red fallback brush if the string is malformed — threshold colors are user-editable
+    /// via the skin editor and hand-editable in the JSON file, so invalid input is plausible.</summary>
+    private static SolidColorBrush ParseHexBrush(string hex)
+    {
+        try
+        {
+            hex = hex.TrimStart('#');
+            byte a = 0xFF, r, g, b;
+            if (hex.Length == 8)
+            {
+                a = Convert.ToByte(hex[..2], 16);
+                r = Convert.ToByte(hex[2..4], 16);
+                g = Convert.ToByte(hex[4..6], 16);
+                b = Convert.ToByte(hex[6..8], 16);
+            }
+            else if (hex.Length == 6)
+            {
+                r = Convert.ToByte(hex[..2], 16);
+                g = Convert.ToByte(hex[2..4], 16);
+                b = Convert.ToByte(hex[4..6], 16);
+            }
+            else return new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0x44, 0x44));
+
+            return new SolidColorBrush(Windows.UI.Color.FromArgb(a, r, g, b));
+        }
+        catch
+        {
+            return new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0x44, 0x44));
+        }
+    }
+
     /// <summary>A track + fill pair wrapped in one Grid, so it can be positioned as a single element.</summary>
     private static Grid BuildBarVisual(BarMeterViewModel vm)
     {
+        var normalBrush = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
         var track = new Border
         {
             Width = vm.Width,
@@ -313,13 +351,17 @@ public sealed partial class SkinHostWindow : Window
             Height = vm.Height,
             CornerRadius = new CornerRadius(vm.Height / 2),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Background = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"],
+            Background = normalBrush,
         };
+
+        SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;
 
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(BarMeterViewModel.FillFraction))
                 fill.Width = vm.Width * vm.FillFraction;
+            if (e.PropertyName == nameof(BarMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
+                fill.Background = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
         };
 
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
@@ -331,6 +373,7 @@ public sealed partial class SkinHostWindow : Window
     /// <summary>A rounded background plate + a Polyline redrawn every time the meter gets a new sample.</summary>
     private static Grid BuildGraphVisual(GraphMeterViewModel vm)
     {
+        var normalBrush = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
         var background = new Border
         {
             Width = vm.Width,
@@ -341,10 +384,12 @@ public sealed partial class SkinHostWindow : Window
 
         var line = new Polyline
         {
-            Stroke = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"],
+            Stroke = normalBrush,
             StrokeThickness = 2,
             StrokeLineJoin = PenLineJoin.Round,
         };
+
+        SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;
 
         void Redraw()
         {
@@ -364,6 +409,15 @@ public sealed partial class SkinHostWindow : Window
         }
 
         vm.HistoryUpdated += Redraw;
+
+        if (thresholdBrush is not null)
+        {
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(GraphMeterViewModel.IsThresholdCrossed))
+                    line.Stroke = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+            };
+        }
 
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
         grid.Children.Add(background);

@@ -14,12 +14,32 @@ public abstract class MeterViewModelBase : ViewModelBase
     public double Width { get; }
     public double Height { get; }
 
+    /// <summary>Threshold percentage (0 = disabled) from the definition.</summary>
+    public double ThresholdPercent { get; }
+
+    /// <summary>Hex color string to use when the threshold is crossed.</summary>
+    public string ThresholdColorHex { get; }
+
+    /// <summary>True when the measure's current value exceeds <see cref="ThresholdPercent"/>.
+    /// The rendering layer subscribes to this to swap fill/stroke/foreground colors.</summary>
+    private bool _isThresholdCrossed;
+    public bool IsThresholdCrossed
+    {
+        get => _isThresholdCrossed;
+        protected set => SetProperty(ref _isThresholdCrossed, value);
+    }
+
+    /// <summary>Whether this meter has a non-zero threshold configured at all.</summary>
+    public bool HasThreshold => ThresholdPercent > 0;
+
     protected MeterViewModelBase(MeterDefinition definition)
     {
         X = definition.X;
         Y = definition.Y;
         Width = definition.Width;
         Height = definition.Height;
+        ThresholdPercent = definition.ThresholdPercent;
+        ThresholdColorHex = definition.ThresholdColorHex;
     }
 
     /// <summary>Re-reads its bound measure (if any) and refreshes bindable text/value. Called every tick.</summary>
@@ -43,6 +63,9 @@ public sealed class StringMeterViewModel : MeterViewModelBase
         private set => SetProperty(ref _displayText, value);
     }
 
+    private readonly bool _thresholdAppliesToText;
+    private readonly double _barMax;
+
     public StringMeterViewModel(MeterDefinition definition) : base(definition)
     {
         _measureName = definition.MeasureName;
@@ -50,6 +73,8 @@ public sealed class StringMeterViewModel : MeterViewModelBase
         _staticText = definition.StaticText;
         FontSize = definition.FontSize;
         Bold = definition.Bold;
+        _thresholdAppliesToText = definition.ThresholdAppliesToText;
+        _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
         _displayText = string.IsNullOrEmpty(_measureName) ? _staticText : "";
     }
 
@@ -58,6 +83,7 @@ public sealed class StringMeterViewModel : MeterViewModelBase
         if (string.IsNullOrEmpty(_measureName))
         {
             DisplayText = _staticText;
+            IsThresholdCrossed = false;
             return;
         }
 
@@ -73,6 +99,9 @@ public sealed class StringMeterViewModel : MeterViewModelBase
                 // fall back to the measure's own plain text.
                 DisplayText = measure.Text;
             }
+
+            if (HasThreshold && _thresholdAppliesToText)
+                IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
         }
     }
 }
@@ -104,9 +133,13 @@ public sealed class GraphMeterViewModel : MeterViewModelBase
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
             return;
 
-        _history.Enqueue(Math.Clamp(measure.Value / _barMax, 0.0, 1.0));
+        double normalized = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
+        _history.Enqueue(normalized);
         while (_history.Count > _historyLength)
             _history.Dequeue();
+
+        if (HasThreshold)
+            IsThresholdCrossed = (normalized * 100) >= ThresholdPercent;
 
         HistoryUpdated?.Invoke();
     }
@@ -141,5 +174,8 @@ public sealed class BarMeterViewModel : MeterViewModelBase
             return;
 
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
+
+        if (HasThreshold)
+            IsThresholdCrossed = (FillFraction * 100) >= ThresholdPercent;
     }
 }
