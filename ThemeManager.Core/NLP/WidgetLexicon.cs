@@ -55,6 +55,20 @@ public static class WidgetLexicon
 
         ["uptim"] = ForMeasure(MeasureType.Uptime), // "uptime"
 
+        ["weath"] = ForMeasure(MeasureType.WeatherTemp),      // "weather"
+        ["temperatur"] = ForMeasure(MeasureType.WeatherTemp), // "temperature"
+        ["forecast"] = ForMeasure(MeasureType.WeatherTemp),
+
+        ["music"] = ForMeasure(MeasureType.MediaTitle),
+        ["song"] = ForMeasure(MeasureType.MediaTitle),
+        ["playlist"] = ForMeasure(MeasureType.MediaTitle),
+        ["artist"] = ForMeasure(MeasureType.MediaArtist),
+        // Deliberately not adding "track" — it collides semantically with "track my CPU"-style
+        // phrasing (verb sense, implying a graph), and Absorb() only adds measures, never
+        // overrides, so a CPU-graph request would silently gain an unwanted media measure too.
+        // "play" is already taken by the style entry below ("playful"), so no play/pause word
+        // for MediaState yet — Title/Artist covers what most people mean by "a music widget."
+
         // ════ STYLE / SIZE ════════════════════════════════════════════════════
         ["minim"] = ForStyle(0.75, bold: false),       // "minimal"
         ["minimalist"] = ForStyle(0.75, bold: false),
@@ -129,5 +143,7 @@ public static class WidgetLexicon
         ["left"] = ForPosition(null, "left"),
         ["right"] = ForPosition(null, "right"),
         ["corn"] = ForPosition("top", "right"),         // "corner" alone → default to top-right
+        ["cent"] = ForPosition("center", "center"),     // "center"/"centered"
+        ["middl"] = ForPosition("center", "center"),    // "middle"
     };
 }

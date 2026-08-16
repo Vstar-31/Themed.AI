@@ -272,7 +272,9 @@ public sealed class WidgetVibeGenerator
         // Time/Date/Uptime/Battery are naturally "read as text" measures — a bar or graph of
         // the clock doesn't mean anything, so they stay text-only unless a bar/graph was
         // explicitly requested (kindPreference), in which case we respect the ask anyway.
-        bool naturallyTextOnly = type is MeasureType.Time or MeasureType.Date or MeasureType.Uptime or MeasureType.Battery;
+        bool naturallyTextOnly = type is MeasureType.Time or MeasureType.Date or MeasureType.Uptime or MeasureType.Battery
+            or MeasureType.WeatherTemp or MeasureType.WeatherDesc
+            or MeasureType.MediaTitle or MeasureType.MediaArtist or MeasureType.MediaState;
 
         // For Time measures, use a bigger, bolder font by default — consumers expect a clock
         // to look like a clock, not a tiny label. Date gets a smaller companion size.
@@ -327,8 +329,19 @@ public sealed class WidgetVibeGenerator
     {
         double sw = screenWidth is > 0 ? screenWidth.Value : AssumedScreenWidth;
         double sh = screenHeight is > 0 ? screenHeight.Value : AssumedScreenHeight;
-        double x = horizontal == "right" ? sw - width - 40 : 40;
-        double yPos = vertical == "bottom" ? sh - height - 40 : 40;
+
+        double x = horizontal switch
+        {
+            "center" => (sw - width) / 2,
+            "right"  => sw - width - 40,
+            _        => 40,                // left / default
+        };
+        double yPos = vertical switch
+        {
+            "center" => (sh - height) / 2,
+            "bottom" => sh - height - 40,
+            _        => 40,                // top / default
+        };
         return (x, yPos);
     }
 
@@ -344,6 +357,11 @@ public sealed class WidgetVibeGenerator
         MeasureType.Time => ("Time", "{1}"),
         MeasureType.Date => ("Date", "{1}"),
         MeasureType.Uptime => ("Uptime", "⏱ {1}"),
+        MeasureType.WeatherTemp => ("Weather", "🌤 {1}"),
+        MeasureType.WeatherDesc => ("Weather", "{1}"),
+        MeasureType.MediaTitle => ("Now Playing", "🎵 {1}"),
+        MeasureType.MediaArtist => ("Artist", "{1}"),
+        MeasureType.MediaState => ("Status", "{1}"),
         _ => ("", "{1}"),
     };
 
