@@ -13,15 +13,15 @@ public class CandidateEngine
         var candidates = new List<ThemeCandidate>();
 
         // Variant 1: Direct prompt
-        var baseTheme = _themeGen.Generate(context.Prompt);
-        candidates.Add(new ThemeCandidate { Theme = baseTheme, GenerationSource = "BasePrompt" });
+        var (baseTheme, baseAnalysis) = _themeGen.GenerateAndExplain(context.Prompt);
+        candidates.Add(new ThemeCandidate { Theme = baseTheme, Analysis = baseAnalysis, GenerationSource = "BasePrompt" });
 
         if (count > 1)
         {
             // Variant 2: Inject mood
             string moodPrompt = $"{context.Prompt} {context.Mood.ToString().ToLower()}";
-            var moodTheme = _themeGen.Generate(moodPrompt);
-            candidates.Add(new ThemeCandidate { Theme = moodTheme, GenerationSource = "MoodInjected" });
+            var (moodTheme, moodAnalysis) = _themeGen.GenerateAndExplain(moodPrompt);
+            candidates.Add(new ThemeCandidate { Theme = moodTheme, Analysis = moodAnalysis, GenerationSource = "MoodInjected" });
         }
 
         if (count > 2)
@@ -29,8 +29,8 @@ public class CandidateEngine
             // Variant 3: Inject constraint hints
             string constraintPrompt = context.Constraints.MustBeDarkTheme ? $"{context.Prompt} dark" : 
                                      (context.Constraints.MustBeLightTheme ? $"{context.Prompt} light" : context.Prompt);
-            var constraintTheme = _themeGen.Generate(constraintPrompt);
-            candidates.Add(new ThemeCandidate { Theme = constraintTheme, GenerationSource = "ConstraintInjected" });
+            var (constraintTheme, constraintAnalysis) = _themeGen.GenerateAndExplain(constraintPrompt);
+            candidates.Add(new ThemeCandidate { Theme = constraintTheme, Analysis = constraintAnalysis, GenerationSource = "ConstraintInjected" });
         }
 
         return candidates;

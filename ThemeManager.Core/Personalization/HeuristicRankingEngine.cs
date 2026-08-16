@@ -8,6 +8,10 @@ public class ThemeCandidate
 {
     public required CozyTheme Theme { get; set; }
     public string GenerationSource { get; set; } = string.Empty;
+
+    /// <summary>Same reasoning as <see cref="WidgetCandidate.Analysis"/> — the theme insights
+    /// panel (matched keywords, bigrams, fuzzy corrections, sentiment) needs this.</summary>
+    public VibeAnalysisResult? Analysis { get; set; }
 }
 
 public class WidgetCandidate

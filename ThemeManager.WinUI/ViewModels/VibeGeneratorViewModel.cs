@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
+using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
 using Microsoft.Extensions.Logging;
 using ThemeManager.WinUI;
@@ -16,7 +17,6 @@ namespace ThemeManager.WinUI.ViewModels;
 /// </summary>
 public sealed class VibeGeneratorViewModel : ViewModelBase
 {
-    private readonly VibeThemeGenerator _generator = new();
     private readonly ThemeService       _themeService;
     private readonly ILogger<VibeGeneratorViewModel> _logger;
 
@@ -188,21 +188,35 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         {
             var text = VibeText.Trim();
 
-            // Run CPU-bound NLP on thread pool, keep UI responsive.
-            var (theme, analysis) = await Task.Run(() =>
+            // A previous result that was generated but never saved is a real, if soft,
+            // negative signal, same reasoning as the widget side.
+            if (HasResult && GeneratedTheme != null)
             {
-                return _generator.GenerateAndExplain(text);
-            });
+                App.Personalization.SubmitFeedback(new FeedbackAction
+                {
+                    ItemId = GeneratedTheme.Id,
+                    IsWidget = false,
+                    Type = FeedbackType.ImplicitDismissed,
+                    ThemeAccentColor = GeneratedTheme.AccentPrimary,
+                });
+            }
+
+            // Run CPU-bound NLP on thread pool, keep UI responsive.
+            var context = new GenerationContext { Prompt = text };
+            var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
+            var theme = candidate.Theme;
+            var analysis = candidate.Analysis;
 
             Analysis       = analysis;
             GeneratedTheme = theme;
 
             // Update swatch strip.
             PreviewSwatches.Clear();
-            foreach (var hex in analysis.Swatches)
-                PreviewSwatches.Add(hex);
+            if (analysis != null)
+                foreach (var hex in analysis.Swatches)
+                    PreviewSwatches.Add(hex);
 
-            if (analysis.MatchedKeywords.Count == 0)
+            if (analysis is null || analysis.MatchedKeywords.Count == 0)
             {
                 HasNoMatch = true;
                 Status = "Couldn't find colour signals in that text. Try adding more descriptive words.";
@@ -212,7 +226,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
             {
                 HasResult = true;
                 Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
-                _logger.LogInformation("Vibe generation succeeded. Generated theme: {ThemeName}", theme.Name);
+                _logger.LogInformation("Vibe generation succeeded via personalization pipeline. Generated theme: {ThemeName}, Source: {Source}", theme.Name, candidate.GenerationSource);
 
                 // NOTE: Do NOT call SetActiveTheme here. Applying the generated
                 // theme immediately re-skins the entire app (including the result
@@ -237,6 +251,14 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         if (GeneratedTheme is null) return;
         try
         {
+            App.Personalization.SubmitFeedback(new FeedbackAction
+            {
+                ItemId = GeneratedTheme.Id,
+                IsWidget = false,
+                Type = FeedbackType.ImplicitApplied,
+                ThemeAccentColor = GeneratedTheme.AccentPrimary,
+            });
+
             await _themeService.SaveThemeAsync(GeneratedTheme);
             _themeService.SetActiveTheme(GeneratedTheme);
             Status = $"\"{GeneratedTheme.Name}\" saved and applied to your widgets.";
