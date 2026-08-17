@@ -9,6 +9,7 @@ public static class MeasureFactory
     public static IMeasure Create(MeasureDefinition definition, ILogger? logger = null) => definition.Type switch
     {
         MeasureType.Cpu         => new CpuMeasure(definition.Name, logger),
+        MeasureType.CpuCore     => new CpuCoreMeasure(definition.Name, definition.Target, logger),
         MeasureType.Memory      => new MemoryMeasure(definition.Name, logger),
         MeasureType.DiskFree    => new DiskMeasure(definition.Name, definition.Target, reportFreeSpace: true, logger),
         MeasureType.DiskUsed    => new DiskMeasure(definition.Name, definition.Target, reportFreeSpace: false, logger),

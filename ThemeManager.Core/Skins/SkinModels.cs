@@ -7,6 +7,7 @@ namespace ThemeManager.Core.Skins;
 public enum MeasureType
 {
     Cpu,
+    CpuCore,
     Memory,
     DiskFree,
     DiskUsed,
