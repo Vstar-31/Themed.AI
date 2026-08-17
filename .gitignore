@@ -33,3 +33,9 @@ desktop.ini
 ## Stray artifacts ##
 *.etl
 build.txt
+
+## Test Logs & Private Testing ##
+*TestReport.md
+StressTestReport.md
+*.log
+StressTestPrompts/
