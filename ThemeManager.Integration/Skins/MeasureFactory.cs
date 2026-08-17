@@ -23,6 +23,7 @@ public static class MeasureFactory
         MeasureType.MediaState  => new MediaMeasure(definition.Name, MeasureType.MediaState, logger),
         MeasureType.WeatherTemp => new WeatherMeasure(definition.Name, MeasureType.WeatherTemp, definition.Target, logger),
         MeasureType.WeatherDesc => new WeatherMeasure(definition.Name, MeasureType.WeatherDesc, definition.Target, logger),
+        MeasureType.WebJson     => new WebJsonMeasure(definition.Name, definition.Target, logger),
         _                       => new UnknownMeasure(definition.Name),
     };
 

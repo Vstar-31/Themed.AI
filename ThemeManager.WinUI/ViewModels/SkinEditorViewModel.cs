@@ -46,12 +46,13 @@ public sealed class MeasureEditorItem : ViewModelBase
     /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
     /// other measure type is self-contained, so the property panel only shows the field then.</summary>
     public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed
-        or MeasureType.WeatherTemp or MeasureType.WeatherDesc;
+        or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WebJson;
 
     /// <summary>Hint text for the Target field, since what it means depends on the measure type.</summary>
     public string TargetPlaceholder => Type switch
     {
         MeasureType.WeatherTemp or MeasureType.WeatherDesc => "City|API key, e.g. London,GB|your_openweathermap_key",
+        MeasureType.WebJson => "URL|JSON path, e.g. https://api.example.com/data|results[0].price",
         _ => @"Drive, e.g. C:\",
     };
 

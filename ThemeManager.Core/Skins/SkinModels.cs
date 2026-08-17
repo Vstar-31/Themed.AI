@@ -21,6 +21,7 @@ public enum MeasureType
     MediaState,
     WeatherTemp,
     WeatherDesc,
+    WebJson,
 }
 
 /// <summary>The visual kind a <see cref="MeterDefinition"/> renders as.</summary>

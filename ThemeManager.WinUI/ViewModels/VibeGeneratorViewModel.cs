@@ -18,7 +18,13 @@ namespace ThemeManager.WinUI.ViewModels;
 public sealed class VibeGeneratorViewModel : ViewModelBase
 {
     private readonly ThemeService       _themeService;
+    private readonly VibeThemeGenerator _refiner = new(); // only used for Refine() — generation itself goes through App.Personalization
     private readonly ILogger<VibeGeneratorViewModel> _logger;
+
+    /// <summary>Set from the previous generation's analysis (MoodInferrer needs a
+    /// VibeAnalysisResult, so it can't inform the very first generation of a session) and fed
+    /// into the next one — see the comment in GenerateAsync for why this can't just be a local.</summary>
+    private Mood _inferredMoodForNextGeneration = Mood.Neutral;
 
     // ── Input ─────────────────────────────────────────────────────────────────
     private string _vibeText = string.Empty;
@@ -178,7 +184,6 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         if (!CanGenerate) return;
 
         IsBusy     = true;
-        HasResult  = false;
         HasNoMatch = false;
         Status     = "Reading your vibe…";
 
@@ -187,56 +192,92 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         try
         {
             var text = VibeText.Trim();
+            var tokens = VibeTokenizer.TokenizeFull(text).Raw;
+            bool isRefinement = tokens.Any(w => w is
+                "darker" or "dark" or "dim" or "dimmer" or
+                "lighter" or "light" or "bright" or "brighter" or
+                "vibrant" or "vivid" or "saturated" or "bold" or "bolder" or "colorful" or
+                "muted" or "desaturated" or "subtle" or "softer" or "pastel" or "faded" or
+                "warmer" or "warm" or "warmth" or "cozier" or
+                "cooler" or "cool" or "cold" or "colder" or "icy");
 
-            // A previous result that was generated but never saved is a real, if soft,
-            // negative signal, same reasoning as the widget side.
-            if (HasResult && GeneratedTheme != null)
+            if (HasResult && GeneratedTheme != null && isRefinement)
             {
-                App.Personalization.SubmitFeedback(new FeedbackAction
-                {
-                    ItemId = GeneratedTheme.Id,
-                    IsWidget = false,
-                    Type = FeedbackType.ImplicitDismissed,
-                    ThemeAccentColor = GeneratedTheme.AccentPrimary,
-                });
-            }
+                var refined = await Task.Run(() => _refiner.Refine(GeneratedTheme, text));
 
-            // Run CPU-bound NLP on thread pool, keep UI responsive.
-            var context = new GenerationContext { Prompt = text };
-            var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
-            var theme = candidate.Theme;
-            var analysis = candidate.Analysis;
+                // Force a property-change notification even though it's the same reference —
+                // Refine() mutates in place, same reasoning as the widget side's identical trick.
+                GeneratedTheme = null;
+                GeneratedTheme = refined;
 
-            // Infer mood from the generated analysis for future generations in this session.
-            if (analysis is not null)
-                context.Mood = MoodInferrer.InferMood(analysis);
+                PreviewSwatches.Clear();
+                PreviewSwatches.Add(refined.BackgroundBase);
+                PreviewSwatches.Add(refined.Surface);
+                PreviewSwatches.Add(refined.AccentPrimary);
+                PreviewSwatches.Add(refined.AccentStrong);
 
-            Analysis       = analysis;
-            GeneratedTheme = theme;
-
-            // Update swatch strip.
-            PreviewSwatches.Clear();
-            if (analysis != null)
-                foreach (var hex in analysis.Swatches)
-                    PreviewSwatches.Add(hex);
-
-            if (analysis is null || analysis.MatchedKeywords.Count == 0)
-            {
-                HasNoMatch = true;
-                Status = "Couldn't find colour signals in that text. Try adding more descriptive words.";
-                _logger.LogWarning("Vibe generation resulted in no match for text: {VibeText}", text);
+                Status = $"Refined \"{refined.Name}\".";
+                _logger.LogInformation("Theme refinement applied: {ThemeName}", refined.Name);
             }
             else
             {
-                HasResult = true;
-                Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
-                _logger.LogInformation("Vibe generation succeeded via personalization pipeline. Generated theme: {ThemeName}, Source: {Source}", theme.Name, candidate.GenerationSource);
+                // A previous result that was generated but never saved is a real, if soft,
+                // negative signal, same reasoning as the widget side. Checked before HasResult
+                // is reset below, or this could never fire.
+                if (HasResult && GeneratedTheme != null)
+                {
+                    App.Personalization.SubmitFeedback(new FeedbackAction
+                    {
+                        ItemId = GeneratedTheme.Id,
+                        IsWidget = false,
+                        Type = FeedbackType.ImplicitDismissed,
+                        ThemeAccentColor = GeneratedTheme.AccentPrimary,
+                    });
+                }
 
-                // NOTE: Do NOT call SetActiveTheme here. Applying the generated
-                // theme immediately re-skins the entire app (including the result
-                // card itself), making the swatches, token details, and Save/Edit
-                // buttons effectively invisible. The user applies the theme
-                // explicitly via Save or Edit.
+                HasResult = false;
+
+                // Run CPU-bound NLP on thread pool, keep UI responsive.
+                // Mood comes from the PREVIOUS generation's analysis, carried forward via the
+                // field below — MoodInferrer needs a VibeAnalysisResult to work from, so it
+                // structurally can't inform the very first generation of a session, and a fresh
+                // GenerationContext gets built on every call, so setting Mood on it after this
+                // generation already consumed it would be a no-op.
+                var context = new GenerationContext { Prompt = text, Mood = _inferredMoodForNextGeneration };
+                var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
+                var theme = candidate.Theme;
+                var analysis = candidate.Analysis;
+
+                if (analysis is not null)
+                    _inferredMoodForNextGeneration = MoodInferrer.InferMood(analysis);
+
+                Analysis       = analysis;
+                GeneratedTheme = theme;
+
+                // Update swatch strip.
+                PreviewSwatches.Clear();
+                if (analysis != null)
+                    foreach (var hex in analysis.Swatches)
+                        PreviewSwatches.Add(hex);
+
+                if (analysis is null || analysis.MatchedKeywords.Count == 0)
+                {
+                    HasNoMatch = true;
+                    Status = "Couldn't find colour signals in that text. Try adding more descriptive words.";
+                    _logger.LogWarning("Vibe generation resulted in no match for text: {VibeText}", text);
+                }
+                else
+                {
+                    HasResult = true;
+                    Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
+                    _logger.LogInformation("Vibe generation succeeded via personalization pipeline. Generated theme: {ThemeName}, Source: {Source}", theme.Name, candidate.GenerationSource);
+
+                    // NOTE: Do NOT call SetActiveTheme here. Applying the generated
+                    // theme immediately re-skins the entire app (including the result
+                    // card itself), making the swatches, token details, and Save/Edit
+                    // buttons effectively invisible. The user applies the theme
+                    // explicitly via Save or Edit.
+                }
             }
         }
         catch (Exception ex)
