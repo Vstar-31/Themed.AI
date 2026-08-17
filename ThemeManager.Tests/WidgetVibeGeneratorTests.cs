@@ -36,8 +36,9 @@ public class WidgetVibeGeneratorTests
     {
         var (skin, analysis) = _gen.GenerateAndExplain("asdkjaslkdj qwzxpqz");
         Assert.True(analysis.UsedFallback);
-        Assert.Single(skin.Measures);
+        Assert.Equal(2, skin.Measures.Count);
         Assert.Equal(MeasureType.Time, skin.Measures[0].Type);
+        Assert.Equal(MeasureType.Date, skin.Measures[1].Type);
     }
 
     // ── Measure keyword detection ─────────────────────────────────────────────
@@ -159,7 +160,7 @@ public class WidgetVibeGeneratorTests
     [Fact]
     public void Generate_TopRight_PositionsAccordingly()
     {
-        var skin = _gen.Generate("cpu widget in the top right");
+        var skin = _gen.Generate("cpu monitor in the top right");
         Assert.True(skin.X > 500); // pushed toward the right edge, not the default left margin
         Assert.True(skin.Y < 100); // stayed near the top
     }
@@ -167,7 +168,7 @@ public class WidgetVibeGeneratorTests
     [Fact]
     public void Generate_BottomLeft_PositionsAccordingly()
     {
-        var skin = _gen.Generate("cpu widget in the bottom left");
+        var skin = _gen.Generate("cpu monitor in the bottom left");
         Assert.True(skin.X < 100);
         Assert.True(skin.Y > 500);
     }
@@ -175,7 +176,7 @@ public class WidgetVibeGeneratorTests
     [Fact]
     public void Generate_NoPositionHint_DefaultsNearTopLeft()
     {
-        var skin = _gen.Generate("cpu widget");
+        var skin = _gen.Generate("cpu monitor");
         Assert.True(skin.X < 100);
         Assert.True(skin.Y < 100);
     }

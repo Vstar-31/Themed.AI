@@ -145,5 +145,10 @@ public static class WidgetLexicon
         ["corn"] = ForPosition("top", "right"),         // "corner" alone → default to top-right
         ["cent"] = ForPosition("center", "center"),     // "center"/"centered"
         ["middl"] = ForPosition("center", "center"),    // "middle"
+
+        // ════ STOPWORDS ═══════════════════════════════════════════════════════
+        // "widget" is so common in prompts that it fuzzy-matches to "right" (distance 3)
+        // because of its length, unintentionally throwing the widget to the right side of the screen.
+        ["widget"] = new(null, null, null, null, null, null, "stopword"),
     };
 }

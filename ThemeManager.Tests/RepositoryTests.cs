@@ -132,9 +132,10 @@ public class RepositoryTests : IDisposable
         var repo = new SkinRepository();
         var skins = await repo.LoadAllAsync();
 
+        string uniqueName = "My Custom Widget " + Guid.NewGuid();
         var custom = new SkinDefinition
         {
-            Name = "My Custom Widget",
+            Name = uniqueName,
             Width = 300,
             Height = 200,
             Opacity = 0.75,
@@ -144,8 +145,8 @@ public class RepositoryTests : IDisposable
         await repo.SaveAllAsync(skins);
         var reloaded = await repo.LoadAllAsync();
 
-        Assert.Contains(reloaded, s => s.Name == "My Custom Widget");
-        var found = reloaded.Find(s => s.Name == "My Custom Widget");
+        Assert.Contains(reloaded, s => s.Name == uniqueName);
+        var found = reloaded.Find(s => s.Name == uniqueName);
         Assert.NotNull(found);
         Assert.Equal(0.75, found!.Opacity);
     }
