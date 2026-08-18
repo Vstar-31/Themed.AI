@@ -10,7 +10,7 @@
     <Platforms>x64</Platforms>
     <Platform>x64</Platform>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <UseWinUI>true</UseWinUI>+
+    <UseWinUI>true</UseWinUI>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <WindowsPackageType>None</WindowsPackageType>
     <Nullable>enable</Nullable>
