@@ -175,6 +175,14 @@ public sealed partial class SkinHostWindow : Window
     {
         try
         {
+            // If the widget is currently attached to the desktop layer, it MUST be detached 
+            // (reparented back to a normal top-level window) before the HWND is destroyed,
+            // otherwise WinUI throws a STATUS_STOWED_EXCEPTION (0xc000027b).
+            if (_viewModel.Definition.DesktopLayer)
+            {
+                DesktopLayerInterop.Detach(_hwnd);
+            }
+
             this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = null;
         }
         catch { }

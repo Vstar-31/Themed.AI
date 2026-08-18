@@ -101,6 +101,11 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         _manager.SaveFailed -= _saveFailedHandler;
     }
 
+    public void ToggleMasterVisibility()
+    {
+        _manager.ToggleAllWidgetsVisibility();
+    }
+
     private void RefreshList()
     {
         var source = _manager.Skins;
