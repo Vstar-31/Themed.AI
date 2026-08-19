@@ -251,12 +251,17 @@ public sealed class SkinManagerService : IDisposable
         viewModel.UpdateMeters(); // paint real values immediately instead of waiting up to 1s for the first tick
     }
 
-    private void CloseWindowFor(SkinDefinition skin)
+    private async void CloseWindowFor(SkinDefinition skin)
     {
         if (!_open.TryGetValue(skin.Id, out var entry)) return;
         _open.Remove(skin.Id);
         entry.ViewModel.IsClosed = true;
         entry.Window.PrepareForClose();
+        
+        // Yield to the WinUI compositor so it can process the reparenting/backdrop changes
+        // before we destroy the HWND. Without this, WinUI throws STATUS_STOWED_EXCEPTION.
+        await Task.Delay(50);
+        
         entry.Window.Close();
     }
 
@@ -283,7 +288,10 @@ public sealed class SkinManagerService : IDisposable
     {
         _timer?.Stop();
         foreach (var (window, _) in _open.Values)
+        {
+            window.PrepareForClose();
             window.Close();
+        }
         _open.Clear();
     }
 }
