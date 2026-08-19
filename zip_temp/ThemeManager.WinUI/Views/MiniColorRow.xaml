@@ -1,0 +1,24 @@
+﻿<UserControl
+    x:Class="ThemeManager.WinUI.Views.MiniColorRow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <!-- Colour swatch -->
+        <Border x:Name="SwatchBorder"
+                Width="18" Height="18"
+                CornerRadius="4"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="1" />
+        <!-- Label + hex -->
+        <StackPanel Spacing="0">
+            <TextBlock x:Name="LabelText"
+                       FontSize="10"
+                       Foreground="{StaticResource TextMutedBrush}" />
+            <TextBlock x:Name="HexText"
+                       FontSize="11"
+                       FontFamily="Consolas"
+                       Foreground="{StaticResource TextPrimaryBrush}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

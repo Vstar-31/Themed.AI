@@ -1,0 +1,116 @@
+<Window
+    x:Class="ThemeManager.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ThemeManager.WinUI"
+    Title="Themed.AI">
+
+    <Grid x:Name="RootGrid"
+          Background="{StaticResource AppBackgroundBrush}">
+
+        <Grid.ColumnDefinitions>
+            <!-- Sidebar -->
+            <ColumnDefinition Width="220" />
+            <!-- Separator line -->
+            <ColumnDefinition Width="1" />
+            <!-- Content area -->
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ════════════════════════════════════════════════════════════
+             SIDEBAR
+        ════════════════════════════════════════════════════════════ -->
+        <Grid Grid.Column="0"
+              Background="{StaticResource SidebarBackgroundBrush}">
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="64" />   <!-- App title -->
+                <RowDefinition Height="*" />    <!-- Nav items -->
+                <RowDefinition Height="Auto" /> <!-- Version footer -->
+            </Grid.RowDefinitions>
+
+            <!-- App name -->
+            <StackPanel Grid.Row="0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Padding="20,0,0,0"
+                        Spacing="10">
+                <Border Width="32" Height="32"
+                        CornerRadius="{StaticResource CornerRadiusSmall}"
+                        Background="{StaticResource PrimaryAccentBrush}">
+                    <TextBlock Text="☕"
+                               FontSize="16"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="Themed.AI"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+            </StackPanel>
+
+            <!-- Nav items -->
+            <StackPanel Grid.Row="1"
+                        Padding="12,8,12,8"
+                        Spacing="4">
+
+                <Button x:Name="NavThemes"
+                        Content="🎨  Themes"
+                        Style="{StaticResource NavItemActiveStyle}"
+                        Click="NavThemes_Click" />
+
+                <Button x:Name="NavVibe"
+                        Content="✨  Vibe"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavVibe_Click" />
+
+                <Button x:Name="NavPreview"
+                        Content="👁  Preview"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavPreview_Click" />
+
+                <Button x:Name="NavSystem"
+                        Content="⚙️  System"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavSystem_Click" />
+
+                <Button x:Name="NavWidgets"
+                        Content="🧩  Widgets"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavWidgets_Click" />
+
+                <Button x:Name="NavWidgetVibe"
+                        Content="🪄  Widget Generator"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavWidgetVibe_Click" />
+
+                <Button x:Name="NavSettings"
+                        Content="🔧  Settings"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavSettings_Click" />
+
+            </StackPanel>
+
+            <!-- Version footer -->
+            <TextBlock Grid.Row="2"
+                       Text="v1.0.0-preview"
+                       Style="{StaticResource CaptionStyle}"
+                       Margin="20,0,20,16"
+                       VerticalAlignment="Bottom" />
+        </Grid>
+
+        <!-- Sidebar / content separator -->
+        <Rectangle Grid.Column="1"
+                   Fill="{StaticResource BorderSubtleBrush}" />
+
+        <!-- ════════════════════════════════════════════════════════════
+             MAIN CONTENT FRAME
+             Pages are navigated into this Frame.
+        ════════════════════════════════════════════════════════════ -->
+        <Frame x:Name="ContentFrame"
+               Grid.Column="2"
+               Background="{StaticResource AppBackgroundBrush}" />
+
+    </Grid>
+</Window>

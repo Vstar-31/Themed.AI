@@ -1,0 +1,41 @@
+## .NET / C# ##
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+.idea/
+
+## Build artifacts ##
+AppPackages/
+BundleArtifacts/
+*.msix
+*.msixbundle
+*.appx
+
+## NuGet ##
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Rider / ReSharper ##
+_ReSharper*/
+*.DotSettings.user
+
+## OS ##
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Stray artifacts ##
+*.etl
+build.txt
+
+## Test Logs & Private Testing ##
+*TestReport.md
+StressTestReport.md
+*.log
+StressTestPrompts/
