@@ -177,12 +177,20 @@ public partial class App : Application
 
         // Only reached once a close was actually allowed through (i.e. after Exit) —
         // final cleanup so widgets and the tray icon don't outlive the main process.
-        MainWindow.Closed += async (_, _) =>
+        MainWindow.Closed += (_, _) =>
         {
             SkinManager.Dispose();
             Tray.Dispose();
             Automation.Dispose();
-            await Settings.SaveAsync();
+            // Deliberately NOT saving Settings here. Window.Closed isn't awaited by the
+            // framework — an async handler returns (and lets teardown proceed) at its first
+            // await, while the save is still in flight, which is exactly what caused a crash
+            // on exit here before. Blocking on it synchronously instead would deadlock:
+            // AppSettings.SaveAsync() has no ConfigureAwait(false), so it tries to resume on
+            // the UI thread's captured context — the same thread that would be sitting there
+            // blocked waiting for it. Not needed anyway: every Settings mutation (see
+            // SettingsPage's Save Automation Settings button) already persists immediately on
+            // its own, so there's nothing left unsaved by the time a user gets to closing the app.
             logger.LogInformation("Application Shutting Down...");
             Log.CloseAndFlush();
         };

@@ -187,6 +187,20 @@ public sealed partial class SkinEditorPage : Page
             };
         }
 
+        if (meter.Kind == MeterKind.Icon)
+        {
+            return new FontIcon
+            {
+                Width = meter.Width,
+                Height = meter.Height,
+                FontSize = Math.Max(8, Math.Min(meter.Width, meter.Height) * 0.8),
+                Glyph = string.IsNullOrWhiteSpace(meter.IconGlyph) ? "\uE946" : meter.IconGlyph,
+                Foreground = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"],
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+
         // Bar and Graph share the same simple "fill preview" visual here — the real scrolling
         // graph only exists where it matters, in the live SkinHostWindow; the editor just needs
         // to convey "roughly this full", which a static fill communicates just as well and is
