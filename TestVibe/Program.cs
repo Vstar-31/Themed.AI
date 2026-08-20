@@ -1,16 +1,17 @@
 using System;
+using System.Text.Json;
 using ThemeManager.Core.NLP;
 
 class Program
 {
-    static void Main()
+    static void Main(string[] args)
     {
         try
         {
-            var gen = new VibeThemeGenerator();
-            var (theme, analysis) = gen.GenerateAndExplain("midnight ocean storm");
-            Console.WriteLine($"Success: {analysis.Swatches.Count} swatches");
-            foreach (var s in analysis.Swatches) Console.WriteLine(s);
+            var prompt = args.Length > 0 ? args[0] : "I want a minimal widget that shows all of my disk spaces and memory in the bottom right";
+            var skin = WidgetVibeGenerator.BuildSkin(prompt, 1920, 1080);
+            var json = JsonSerializer.Serialize(skin, new JsonSerializerOptions { WriteIndented = true });
+            Console.WriteLine(json);
         }
         catch (Exception ex)
         {

@@ -365,8 +365,8 @@ public sealed class WidgetVibeGenerator
     {
         MeasureType.Cpu => ("CPU", "CPU  {0:F0}%"),
         MeasureType.Memory => ("RAM", "RAM  {0:F0}%"),
-        MeasureType.DiskFree => (driveLetter != null ? $"{driveLetter}:" : "Disk", $"{driveLetter ?? "C"}:\\  {{0:F0}}% free"),
-        MeasureType.DiskUsed => (driveLetter != null ? $"{driveLetter}:" : "Disk", $"{driveLetter ?? "C"}:\\  {{0:F0}}% used"),
+        MeasureType.DiskFree => (driveLetter != null ? $"{driveLetter}:" : "Disk", $"{driveLetter ?? "C"}:  {{1}} free"),
+        MeasureType.DiskUsed => (driveLetter != null ? $"{driveLetter}:" : "Disk", $"{driveLetter ?? "C"}:  {{1}} used"),
         MeasureType.NetworkDown => ("Down", "↓ {1}"),
         MeasureType.NetworkUp => ("Up", "↑ {1}"),
         MeasureType.Battery => ("Battery", "🔋 {1}"),

@@ -41,8 +41,14 @@ public sealed class DiskMeasure : IMeasure
                 return;
 
             double freePercent = 100.0 * drive.AvailableFreeSpace / total;
-            Value = _reportFreeSpace ? freePercent : 100.0 - freePercent;
-            Text = $"{Value:F0}%";
+            double usedPercent = 100.0 - freePercent;
+            
+            // Value always represents used space so that progress bars fill up as the disk gets full
+            // and threshold alerts (e.g. >90%) trigger correctly when the disk is almost full.
+            Value = usedPercent;
+            
+            // Text contains the string for the requested metric
+            Text = _reportFreeSpace ? $"{freePercent:F0}%" : $"{usedPercent:F0}%";
         }
         catch (Exception ex)
         {
