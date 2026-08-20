@@ -22,6 +22,8 @@ public sealed partial class SkinEditorPage : Page
     private bool _dragging;
     private MeterEditorItem? _dragTarget;
     private Windows.Foundation.Point _dragAnchor;
+    private double _dragStartMeterX;
+    private double _dragStartMeterY;
 
     public SkinEditorPage()
     {
@@ -263,6 +265,8 @@ public sealed partial class SkinEditorPage : Page
         ViewModel.SelectedMeter = meter;
         _dragging = true;
         _dragTarget = meter;
+        _dragStartMeterX = meter.X;
+        _dragStartMeterY = meter.Y;
         _dragAnchor = e.GetCurrentPoint(PreviewCanvas).Position;
         container.CapturePointer(e.Pointer);
     }
@@ -276,8 +280,16 @@ public sealed partial class SkinEditorPage : Page
         double deltaY = current.Y - _dragAnchor.Y;
         if (deltaX == 0 && deltaY == 0) return;
 
-        meter.MoveTo(meter.X + deltaX, meter.Y + deltaY);
-        _dragAnchor = current;
+        double targetX = _dragStartMeterX + deltaX;
+        double targetY = _dragStartMeterY + deltaY;
+
+        if (ViewModel.SnapToGrid)
+        {
+            targetX = Math.Round(targetX / 10.0) * 10.0;
+            targetY = Math.Round(targetY / 10.0) * 10.0;
+        }
+
+        meter.MoveTo(targetX, targetY);
     }
 
     private void PreviewElement_PointerReleased(Border container, PointerRoutedEventArgs e)

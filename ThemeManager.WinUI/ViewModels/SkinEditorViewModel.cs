@@ -274,6 +274,13 @@ public sealed class SkinEditorViewModel : ViewModelBase
         set => SetProperty(ref _dirty, value);
     }
 
+    private bool _snapToGrid = true;
+    public bool SnapToGrid
+    {
+        get => _snapToGrid;
+        set => SetProperty(ref _snapToGrid, value);
+    }
+
     private string _statusMessage = "";
     public string StatusMessage
     {

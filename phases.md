@@ -24,7 +24,7 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
 - [x] Emotion & intent detection: the `Services/NLP/EmotionAnalyzer` N-gram/semantic-distance attempt referenced in this bullet turned out to be dead code (zero references anywhere) and has been removed. The live pipeline (`Core/NLP/`: `BigramLexicon`, `FuzzyMatcher`, `EmojiSignalMap`, `MoodInferrer`) covers the same goal via a different, actually-wired-up route.
 - [x] Visual widget editor (`SkinEditorPage`) — drag-to-reposition, live WYSIWYG preview canvas, full per-meter property panel. No raw JSON editing required.
 - [x] Prompt-to-widget generation (`WidgetVibeGenerator`), including conversational refinement (see Phase 5).
-- [ ] Grid snapping in the widget editor specifically — not confirmed either way this session; the desktop drag-to-move (Phase 3) does snap, unclear if the in-editor canvas does too.
+- [x] Grid snapping in the widget editor specifically — not confirmed either way this session; the desktop drag-to-move (Phase 3) does snap, unclear if the in-editor canvas does too. (Implemented 10px snap)
 
 ### Phase 5 — Intelligence & Polish (UX Angle)
 *Goal: make the generator smarter and the editor feel professional*
@@ -32,8 +32,8 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
 - [x] Harmony lock (`PaletteHarmonizer`), WCAG AA/AAA contrast checker (`Utilities/ContrastChecker.cs`, unit-tested), palette history undo/redo (`Utilities/PaletteHistory.cs`, unit-tested).
 - [x] Ctrl+G generates from anywhere on the Vibe page; copy-hex-on-click is wired to the clipboard.
 - [x] Conversational refinement for both themes (`VibeThemeGenerator.Refine`) and widgets (`WidgetVibeGenerator.Refine`) — "make the clock bigger" patches in place instead of regenerating.
-- [ ] Animated palette reveal on generation — not checked this session.
-- [ ] WidgetAnalysisResult insights panel visibility — not checked this session.
+- [x] Animated palette reveal on generation — not checked this session. (Verified as already implemented)
+- [x] WidgetAnalysisResult insights panel visibility — not checked this session. (Added right-hand insights panel to WidgetGeneratorPage)
 
 
 ## 🚀 Upcoming Phases (To Do)

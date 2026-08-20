@@ -58,7 +58,7 @@
                     <!-- Widget size -->
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="Widget size" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBlock Text="Widget size &amp; layout" Style="{StaticResource SectionHeaderStyle}" />
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <NumberBox Header="Width" Width="150"
                                            Value="{x:Bind ViewModel.Width, Mode=TwoWay}"
@@ -67,6 +67,8 @@
                                            Value="{x:Bind ViewModel.Height, Mode=TwoWay}"
                                            SpinButtonPlacementMode="Compact" Minimum="40" Maximum="1200" />
                             </StackPanel>
+                            <ToggleSwitch Header="Snap to grid when dragging" Margin="0,4,0,0"
+                                          IsOn="{x:Bind ViewModel.SnapToGrid, Mode=TwoWay}" />
                         </StackPanel>
                     </Border>
 
