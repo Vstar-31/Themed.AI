@@ -1,3 +1,4 @@
+using System.IO;
 using ThemeManager.Core.Skins;
 
 namespace ThemeManager.Core.NLP;
@@ -202,7 +203,7 @@ public sealed class WidgetVibeGenerator
         var skin = new SkinDefinition
         {
             Name = GenerateName(measures, usedFallback, promptText),
-            Enabled = false,
+            Enabled = true,
         };
 
         double y = DefaultMargin;
@@ -227,7 +228,19 @@ public sealed class WidgetVibeGenerator
 
         foreach (var type in measures)
         {
-            AddMeasureAndMeters(skin, type, kindPreference, sizeScale, bold, meterWidth, ref y);
+            if (type is MeasureType.DiskFree or MeasureType.DiskUsed)
+            {
+                var drives = GetFixedDrives();
+                foreach (var drive in drives)
+                {
+                    string driveLetter = drive.TrimEnd('\\', ':');
+                    AddMeasureAndMeters(skin, type, kindPreference, sizeScale, bold, meterWidth, ref y, drive, driveLetter);
+                }
+            }
+            else
+            {
+                AddMeasureAndMeters(skin, type, kindPreference, sizeScale, bold, meterWidth, ref y);
+            }
         }
 
         skin.Width = meterWidth + DefaultMargin * 2;
@@ -240,10 +253,13 @@ public sealed class WidgetVibeGenerator
 
     private static void AddMeasureAndMeters(
         SkinDefinition skin, MeasureType type, MeterKind? kindPreference,
-        double sizeScale, bool bold, double meterWidth, ref double y)
+        double sizeScale, bool bold, double meterWidth, ref double y,
+        string? driveTarget = null, string? driveLetter = null)
     {
-        string measureName = type.ToString();
-        string? target = type is MeasureType.DiskFree or MeasureType.DiskUsed ? @"C:\" : null;
+        string measureName = driveLetter != null ? $"{type}_{driveLetter}" : type.ToString();
+        string? target = type is MeasureType.DiskFree or MeasureType.DiskUsed
+            ? (driveTarget ?? @"C:\")
+            : null;
         skin.Measures.Add(new MeasureDefinition { Name = measureName, Type = type, Target = target });
 
         double labelHeight = 18 * sizeScale;
@@ -253,7 +269,7 @@ public sealed class WidgetVibeGenerator
         double rowGap = 4 * sizeScale;
         double sectionGap = 14 * sizeScale;
 
-        var (_, format) = LabelAndFormat(type);
+        var (_, format) = LabelAndFormat(type, driveLetter);
 
         skin.Meters.Add(new MeterDefinition
         {
@@ -345,12 +361,12 @@ public sealed class WidgetVibeGenerator
         return (x, yPos);
     }
 
-    private static (string Label, string Format) LabelAndFormat(MeasureType type) => type switch
+    private static (string Label, string Format) LabelAndFormat(MeasureType type, string? driveLetter = null) => type switch
     {
         MeasureType.Cpu => ("CPU", "CPU  {0:F0}%"),
         MeasureType.Memory => ("RAM", "RAM  {0:F0}%"),
-        MeasureType.DiskFree => ("Disk", "C:\\  {0:F0}% free"),
-        MeasureType.DiskUsed => ("Disk", "C:\\  {0:F0}% used"),
+        MeasureType.DiskFree => (driveLetter != null ? $"{driveLetter}:" : "Disk", $"{driveLetter ?? "C"}:\\  {{0:F0}}% free"),
+        MeasureType.DiskUsed => (driveLetter != null ? $"{driveLetter}:" : "Disk", $"{driveLetter ?? "C"}:\\  {{0:F0}}% used"),
         MeasureType.NetworkDown => ("Down", "↓ {1}"),
         MeasureType.NetworkUp => ("Up", "↑ {1}"),
         MeasureType.Battery => ("Battery", "🔋 {1}"),
@@ -391,5 +407,26 @@ public sealed class WidgetVibeGenerator
             2 => $"{labels[0]} + {labels[1]} Widget",
             _ => $"{labels[0]} + {labels[1]} + {labels.Count - 2} more",
         };
+    }
+
+    /// <summary>
+    /// Returns the root paths of all fixed, ready drives on this machine (e.g. ["C:\", "D:\"]).
+    /// Falls back to just C:\ if drive enumeration fails for any reason.
+    /// </summary>
+    private static List<string> GetFixedDrives()
+    {
+        try
+        {
+            var drives = DriveInfo.GetDrives()
+                .Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
+                .Select(d => d.RootDirectory.FullName)
+                .OrderBy(d => d)
+                .ToList();
+            return drives.Count > 0 ? drives : new List<string> { @"C:\" };
+        }
+        catch
+        {
+            return new List<string> { @"C:\" };
+        }
     }
 }

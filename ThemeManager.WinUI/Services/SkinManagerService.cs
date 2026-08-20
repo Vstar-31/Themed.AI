@@ -57,10 +57,13 @@ public sealed class SkinManagerService : IDisposable
     private void TickAll()
     {
         var dispatcher = DispatcherQueue.GetForCurrentThread();
-        foreach (var (_, viewModel) in _open.Values)
+        var snapshot = _open.Values.ToList();
+        foreach (var (_, viewModel) in snapshot)
         {
+            if (viewModel.IsClosed) continue;
             Task.Run(() =>
             {
+                if (viewModel.IsClosed) return;
                 try { viewModel.RefreshMeasures(); }
                 catch (Exception ex) { _logger.LogWarning(ex, "A widget failed to refresh its measures this tick"); }
                 
@@ -260,7 +263,7 @@ public sealed class SkinManagerService : IDisposable
 
         // Yield to the WinUI compositor so it can process the reparenting/backdrop changes
         // before we destroy the HWND. Without this, WinUI throws STATUS_STOWED_EXCEPTION.
-        await Task.Delay(50);
+        await Task.Delay(150);
 
         try
         {

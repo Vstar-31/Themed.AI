@@ -40,6 +40,7 @@ public static class VibeTokenizer
         "really","quite","rather","maybe","perhaps","please","want","would",
         "love","enjoy","prefer","think","imagine","create","generate","theme",
         "color","colour","palette","vibe","style","mood","feel","aesthetic",
+        "show","shows","display","monitor",
     };
 
     // ── Public API ────────────────────────────────────────────────────────────

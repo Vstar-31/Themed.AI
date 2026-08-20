@@ -17,12 +17,16 @@ public static class WidgetFuzzyMatcher
         matchedKey = null;
         int len = token.Length;
 
+        // Adaptive thresholds — now aligned with the proven FuzzyMatcher (color) values.
+        // The previous widget-specific thresholds (1/3/3/4) were far too loose, causing
+        // false matches like "space"→"date" (distance 3 on a 5-char word) and
+        // "show"→"glow" (distance 2 on a 4-char word).
         int maxDist = len switch
         {
-            <= 3 => 1,
-            <= 5 => 3,
-            <= 8 => 3,
-            _ => 4,
+            <= 3 => 0,   // too short to risk a false match
+            <= 5 => 1,
+            <= 8 => 2,
+            _    => 2,   // cap at 2 to avoid nonsense matches
         };
 
         if (maxDist == 0) return null;
@@ -44,6 +48,12 @@ public static class WidgetFuzzyMatcher
         }
 
         if (bestKey is null) return null;
+
+        // Similarity ratio gate: even within the distance budget, reject matches where
+        // the edit distance is too large relative to the longer of the two words.
+        // This catches cases like two 4-char words sharing only 2 characters.
+        int maxLen = Math.Max(len, bestKey.Length);
+        if (maxLen > 0 && (double)bestDist / maxLen > 0.4) return null;
 
         matchedKey = bestKey;
         return WidgetLexicon.Entries.TryGetValue(bestKey, out var sig) ? sig : null;

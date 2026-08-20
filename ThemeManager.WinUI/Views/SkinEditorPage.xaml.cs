@@ -58,7 +58,11 @@ public sealed partial class SkinEditorPage : Page
 
     private void BackButton_Click(object sender, RoutedEventArgs e) => Frame.GoBack();
 
-    private async void SaveButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SaveAsync();
+    private async void SaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.SaveAsync();
+        if (Frame.CanGoBack) Frame.GoBack();
+    }
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
     {

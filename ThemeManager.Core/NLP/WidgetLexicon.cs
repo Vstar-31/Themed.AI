@@ -28,6 +28,7 @@ public static class WidgetLexicon
         // ════ MEASURES ════════════════════════════════════════════════════════
         ["cpu"] = ForMeasure(MeasureType.Cpu),
         ["processor"] = ForMeasure(MeasureType.Cpu),
+        ["usag"] = ForMeasure(MeasureType.Cpu),       // "usage" — as in "cpu usage"
 
         ["ram"] = ForMeasure(MeasureType.Memory),
         ["memori"] = ForMeasure(MeasureType.Memory), // "memory"
@@ -35,6 +36,7 @@ public static class WidgetLexicon
         ["disk"] = ForMeasure(MeasureType.DiskFree),
         ["storag"] = ForMeasure(MeasureType.DiskFree), // "storage"
         ["drive"] = ForMeasure(MeasureType.DiskFree),
+        ["space"] = ForMeasure(MeasureType.DiskFree),  // "disk spaces" — was fuzzy-matching "date"
 
         ["network"] = ForMeasure(MeasureType.NetworkDown),
         ["internet"] = ForMeasure(MeasureType.NetworkDown),
@@ -150,5 +152,11 @@ public static class WidgetLexicon
         // "widget" is so common in prompts that it fuzzy-matches to "right" (distance 3)
         // because of its length, unintentionally throwing the widget to the right side of the screen.
         ["widget"] = new(null, null, null, null, null, null, "stopword"),
+        // "show"/"display"/"monitor" are verbs/nouns that appear in almost every widget
+        // prompt ("show me...", "display my...", "cpu monitor") — without these, "show"
+        // fuzzy-matched "glow" (distance 2) and "monitor" could match measure entries.
+        ["show"] = new(null, null, null, null, null, null, "stopword"),
+        ["displai"] = new(null, null, null, null, null, null, "stopword"), // "display"
+        ["monitor"] = new(null, null, null, null, null, null, "stopword"),
     };
 }
