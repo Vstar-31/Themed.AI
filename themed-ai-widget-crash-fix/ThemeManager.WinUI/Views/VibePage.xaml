@@ -1,0 +1,381 @@
+<Page
+    x:Class="ThemeManager.WinUI.Views.VibePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ThemeManager.WinUI.Views"
+    Background="{StaticResource AppBackgroundBrush}"
+    KeyDown="Page_KeyDown">
+
+    <Page.Resources>
+        <local:HexToBrushConverter       x:Key="HexToBrushConverter" />
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <local:InverseBoolConverter      x:Key="InverseBoolConverter" />
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*"    />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ════════ HEADER ════════════════════════════════════════════════ -->
+        <Grid Grid.Row="0" Padding="32,24,32,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"    />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+                <TextBlock Text="✨  Vibe Generator"
+                           FontSize="{StaticResource FontSizeDisplay}"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock Style="{StaticResource CaptionStyle}">
+                    Describe a mood, scene, or feeling — press Enter or Ctrl+G to generate.
+                    Supports emoji 🌊🌙🍂 and Spanish, French &amp; Japanese.
+                </TextBlock>
+            </StackPanel>
+        </Grid>
+
+        <!-- ════════ MAIN: generator left, insights right ══════════════════ -->
+        <Grid Grid.Row="1" Margin="32,20,32,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="340" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ── LEFT ──────────────────────────────────────────────────── -->
+            <ScrollViewer x:Name="LeftScroller" Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="20">
+
+                    <!-- Prompt card -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Describe your vibe"
+                                       Style="{StaticResource SectionHeaderStyle}" />
+
+                            <TextBox x:Name="VibeInput"
+                                     Text="{x:Bind ViewModel.VibeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="e.g. 🌙 midnight ocean storm · cozy autumn library · yoru no mori…"
+                                     Style="{StaticResource CozyTextBoxStyle}"
+                                     TextWrapping="Wrap"
+                                     Height="72" FontSize="15"
+                                     TextChanged="VibeInput_TextChanged"
+                                     KeyDown="VibeInput_KeyDown" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <Button Content="Generate  (Ctrl+G)"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        IsEnabled="{x:Bind ViewModel.CanGenerate, Mode=OneWay}"
+                                        Click="GenerateButton_Click" />
+
+                                <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                              Width="24" Height="24"
+                                              Foreground="{StaticResource PrimaryAccentBrush}" />
+
+                                <Button Content="Reset"
+                                        Style="{StaticResource GhostButtonStyle}"
+                                        Click="ResetButton_Click"
+                                        Visibility="{x:Bind ViewModel.HasResult, Mode=OneWay,
+                                                     Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Suggestion chips -->
+                    <!-- FlowLayout wraps chips onto multiple rows instead of
+                         overflowing off-screen like StackLayout Horizontal did. -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Try one of these"
+                                       Style="{StaticResource SectionHeaderStyle}" />
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.SuggestionChips}">
+                                <ItemsRepeater.Layout>
+                                    <LinedFlowLayout MinItemSpacing="8" LineSpacing="8" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border CornerRadius="{StaticResource CornerRadiusPill}"
+                                                Background="{StaticResource SidebarBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderSubtleBrush}"
+                                                BorderThickness="1"
+                                                Padding="14,7,14,7">
+                                            <Button Background="Transparent" BorderThickness="0"
+                                                    Padding="0" Content="{x:Bind}"
+                                                    FontSize="12"
+                                                    Foreground="{StaticResource PrimaryAccentBrush}"
+                                                    Tag="{x:Bind}"
+                                                    Click="Chip_Click" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Result card -->
+                    <Border x:Name="ResultCard" Style="{StaticResource CardStyle}"
+                            Visibility="{x:Bind ViewModel.HasResult, Mode=OneWay,
+                                         Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="16">
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedTheme.Name, Mode=OneWay, FallbackValue=''}"
+                                           FontSize="{StaticResource FontSizeTitle}"
+                                           FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="{x:Bind ViewModel.GeneratedTheme.Description, Mode=OneWay, FallbackValue=''}"
+                                           Style="{StaticResource CaptionStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <!-- Click-to-copy hint -->
+                            <TextBlock Text="Tap a swatch to copy its hex"
+                                       Style="{StaticResource CaptionStyle}"
+                                       Opacity="0.6" />
+
+                            <!-- Swatch strip — each swatch is tappable -->
+                            <Grid Height="56" CornerRadius="{StaticResource CornerRadiusMedium}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="Swatch0" Grid.Column="0" Tapped="Swatch_Tapped"
+                                        ToolTipService.ToolTip="Tap to copy" />
+                                <Border x:Name="Swatch1" Grid.Column="1" Tapped="Swatch_Tapped"
+                                        ToolTipService.ToolTip="Tap to copy" />
+                                <Border x:Name="Swatch2" Grid.Column="2" Tapped="Swatch_Tapped"
+                                        ToolTipService.ToolTip="Tap to copy" />
+                                <Border x:Name="Swatch3" Grid.Column="3" Tapped="Swatch_Tapped"
+                                        ToolTipService.ToolTip="Tap to copy" />
+                                <Border x:Name="Swatch4" Grid.Column="4" Tapped="Swatch_Tapped"
+                                        ToolTipService.ToolTip="Tap to copy" />
+                            </Grid>
+
+                            <!-- Hex labels -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="HexLabel0" Grid.Column="0" FontSize="9"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock x:Name="HexLabel1" Grid.Column="1" FontSize="9"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock x:Name="HexLabel2" Grid.Column="2" FontSize="9"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock x:Name="HexLabel3" Grid.Column="3" FontSize="9"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock x:Name="HexLabel4" Grid.Column="4" FontSize="9"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                            </Grid>
+
+                            <!-- Token detail grid -->
+                            <Grid ColumnSpacing="8" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <local:MiniColorRow Grid.Row="0" Grid.Column="0" Label="Background Base"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.BackgroundBase, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="0" Grid.Column="1" Label="Background Alt"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.BackgroundAlt, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="1" Grid.Column="0" Label="Surface"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.Surface, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="1" Grid.Column="1" Label="Accent Primary"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.AccentPrimary, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="2" Grid.Column="0" Label="Accent Strong"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.AccentStrong, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="2" Grid.Column="1" Label="Text Primary"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.TextPrimary, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="3" Grid.Column="0" Label="Text Muted"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.TextMuted, Mode=OneWay, FallbackValue=''}" />
+                                <local:MiniColorRow Grid.Row="3" Grid.Column="1" Label="Border Subtle"
+                                    Hex="{x:Bind ViewModel.GeneratedTheme.BorderSubtle, Mode=OneWay, FallbackValue=''}" />
+                            </Grid>
+
+                            <!-- Actions -->
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="💾  Save Theme"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="SaveButton_Click" />
+                                <Button Content="🎨  Edit"
+                                        Style="{StaticResource GhostButtonStyle}"
+                                        Click="EditButton_Click" />
+                                <Button Content="🔄  Regenerate"
+                                        Style="{StaticResource GhostButtonStyle}"
+                                        Click="RegenerateButton_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- No match card -->
+                    <Border Style="{StaticResource CardStyle}"
+                            Visibility="{x:Bind ViewModel.HasNoMatch, Mode=OneWay,
+                                         Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="🤔  No colour signals found"
+                                       FontSize="{StaticResource FontSizeSubtitle}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionStyle}">
+                                Try environments (ocean, forest, desert), moods (cozy, dark, vibrant),
+                                times (sunset, midnight), materials (wood, copper), colours (teal, amber),
+                                emoji (🌊 🌙 🍂), or Spanish/French/Japanese words.
+                            </TextBlock>
+                            <Button Content="Try a random suggestion"
+                                    Style="{StaticResource GhostButtonStyle}"
+                                    Click="TrySuggestionButton_Click" />
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ── RIGHT: Insights panel ──────────────────────────────────── -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Pipeline Insights"
+                               Style="{StaticResource SectionHeaderStyle}" />
+
+                    <!-- Matched keywords -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Matched keywords" Style="{StaticResource CaptionStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.MatchedWordsDisplay, Mode=OneWay}"
+                                       FontSize="11" FontFamily="Consolas"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource PrimaryAccentBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Bigram matches -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Compound phrases (bigrams)"
+                                           Style="{StaticResource CaptionStyle}" />
+                                <Border Background="{StaticResource SidebarBackgroundBrush}"
+                                        CornerRadius="4" Padding="4,1,4,1"
+                                        Visibility="{x:Bind ViewModel.HasBigrams, Mode=OneWay,
+                                                     Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="✓ active" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{StaticResource PrimaryAccentBrush}" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind ViewModel.BigramDisplay, Mode=OneWay}"
+                                       FontSize="11" FontFamily="Consolas"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Fuzzy corrections -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Fuzzy corrections (typos)"
+                                           Style="{StaticResource CaptionStyle}" />
+                                <Border Background="{StaticResource SidebarBackgroundBrush}"
+                                        CornerRadius="4" Padding="4,1,4,1"
+                                        Visibility="{x:Bind ViewModel.HasFuzzyCorrections, Mode=OneWay,
+                                                     Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="✓ corrected" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{StaticResource PrimaryAccentBrush}" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind ViewModel.FuzzyDisplay, Mode=OneWay}"
+                                       FontSize="11" FontFamily="Consolas"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Emoji input -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Emoji expanded" Style="{StaticResource CaptionStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.EmojiDisplay, Mode=OneWay}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Signal metrics -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Colour signal" Style="{StaticResource CaptionStyle}" />
+                            <local:InsightRow Label="Hue"        Value="{x:Bind ViewModel.HueDegDisplay,     Mode=OneWay}" />
+                            <local:InsightRow Label="Lightness"  Value="{x:Bind ViewModel.LightnessDisplay,  Mode=OneWay}" />
+                            <local:InsightRow Label="Saturation" Value="{x:Bind ViewModel.SaturationDisplay, Mode=OneWay}" />
+                            <local:InsightRow Label="Mode"       Value="{x:Bind ViewModel.ModeDisplay,       Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Sentiment -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Sentiment (VADER-lite)" Style="{StaticResource CaptionStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.SentimentDisplay, Mode=OneWay}"
+                                       FontSize="13"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap">
+                                Positive → brighter &amp; more saturated.
+                                Negative → darker &amp; more muted.
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Pipeline explainer -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="How it works" Style="{StaticResource CaptionStyle}" />
+                            <TextBlock TextWrapping="Wrap" FontSize="11"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       LineHeight="18">
+0. Emoji expand  — 🌊→ocean, 🌙→night
+1. Tokenise      — stopwords, Porter stem
+2. Bigram scan   — "rose gold", "dark forest"
+3. Unigram lookup — ~380 words in 3 languages
+4. Fuzzy fallback — Levenshtein for typos
+5. Circular mean — hue averaged as unit vectors
+6. VADER-lite    — sentiment shifts L ±6 %
+7. Harmoniser    — derives 8 slots from HSL
+8. Name gen      — keyword categories → title
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ════════ STATUS BAR ═════════════════════════════════════════════ -->
+        <Border Grid.Row="2"
+                Background="{StaticResource SidebarBackgroundBrush}"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="32,10,32,10">
+            <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                       Style="{StaticResource CaptionStyle}" />
+        </Border>
+    </Grid>
+</Page>

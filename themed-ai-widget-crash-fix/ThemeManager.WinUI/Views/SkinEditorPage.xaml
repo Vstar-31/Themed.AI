@@ -1,0 +1,274 @@
+<Page
+    x:Class="ThemeManager.WinUI.Views.SkinEditorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ThemeManager.WinUI.Views"
+    xmlns:vm="using:ThemeManager.WinUI.ViewModels"
+    Background="{StaticResource AppBackgroundBrush}">
+
+    <Page.Resources>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ══════════════════════════════════════════════════════════
+             Header
+        ══════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="0" Padding="32,24,32,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="← Back" Click="BackButton_Click" Margin="0,0,16,0" />
+
+            <TextBox Grid.Column="1"
+                     Text="{x:Bind ViewModel.Name, Mode=TwoWay}"
+                     FontSize="{StaticResource FontSizeTitle}"
+                     MaxWidth="360" HorizontalAlignment="Left"
+                     PlaceholderText="Widget name" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteButton_Click" />
+                <Button Content="Save" Style="{StaticResource PrimaryButtonStyle}" Click="SaveButton_Click" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════
+             Content: 360px controls | preview
+        ══════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="1" Margin="32,0,32,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="360" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left: controls ── -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16" Padding="0,0,0,24">
+
+                    <!-- Widget size -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Widget size" Style="{StaticResource SectionHeaderStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumberBox Header="Width" Width="150"
+                                           Value="{x:Bind ViewModel.Width, Mode=TwoWay}"
+                                           SpinButtonPlacementMode="Compact" Minimum="60" Maximum="1200" />
+                                <NumberBox Header="Height" Width="150"
+                                           Value="{x:Bind ViewModel.Height, Mode=TwoWay}"
+                                           SpinButtonPlacementMode="Compact" Minimum="40" Maximum="1200" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Measures -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Measures" Style="{StaticResource SectionHeaderStyle}" />
+                                <Button Grid.Column="1" Content="+ Add" Click="AddMeasureButton_Click" />
+                            </Grid>
+
+                            <TextBlock Text="Where a meter's numbers come from — CPU, RAM, disk, network, clock, and so on."
+                                       Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Measures}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MeasureEditorItem">
+                                        <Border Background="{StaticResource SidebarBackgroundBrush}"
+                                                CornerRadius="{StaticResource CornerRadiusSmall}"
+                                                Padding="10" Margin="0,0,0,8">
+                                            <StackPanel Spacing="8">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Text="{x:Bind Name, Mode=TwoWay}"
+                                                             PlaceholderText="Measure name" Margin="0,0,8,0" />
+                                                    <Button Grid.Column="1" Content="✕" Tag="{x:Bind}"
+                                                            Style="{StaticResource GhostButtonStyle}"
+                                                            Click="RemoveMeasureButton_Click" />
+                                                </Grid>
+                                                <ComboBox ItemsSource="{x:Bind vm:SkinEditorViewModel.AllMeasureTypes}"
+                                                          SelectedItem="{x:Bind Type, Mode=TwoWay}"
+                                                          HorizontalAlignment="Stretch" />
+                                                <TextBox Text="{x:Bind Target, Mode=TwoWay}"
+                                                         PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
+                                                         Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Meters -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Meters" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBlock Text="What's actually drawn — text, a fill bar, a scrolling graph, or an icon. Click one below (or on the preview) to edit it."
+                                       Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="+ Text" Click="AddStringMeterButton_Click" />
+                                <Button Content="+ Bar" Click="AddBarMeterButton_Click" />
+                                <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
+                                <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
+                            </StackPanel>
+
+                            <ListView ItemsSource="{x:Bind ViewModel.Meters}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedMeter, Mode=TwoWay}"
+                                      SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MeterEditorItem">
+                                        <Grid Padding="4,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{x:Bind Kind}" FontWeight="SemiBold" Width="48" />
+                                                <TextBlock Text="{x:Bind PreviewText, Mode=OneWay}"
+                                                           Style="{StaticResource CaptionStyle}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="✕" Tag="{x:Bind}"
+                                                    Style="{StaticResource GhostButtonStyle}"
+                                                    Click="RemoveMeterButton_Click" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Selected meter's properties -->
+                    <Border Style="{StaticResource CardStyle}"
+                            Visibility="{x:Bind ViewModel.HasSelectedMeter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Selected meter" Style="{StaticResource SectionHeaderStyle}" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumberBox Header="X" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedMeter.X, Mode=TwoWay}" />
+                                <NumberBox Header="Y" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedMeter.Y, Mode=TwoWay}" />
+                                <NumberBox Header="Width" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedMeter.Width, Mode=TwoWay}" />
+                                <NumberBox Header="Height" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedMeter.Height, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Measure (leave blank for static text)" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="MeasureCombo"
+                                          HorizontalAlignment="Stretch"
+                                          SelectionChanged="MeasureCombo_SelectionChanged" />
+                            </StackPanel>
+
+                            <TextBox Header="Static text"
+                                     Text="{x:Bind ViewModel.SelectedMeter.StaticText, Mode=TwoWay}"
+                                     Visibility="{x:Bind ViewModel.SelectedMeter.ShowStaticTextField, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <StackPanel Spacing="6"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.IsIcon, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBox Header="Icon glyph"
+                                         Text="{x:Bind ViewModel.SelectedMeter.IconGlyph, Mode=TwoWay}"
+                                         PlaceholderText="Paste a glyph from Character Map → Segoe Fluent Icons" />
+                                <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap">
+                                    Leave blank for a generic default. Color follows the threshold alert
+                                    below when this icon is bound to a measure.
+                                </TextBlock>
+                            </StackPanel>
+
+                            <StackPanel Spacing="6"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.IsString, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBox Header="Format  (0 = value, 1 = text — e.g. &quot;CPU {0:F0}%&quot; or &quot;{1}&quot;)"
+                                         Text="{x:Bind ViewModel.SelectedMeter.Format, Mode=TwoWay}" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <NumberBox Header="Font size" Width="100" SpinButtonPlacementMode="Compact"
+                                               Value="{x:Bind ViewModel.SelectedMeter.FontSize, Mode=TwoWay}" />
+                                    <CheckBox Content="Bold" VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                              IsChecked="{x:Bind ViewModel.SelectedMeter.Bold, Mode=TwoWay}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Spacing="10"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.UsesBarMax, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <NumberBox Header="Value that reads as &quot;full&quot;"
+                                           Value="{x:Bind ViewModel.SelectedMeter.BarMax, Mode=TwoWay}"
+                                           SpinButtonPlacementMode="Compact" />
+                                <NumberBox Header="Graph history length (samples)"
+                                           Value="{x:Bind ViewModel.SelectedMeter.HistoryLength, Mode=TwoWay}"
+                                           SpinButtonPlacementMode="Compact" Minimum="5" Maximum="600"
+                                           Visibility="{x:Bind ViewModel.SelectedMeter.IsGraph, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
+
+                            <!-- Threshold alert -->
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Threshold alert" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />
+                                <TextBlock Text="When the value exceeds this %, the meter changes to the alert color. Set to 0 to disable."
+                                           Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <NumberBox Header="Threshold %" Width="120"
+                                               Value="{x:Bind ViewModel.SelectedMeter.ThresholdPercent, Mode=TwoWay}"
+                                               SpinButtonPlacementMode="Compact" Minimum="0" Maximum="100" />
+                                    <TextBox Header="Alert color (hex)" Width="140"
+                                             Text="{x:Bind ViewModel.SelectedMeter.ThresholdColorHex, Mode=TwoWay}"
+                                             PlaceholderText="#FF4444" />
+                                </StackPanel>
+                                <CheckBox Content="Apply to text meters too"
+                                          IsChecked="{x:Bind ViewModel.SelectedMeter.ThresholdAppliesToText, Mode=TwoWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ── Right: live preview ── -->
+            <Grid Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="10" HorizontalAlignment="Center">
+                    <TextBlock Text="Drag a meter to reposition it — click to select and edit."
+                               Style="{StaticResource CaptionStyle}" HorizontalAlignment="Center" />
+                    <Border x:Name="PreviewFrame"
+                            Width="{x:Bind ViewModel.Width, Mode=OneWay}"
+                            Height="{x:Bind ViewModel.Height, Mode=OneWay}"
+                            BorderBrush="{StaticResource BorderSubtleBrush}"
+                            BorderThickness="2"
+                            CornerRadius="{StaticResource CornerRadiusLarge}"
+                            Background="{StaticResource SurfaceBrush}">
+                        <Canvas x:Name="PreviewCanvas" Background="Transparent" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════
+             Status bar
+        ══════════════════════════════════════════════════════════ -->
+        <Border Grid.Row="2"
+                Background="{StaticResource SidebarBackgroundBrush}"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="32,10,32,10">
+            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" Style="{StaticResource CaptionStyle}" />
+        </Border>
+
+    </Grid>
+</Page>
