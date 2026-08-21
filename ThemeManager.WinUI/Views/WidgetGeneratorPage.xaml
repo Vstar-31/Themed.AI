@@ -45,7 +45,7 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="12">
                             <TextBlock Text="Describe your widget" Style="{StaticResource SectionHeaderStyle}" />
-                            <TextBox Text="{x:Bind ViewModel.PromptText, Mode=TwoWay}"
+                            <TextBox Text="{x:Bind ViewModel.PromptText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="e.g. &quot;a big CPU and memory graph in the top right&quot;"
                                      AcceptsReturn="False"
                                      Style="{StaticResource CozyTextBoxStyle}"

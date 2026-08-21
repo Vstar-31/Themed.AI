@@ -48,6 +48,7 @@ public sealed class ThemeSchedule
     /// Same free-text format <c>WeatherMeasure</c> expects, so a value copied from a widget's
     /// weather config works here unchanged.</summary>
     public bool WeatherReactiveEnabled { get; set; } = false;
+    public bool WeatherUseDynamicLocation { get; set; } = false;
     public string? WeatherCity { get; set; }
     public string? WeatherApiKey { get; set; }
 

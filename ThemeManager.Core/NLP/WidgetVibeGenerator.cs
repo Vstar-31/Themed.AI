@@ -168,6 +168,10 @@ public sealed class WidgetVibeGenerator
         if (measures.Contains(MeasureType.Time) && !measures.Contains(MeasureType.Date))
             measures.Add(MeasureType.Date);
 
+        // Auto-add WeatherCity if WeatherTemp is present but City wasn't explicitly requested.
+        if (measures.Contains(MeasureType.WeatherTemp) && !measures.Contains(MeasureType.WeatherCity))
+            measures.Insert(measures.IndexOf(MeasureType.WeatherTemp), MeasureType.WeatherCity);
+
         double sizeScale = Math.Clamp(sizeVotes.Count > 0 ? sizeVotes.Average() : 1.0, 0.5, 2.0);
         MeterKind? kindPreference = kindVotes.Count == 0 ? null
             : kindVotes.GroupBy(k => k).OrderByDescending(g => g.Count()).First().Key;
@@ -289,7 +293,7 @@ public sealed class WidgetVibeGenerator
         // the clock doesn't mean anything, so they stay text-only unless a bar/graph was
         // explicitly requested (kindPreference), in which case we respect the ask anyway.
         bool naturallyTextOnly = type is MeasureType.Time or MeasureType.Date or MeasureType.Uptime or MeasureType.Battery
-            or MeasureType.WeatherTemp or MeasureType.WeatherDesc
+            or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity
             or MeasureType.MediaTitle or MeasureType.MediaArtist or MeasureType.MediaState;
 
         // For Time measures, use a bigger, bolder font by default — consumers expect a clock
@@ -374,7 +378,8 @@ public sealed class WidgetVibeGenerator
         MeasureType.Date => ("Date", "{1}"),
         MeasureType.Uptime => ("Uptime", "⏱ {1}"),
         MeasureType.WeatherTemp => ("Weather", "🌤 {1}"),
-        MeasureType.WeatherDesc => ("Weather", "{1}"),
+        MeasureType.WeatherDesc => ("Forecast", "🌧 {1}"),
+        MeasureType.WeatherCity => ("Location", "📍 {1}"),
         MeasureType.MediaTitle => ("Now Playing", "🎵 {1}"),
         MeasureType.MediaArtist => ("Artist", "{1}"),
         MeasureType.MediaState => ("Status", "{1}"),

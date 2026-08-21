@@ -61,6 +61,13 @@ public static class WidgetLexicon
         ["temperatur"] = ForMeasure(MeasureType.WeatherTemp), // "temperature"
         ["forecast"] = ForMeasure(MeasureType.WeatherTemp),
 
+        ["rain"] = ForMeasure(MeasureType.WeatherDesc),
+        ["precipit"] = ForMeasure(MeasureType.WeatherDesc), // "precipitation"
+        ["snow"] = ForMeasure(MeasureType.WeatherDesc),
+        ["cloud"] = ForMeasure(MeasureType.WeatherDesc),
+        ["sun"] = ForMeasure(MeasureType.WeatherDesc),
+        ["storm"] = ForMeasure(MeasureType.WeatherDesc),
+
         ["music"] = ForMeasure(MeasureType.MediaTitle),
         ["song"] = ForMeasure(MeasureType.MediaTitle),
         ["playlist"] = ForMeasure(MeasureType.MediaTitle),

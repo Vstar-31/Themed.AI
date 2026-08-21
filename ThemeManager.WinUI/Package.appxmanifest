@@ -46,6 +46,7 @@
   <Capabilities>
     <!-- Required for packaged desktop apps -->
     <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="location" />
   </Capabilities>
 
 </Package>

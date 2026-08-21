@@ -22,6 +22,7 @@ public enum MeasureType
     MediaState,
     WeatherTemp,
     WeatherDesc,
+    WeatherCity,
     WebJson,
 }
 

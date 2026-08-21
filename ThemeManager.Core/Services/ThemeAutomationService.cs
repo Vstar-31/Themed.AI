@@ -107,10 +107,11 @@ public sealed class ThemeAutomationService : IDisposable
         // more specific, more interesting signal than "it's currently daytime". This ordering is a
         // judgment call, not a spec requirement — swapping it with the Light/Dark block below is a
         // three-line change if that's not the priority you want.
+        string? weatherCity = schedule.WeatherUseDynamicLocation ? "AUTO" : schedule.WeatherCity;
         if (schedule.WeatherReactiveEnabled && _weatherProvider is not null
-            && !string.IsNullOrWhiteSpace(schedule.WeatherCity) && !string.IsNullOrWhiteSpace(schedule.WeatherApiKey))
+            && !string.IsNullOrWhiteSpace(weatherCity) && !string.IsNullOrWhiteSpace(schedule.WeatherApiKey))
         {
-            var condition = await _weatherProvider.GetCurrentConditionAsync(schedule.WeatherCity, schedule.WeatherApiKey);
+            var condition = await _weatherProvider.GetCurrentConditionAsync(weatherCity, schedule.WeatherApiKey);
             if (condition is not null)
             {
                 var (slot, themeId) = ScheduleResolver.ResolveWeatherSlot(schedule, condition.Value);

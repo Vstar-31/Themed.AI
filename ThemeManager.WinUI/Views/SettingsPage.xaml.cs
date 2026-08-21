@@ -146,7 +146,9 @@ public sealed partial class SettingsPage : Page
         SetUpThemeCombo(BatterySaverThemeCombo, schedule.BatterySaverThemeId);
 
         WeatherReactiveToggle.IsOn = schedule.WeatherReactiveEnabled;
+        WeatherDynamicLocationToggle.IsOn = schedule.WeatherUseDynamicLocation;
         WeatherCityBox.Text = schedule.WeatherCity ?? "";
+        WeatherCityBox.IsEnabled = !schedule.WeatherUseDynamicLocation;
         WeatherApiKeyBox.Password = schedule.WeatherApiKey ?? "";
 
         SetUpThemeCombo(WeatherClearThemeCombo, schedule.WeatherClearThemeId);
@@ -175,6 +177,20 @@ public sealed partial class SettingsPage : Page
 
     private async void SaveAutomationButton_Click(object sender, RoutedEventArgs e)
     {
+        await SaveAllScheduleSettings();
+        StatusText.Text = "Automation settings saved.";
+    }
+
+    private async void SaveWeatherButton_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveAllScheduleSettings();
+        StatusText.Text = "Weather settings saved.";
+    }
+
+    /// <summary>Persists all schedule fields (both automation and weather cards) so
+    /// neither save button can accidentally discard the other card's changes.</summary>
+    private async Task SaveAllScheduleSettings()
+    {
         var schedule = App.Settings.Schedule;
 
         schedule.Enabled = AutomationEnabledToggle.IsOn;
@@ -196,6 +212,7 @@ public sealed partial class SettingsPage : Page
         schedule.BatterySaverThemeId = ReadThemeId(BatterySaverThemeCombo);
 
         schedule.WeatherReactiveEnabled = WeatherReactiveToggle.IsOn;
+        schedule.WeatherUseDynamicLocation = WeatherDynamicLocationToggle.IsOn;
         schedule.WeatherCity = string.IsNullOrWhiteSpace(WeatherCityBox.Text) ? null : WeatherCityBox.Text.Trim();
         schedule.WeatherApiKey = string.IsNullOrWhiteSpace(WeatherApiKeyBox.Password) ? null : WeatherApiKeyBox.Password;
 
@@ -207,7 +224,6 @@ public sealed partial class SettingsPage : Page
         schedule.WeatherFogThemeId = ReadThemeId(WeatherFogThemeCombo);
 
         await App.Settings.SaveAsync();
-        StatusText.Text = "Automation settings saved.";
     }
 
     // ── Data folder ───────────────────────────────────────────────────────────
@@ -222,7 +238,7 @@ public sealed partial class SettingsPage : Page
         });
     }
 
-    // ── Helper ────────────────────────────────────────────────────────────────
+    // ── Helper ────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Returns the HWND of the main window using the static App.MainWindow property.
@@ -230,4 +246,28 @@ public sealed partial class SettingsPage : Page
     /// </summary>
     private static IntPtr GetHwnd()
         => WindowNative.GetWindowHandle(App.MainWindow);
+
+    private async void WeatherDynamicLocationToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        WeatherCityBox.IsEnabled = !WeatherDynamicLocationToggle.IsOn;
+        if (WeatherDynamicLocationToggle.IsOn)
+        {
+            try
+            {
+                var geolocator = new Windows.Devices.Geolocation.Geolocator();
+                WinRT.Interop.InitializeWithWindow.Initialize(geolocator, GetHwnd());
+                var status = await Windows.Devices.Geolocation.Geolocator.RequestAccessAsync();
+                if (status != Windows.Devices.Geolocation.GeolocationAccessStatus.Allowed)
+                {
+                    StatusText.Text = "Location access denied by Windows settings.";
+                    WeatherDynamicLocationToggle.IsOn = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Location request failed: {ex.Message}";
+                WeatherDynamicLocationToggle.IsOn = false;
+            }
+        }
+    }
 }

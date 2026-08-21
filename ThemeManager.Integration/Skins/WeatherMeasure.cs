@@ -85,6 +85,10 @@ public sealed class WeatherMeasure : IMeasure
                     Text = weatherArray[0].GetProperty("description").GetString() ?? "—";
                 }
             }
+            else if (_type == MeasureType.WeatherCity)
+            {
+                Text = entry.Data.Value.GetProperty("name").GetString() ?? "—";
+            }
         }
         catch
         {
@@ -107,10 +111,23 @@ public sealed class WeatherMeasure : IMeasure
 
         try
         {
-            var city = Uri.EscapeDataString(cityRaw);
             var apiKey = Uri.EscapeDataString(parts[1]);
+            string url;
 
-            var url = $"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={apiKey}&units=metric";
+            if (cityRaw.Equals("AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                var geolocator = new Windows.Devices.Geolocation.Geolocator();
+                var pos = await geolocator.GetGeopositionAsync();
+                double lat = pos.Coordinate.Point.Position.Latitude;
+                double lon = pos.Coordinate.Point.Position.Longitude;
+                url = $"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={apiKey}&units=metric";
+            }
+            else
+            {
+                var city = Uri.EscapeDataString(cityRaw);
+                url = $"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={apiKey}&units=metric";
+            }
+
             var json = await _http.GetStringAsync(url);
 
             using var doc = JsonDocument.Parse(json);

@@ -46,12 +46,12 @@ public sealed class MeasureEditorItem : ViewModelBase
     /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
     /// other measure type is self-contained, so the property panel only shows the field then.</summary>
     public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed
-        or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WebJson or MeasureType.CpuCore;
+        or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity or MeasureType.WebJson or MeasureType.CpuCore;
 
     /// <summary>Hint text for the Target field, since what it means depends on the measure type.</summary>
     public string TargetPlaceholder => Type switch
     {
-        MeasureType.WeatherTemp or MeasureType.WeatherDesc => "City|API key, e.g. London,GB|your_openweathermap_key",
+        MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity => "City|API key, e.g. London,GB|your_openweathermap_key",
         MeasureType.WebJson => "URL|JSON path, e.g. https://api.example.com/data|results[0].price",
         MeasureType.CpuCore => "Core index, e.g. 0 (blank = core 0)",
         _ => @"Drive, e.g. C:\",
@@ -214,6 +214,12 @@ internal static class MeterPreview
             MeasureType.Uptime => (12_000.0, "3h 20m"),
             MeasureType.NetworkDown or MeasureType.NetworkUp => (450.0, "450 KB/s"),
             MeasureType.Battery => (76.0, "76% (charging)"),
+            MeasureType.WeatherTemp => (21.0, "21°"),
+            MeasureType.WeatherDesc => (0.0, "light rain"),
+            MeasureType.WeatherCity => (0.0, "Seattle,US"),
+            MeasureType.MediaTitle => (0.0, "Never Gonna Give You Up"),
+            MeasureType.MediaArtist => (0.0, "Rick Astley"),
+            MeasureType.MediaState => (0.0, "Playing"),
             _ => (42.0, "42%"), // Cpu, Memory, DiskFree, DiskUsed
         };
 

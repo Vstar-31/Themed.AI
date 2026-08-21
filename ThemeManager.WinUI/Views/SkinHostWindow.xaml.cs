@@ -254,6 +254,7 @@ public sealed partial class SkinHostWindow : Window
             Foreground = normalBrush,
             Text = vm.DisplayText,
             TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
         };
 
         SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;

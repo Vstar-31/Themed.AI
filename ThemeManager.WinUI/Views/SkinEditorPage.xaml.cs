@@ -95,22 +95,29 @@ public sealed partial class SkinEditorPage : Page
             ViewModel.RemoveMeasure(item);
     }
 
+    private bool _isSyncingMeasureCombo;
+
     private void RefreshMeasureComboItems()
     {
+        _isSyncingMeasureCombo = true;
         var names = new List<string> { "(static text)" };
         names.AddRange(ViewModel.Measures.Select(m => m.Name));
         MeasureCombo.ItemsSource = names;
+        _isSyncingMeasureCombo = false;
         SyncMeasureComboSelection();
     }
 
     private void SyncMeasureComboSelection()
     {
+        _isSyncingMeasureCombo = true;
         var name = ViewModel.SelectedMeter?.MeasureName;
         MeasureCombo.SelectedItem = string.IsNullOrEmpty(name) ? "(static text)" : name;
+        _isSyncingMeasureCombo = false;
     }
 
     private void MeasureCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isSyncingMeasureCombo) return;
         if (ViewModel.SelectedMeter is null) return;
         var selected = MeasureCombo.SelectedItem as string;
         ViewModel.SelectedMeter.MeasureName = (selected is null or "(static text)") ? "" : selected;
@@ -190,6 +197,7 @@ public sealed partial class SkinEditorPage : Page
                 Foreground = (SolidColorBrush)Application.Current.Resources["TextPrimaryBrush"],
                 Text = meter.PreviewText,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
             };
         }
 

@@ -207,6 +207,20 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
                 var candidate = await Task.Run(() =>
                     App.Personalization.GenerateBestWidget(context, screen?.Width, screen?.Height));
 
+                // Autofill weather target from settings if available
+                var schedule = App.Settings?.Schedule;
+                string? weatherCity = schedule?.WeatherUseDynamicLocation == true ? "AUTO" : schedule?.WeatherCity;
+                if (!string.IsNullOrWhiteSpace(weatherCity) && !string.IsNullOrWhiteSpace(schedule?.WeatherApiKey))
+                {
+                    foreach (var measure in candidate.Skin.Measures)
+                    {
+                        if ((measure.Type == MeasureType.WeatherTemp || measure.Type == MeasureType.WeatherDesc || measure.Type == MeasureType.WeatherCity) && string.IsNullOrEmpty(measure.Target))
+                        {
+                            measure.Target = $"{weatherCity}|{schedule!.WeatherApiKey}";
+                        }
+                    }
+                }
+
                 Analysis = candidate.Analysis;
                 GeneratedSkin = candidate.Skin;
                 HasResult = true;

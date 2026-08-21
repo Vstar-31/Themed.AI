@@ -41,6 +41,23 @@ public sealed partial class MainWindow : Window
 
         // Resize to a comfortable default.
         AppWindow?.Resize(new SizeInt32(1100, 720));
+
+        // Enforce a minimum window size so content never overflows/clips.
+        if (appWindow is not null)
+        {
+            appWindow.Changed += (s, e) =>
+            {
+                if (!e.DidSizeChange) return;
+                const int minW = 880, minH = 560;
+                var size = s.Size;
+                if (size.Width < minW || size.Height < minH)
+                {
+                    s.Resize(new SizeInt32(
+                        Math.Max(size.Width, minW),
+                        Math.Max(size.Height, minH)));
+                }
+            };
+        }
     }
 
     // ── Navigation ─────────────────────────────────────────────────────────────

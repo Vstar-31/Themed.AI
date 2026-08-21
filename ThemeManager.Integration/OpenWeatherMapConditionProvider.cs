@@ -72,7 +72,20 @@ public sealed class OpenWeatherMapConditionProvider : IWeatherConditionProvider
 
             entry.LastAttemptUtc = DateTime.UtcNow;
 
-            var url = $"https://api.openweathermap.org/data/2.5/weather?q={Uri.EscapeDataString(city)}&appid={Uri.EscapeDataString(apiKey)}&units=metric";
+            string url;
+            if (city.Equals("AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                var geolocator = new Windows.Devices.Geolocation.Geolocator();
+                var pos = await geolocator.GetGeopositionAsync();
+                double lat = pos.Coordinate.Point.Position.Latitude;
+                double lon = pos.Coordinate.Point.Position.Longitude;
+                url = $"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={Uri.EscapeDataString(apiKey)}&units=metric";
+            }
+            else
+            {
+                url = $"https://api.openweathermap.org/data/2.5/weather?q={Uri.EscapeDataString(city)}&appid={Uri.EscapeDataString(apiKey)}&units=metric";
+            }
+            
             var json = await _http.GetStringAsync(url);
 
             using var doc = JsonDocument.Parse(json);
