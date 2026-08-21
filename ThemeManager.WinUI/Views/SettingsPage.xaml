@@ -67,9 +67,9 @@
                     <TextBlock Text="Theme Automation" Style="{StaticResource SectionHeaderStyle}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap">
                         Let Themed.AI switch your active theme on its own. If more than one rule
-                        below is on at once, Battery Saver wins first, then Light/Dark following,
-                        then the time-of-day schedule. Leave any theme picker at "— Not set —" to
-                        skip that rule.
+                        below is on at once, Battery Saver wins first, then weather, then Light/Dark
+                        following, then the time-of-day schedule. Leave any theme picker at
+                        "— Not set —" to skip that rule.
                     </TextBlock>
 
                     <ToggleSwitch x:Name="AutomationEnabledToggle"
@@ -161,6 +161,62 @@
                             <TextBlock Text="Battery saver theme" Style="{StaticResource CaptionStyle}" />
                             <ComboBox x:Name="BatterySaverThemeCombo" HorizontalAlignment="Stretch" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Weather-reactive" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <ToggleSwitch x:Name="WeatherReactiveToggle"
+                                      Header="Switch theme with the current weather"
+                                      Style="{StaticResource CozyToggleStyle}" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <StackPanel Spacing="4" Width="180">
+                                <TextBlock Text="City" Style="{StaticResource CaptionStyle}" />
+                                <TextBox x:Name="WeatherCityBox" PlaceholderText="e.g. Jaipur,IN" />
+                            </StackPanel>
+                            <StackPanel Spacing="4" Width="180">
+                                <TextBlock Text="OpenWeatherMap API key" Style="{StaticResource CaptionStyle}" />
+                                <PasswordBox x:Name="WeatherApiKeyBox" PasswordRevealMode="Peek" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="10" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Clear" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="WeatherClearThemeCombo" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Clouds" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="WeatherCloudsThemeCombo" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="2" Spacing="4">
+                                <TextBlock Text="Rain / drizzle" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="WeatherRainThemeCombo" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Thunderstorm" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="WeatherThunderstormThemeCombo" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Snow" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="WeatherSnowThemeCombo" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="2" Spacing="4">
+                                <TextBlock Text="Fog / haze / mist" Style="{StaticResource CaptionStyle}" />
+                                <ComboBox x:Name="WeatherFogThemeCombo" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
 
                     <StackPanel Spacing="4">

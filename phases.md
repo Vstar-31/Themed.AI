@@ -35,6 +35,13 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
 - [x] Animated palette reveal on generation — not checked this session. (Verified as already implemented)
 - [x] WidgetAnalysisResult insights panel visibility — not checked this session. (Added right-hand insights panel to WidgetGeneratorPage)
 
+### Phase 7 — Scheduled & Adaptive Theming
+*Goal: the app does things automatically, not just on demand*
+- [x] Time-based scheduling — Sunrise/Noon/Dusk/Midnight, each mapped to any existing theme, with a smooth crossfade (`ThemeInterpolator` + `App.CrossfadeToThemeAsync`). Built this session; see `ThemeAutomationService` and Settings → Theme Automation.
+- [x] System-reactive: follow Windows light/dark mode (`ISystemThemeIntegrator.GetCurrentSystemThemeAsync`, already existed) — now drives an automatic theme switch. Built this session.
+- [x] System-reactive: battery saver mode triggers a designated theme (`PowerManager.EnergySaverStatus`) — takes priority over the other two rules. Built this session. Not implemented as "auto low-saturation" — the user picks any existing theme to switch to, rather than the app generating a desaturated variant on the fly.
+- [x] Weather-reactive themes — pull conditions and auto-select a matching theme. Built this session: `IWeatherConditionProvider`/`WeatherCondition` (`ThemeManager.Core`) is a new, independent abstraction — deliberately not sharing `WeatherMeasure`'s cache, just its OpenWeatherMap endpoint pattern — implemented by `OpenWeatherMapConditionProvider` (`ThemeManager.Integration`), which maps OpenWeatherMap's ~15 condition codes onto 6 buckets (Clear/Clouds/Rain/Thunderstorm/Snow/Fog). Wired into `ThemeAutomationService` at priority #2, after Battery Saver but before Light/Dark and time-of-day — a judgment call about relative priority, not a spec requirement, worth revisiting if it doesn't feel right in practice. Settings → Theme Automation → "Weather-reactive". Not build-verified — written on Linux with no `dotnet`/NuGet access in-session; needs a real build on Windows before it's trusted.
+
 
 ## 🚀 Upcoming Phases (To Do)
 
@@ -49,13 +56,6 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
 - **External data:**
   - [x] Generic Web/JSON measure (`WebJsonMeasure`) — URL + JSON path, polled on an interval.
   - [ ] 2–3 shipped presets on top of it (Weather already exists as its own dedicated measure type rather than a WebJson preset, which arguably covers the spirit of this bullet — but no presets built explicitly on the generic WebJson path yet).
-
-### Phase 7 — Scheduled & Adaptive Theming
-*Goal: the app does things automatically, not just on demand*
-- [x] Time-based scheduling — Sunrise/Noon/Dusk/Midnight, each mapped to any existing theme, with a smooth crossfade (`ThemeInterpolator` + `App.CrossfadeToThemeAsync`). Built this session; see `ThemeAutomationService` and Settings → Theme Automation.
-- [x] System-reactive: follow Windows light/dark mode (`ISystemThemeIntegrator.GetCurrentSystemThemeAsync`, already existed) — now drives an automatic theme switch. Built this session.
-- [x] System-reactive: battery saver mode triggers a designated theme (`PowerManager.EnergySaverStatus`) — takes priority over the other two rules. Built this session. Not implemented as "auto low-saturation" — the user picks any existing theme to switch to, rather than the app generating a desaturated variant on the fly.
-- [ ] Weather-reactive themes — pull conditions and auto-select a matching theme. Not started; `WeatherMeasure` already has the OpenWeatherMap fetch/API-key plumbing a theme-level version could reuse.
 
 ### Phase 8 — Ecosystem & Sharing
 *Goal: make themes and widgets shareable and discoverable*

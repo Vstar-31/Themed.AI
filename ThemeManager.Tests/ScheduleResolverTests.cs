@@ -1,12 +1,15 @@
 using ThemeManager.Core.Models;
+using ThemeManager.Core.Services;
 using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Tests;
 
 /// <summary>
 /// Tests for <see cref="ScheduleResolver"/> — the pure "which time-of-day slot is active right
-/// now" logic behind Phase 7's automatic theme switching. Deliberately exercised with plain
-/// minute values rather than a live system clock, so these run the same at any time of day.
+/// now" logic behind Phase 7's automatic theme switching, plus the weather-condition-to-theme
+/// mapping added alongside it. Deliberately exercised with plain minute values and fake
+/// <see cref="WeatherCondition"/> inputs rather than a live clock or network call, so these run
+/// identically at any time of day and with no internet connection.
 /// </summary>
 public class ScheduleResolverTests
 {
@@ -74,5 +77,60 @@ public class ScheduleResolverTests
         var second = ScheduleResolver.ResolveTimeSlot(schedule, 14 * 60);
 
         Assert.Equal(first, second);
+    }
+
+    // ── ResolveWeatherSlot ───────────────────────────────────────────────────
+
+    private static ThemeSchedule MakeWeatherSchedule() => new()
+    {
+        WeatherClearThemeId = "clear-theme",
+        WeatherCloudsThemeId = "clouds-theme",
+        WeatherRainThemeId = "rain-theme",
+        WeatherThunderstormThemeId = "storm-theme",
+        WeatherSnowThemeId = "snow-theme",
+        WeatherFogThemeId = "fog-theme",
+    };
+
+    [Theory]
+    [InlineData(WeatherCondition.Clear, ScheduleSlot.WeatherClear, "clear-theme")]
+    [InlineData(WeatherCondition.Clouds, ScheduleSlot.WeatherClouds, "clouds-theme")]
+    [InlineData(WeatherCondition.Rain, ScheduleSlot.WeatherRain, "rain-theme")]
+    [InlineData(WeatherCondition.Thunderstorm, ScheduleSlot.WeatherThunderstorm, "storm-theme")]
+    [InlineData(WeatherCondition.Snow, ScheduleSlot.WeatherSnow, "snow-theme")]
+    [InlineData(WeatherCondition.Fog, ScheduleSlot.WeatherFog, "fog-theme")]
+    public void ResolveWeatherSlot_MapsEachConditionToItsOwnSlotAndTheme(WeatherCondition condition, ScheduleSlot expectedSlot, string expectedThemeId)
+    {
+        var (slot, themeId) = ScheduleResolver.ResolveWeatherSlot(MakeWeatherSchedule(), condition);
+
+        Assert.Equal(expectedSlot, slot);
+        Assert.Equal(expectedThemeId, themeId);
+    }
+
+    [Fact]
+    public void ResolveWeatherSlot_UnassignedCondition_ReturnsNullThemeId()
+    {
+        var schedule = MakeWeatherSchedule();
+        schedule.WeatherSnowThemeId = null;
+
+        var (slot, themeId) = ScheduleResolver.ResolveWeatherSlot(schedule, WeatherCondition.Snow);
+
+        Assert.Equal(ScheduleSlot.WeatherSnow, slot);
+        Assert.Null(themeId);
+    }
+
+    [Fact]
+    public void ResolveWeatherSlot_EveryCondition_ProducesADistinctSlot()
+    {
+        // ThemeAutomationService only re-fires when the resolved slot changes from the last one it
+        // applied. That check is only meaningful if every condition maps to a genuinely distinct
+        // slot — this pins that invariant down so a future edit can't quietly collapse two
+        // conditions (e.g. Rain and Thunderstorm) onto the same slot and stop the theme from
+        // switching between them.
+        var schedule = MakeWeatherSchedule();
+        var slots = Enum.GetValues<WeatherCondition>()
+            .Select(c => ScheduleResolver.ResolveWeatherSlot(schedule, c).Slot)
+            .ToList();
+
+        Assert.Equal(slots.Count, slots.Distinct().Count());
     }
 }

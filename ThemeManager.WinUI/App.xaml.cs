@@ -25,6 +25,11 @@ public partial class App : Application
     public static ThemeRepository ThemeRepository { get; private set; } = null!;
     public static ISystemThemeIntegrator SystemIntegrator { get; private set; } = null!;
 
+    /// <summary>Backs the Phase 7 weather-reactive automation rule — see
+    /// ThemeManager.Integration.OpenWeatherMapConditionProvider and AppSettings.Schedule's
+    /// Weather* fields.</summary>
+    public static IWeatherConditionProvider WeatherProvider { get; private set; } = null!;
+
     /// <summary>Skins (desktop widgets) — see ThemeManager.WinUI.Services.SkinManagerService.</summary>
     public static SkinManagerService SkinManager { get; private set; } = null!;
 
@@ -104,6 +109,7 @@ public partial class App : Application
         };
 
         SystemIntegrator = new SystemThemeIntegrator(LoggerFactory.CreateLogger<SystemThemeIntegrator>());
+        WeatherProvider = new OpenWeatherMapConditionProvider(LoggerFactory.CreateLogger<OpenWeatherMapConditionProvider>());
 
         // Initialise (loads JSON, sets Cozy Café as active) before the window appears.
         await ThemeService.InitializeAsync();
@@ -132,12 +138,13 @@ public partial class App : Application
             "ThemedAI", "profile.json"));
         await SkinManager.InitializeAsync();
 
-        // ── Theme automation: time-of-day schedule, Windows light/dark following, battery saver ──
+        // ── Theme automation: time-of-day schedule, Windows light/dark following, battery saver,
+        // weather-reactive ──
         // Off by default (Settings.Schedule.Enabled starts false) — see SettingsPage's "Theme
         // Automation" section. AutomationTriggered fires on a background timer thread (see
         // ThemeAutomationService), so — same pattern as Tray.GlobalHotkeyActivated below — it gets
         // marshalled onto the UI thread before touching anything visual.
-        Automation = new ThemeAutomationService(ThemeService, SystemIntegrator, () => Settings.Schedule);
+        Automation = new ThemeAutomationService(ThemeService, SystemIntegrator, () => Settings.Schedule, WeatherProvider);
         Automation.AutomationTriggered += theme =>
         {
             MainWindow.DispatcherQueue.TryEnqueue(async () =>

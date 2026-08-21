@@ -12,10 +12,11 @@ namespace ThemeManager.Core.Models;
 /// write to a field" granularity anyway.
 ///
 /// If more than one rule is enabled at once, <see cref="Services.ThemeAutomationService"/>
-/// resolves them in a fixed priority: Battery Saver, then Light/Dark following, then the
-/// time-of-day schedule. Any Theme*Id left null/empty means "no rule configured for this slot",
-/// so partially filling this in (e.g. only Dusk and Midnight) is fine — the automation service
-/// just leaves the active theme alone whenever it resolves to an unset slot.
+/// resolves them in a fixed priority: Battery Saver, then weather-reactive, then Light/Dark
+/// following, then the time-of-day schedule. Any Theme*Id left null/empty means "no rule
+/// configured for this slot", so partially filling this in (e.g. only Dusk and Midnight, or only
+/// Rain and Snow) is fine — the automation service just leaves the active theme alone whenever it
+/// resolves to an unset slot.
 /// </summary>
 public sealed class ThemeSchedule
 {
@@ -41,6 +42,21 @@ public sealed class ThemeSchedule
     // ── Battery saver ────────────────────────────────────────────────────────
     public bool BatterySaverEnabled { get; set; } = false;
     public string? BatterySaverThemeId { get; set; }
+
+    // ── Weather-reactive theming ─────────────────────────────────────────────
+    /// <summary>City passed straight through to OpenWeatherMap's "q" parameter — e.g. "Jaipur,IN".
+    /// Same free-text format <c>WeatherMeasure</c> expects, so a value copied from a widget's
+    /// weather config works here unchanged.</summary>
+    public bool WeatherReactiveEnabled { get; set; } = false;
+    public string? WeatherCity { get; set; }
+    public string? WeatherApiKey { get; set; }
+
+    public string? WeatherClearThemeId        { get; set; }
+    public string? WeatherCloudsThemeId       { get; set; }
+    public string? WeatherRainThemeId         { get; set; }
+    public string? WeatherThunderstormThemeId { get; set; }
+    public string? WeatherSnowThemeId         { get; set; }
+    public string? WeatherFogThemeId          { get; set; }
 
     // ── Transition ────────────────────────────────────────────────────────────
     /// <summary>How long an automatic switch takes to crossfade, in milliseconds. 0 = instant cut.</summary>

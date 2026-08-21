@@ -144,6 +144,17 @@ public sealed partial class SettingsPage : Page
         SetUpThemeCombo(LightThemeCombo, schedule.LightThemeId);
         SetUpThemeCombo(DarkThemeCombo, schedule.DarkThemeId);
         SetUpThemeCombo(BatterySaverThemeCombo, schedule.BatterySaverThemeId);
+
+        WeatherReactiveToggle.IsOn = schedule.WeatherReactiveEnabled;
+        WeatherCityBox.Text = schedule.WeatherCity ?? "";
+        WeatherApiKeyBox.Password = schedule.WeatherApiKey ?? "";
+
+        SetUpThemeCombo(WeatherClearThemeCombo, schedule.WeatherClearThemeId);
+        SetUpThemeCombo(WeatherCloudsThemeCombo, schedule.WeatherCloudsThemeId);
+        SetUpThemeCombo(WeatherRainThemeCombo, schedule.WeatherRainThemeId);
+        SetUpThemeCombo(WeatherThunderstormThemeCombo, schedule.WeatherThunderstormThemeId);
+        SetUpThemeCombo(WeatherSnowThemeCombo, schedule.WeatherSnowThemeId);
+        SetUpThemeCombo(WeatherFogThemeCombo, schedule.WeatherFogThemeId);
     }
 
     private static List<ThemeOption> BuildThemeOptions() =>
@@ -183,6 +194,17 @@ public sealed partial class SettingsPage : Page
         schedule.LightThemeId = ReadThemeId(LightThemeCombo);
         schedule.DarkThemeId = ReadThemeId(DarkThemeCombo);
         schedule.BatterySaverThemeId = ReadThemeId(BatterySaverThemeCombo);
+
+        schedule.WeatherReactiveEnabled = WeatherReactiveToggle.IsOn;
+        schedule.WeatherCity = string.IsNullOrWhiteSpace(WeatherCityBox.Text) ? null : WeatherCityBox.Text.Trim();
+        schedule.WeatherApiKey = string.IsNullOrWhiteSpace(WeatherApiKeyBox.Password) ? null : WeatherApiKeyBox.Password;
+
+        schedule.WeatherClearThemeId = ReadThemeId(WeatherClearThemeCombo);
+        schedule.WeatherCloudsThemeId = ReadThemeId(WeatherCloudsThemeCombo);
+        schedule.WeatherRainThemeId = ReadThemeId(WeatherRainThemeCombo);
+        schedule.WeatherThunderstormThemeId = ReadThemeId(WeatherThunderstormThemeCombo);
+        schedule.WeatherSnowThemeId = ReadThemeId(WeatherSnowThemeCombo);
+        schedule.WeatherFogThemeId = ReadThemeId(WeatherFogThemeCombo);
 
         await App.Settings.SaveAsync();
         StatusText.Text = "Automation settings saved.";
