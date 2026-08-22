@@ -162,4 +162,32 @@ public class SkinModelTests
         Assert.Contains(net!.Measures, m => m.Type == MeasureType.NetworkDown);
         Assert.Contains(net.Measures, m => m.Type == MeasureType.NetworkUp);
     }
+
+    // ── WebJsonPresets ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void WebJsonPresets_ShipsAtLeastTwo()
+    {
+        Assert.True(WebJsonPresets.All.Count >= 2);
+    }
+
+    [Theory]
+    [MemberData(nameof(WebJsonPresetIndexes))]
+    public void WebJsonPresets_EachTargetIsWellFormed(int index)
+    {
+        // Structural sanity only (does every preset actually parse into a real "Url|Path" pair
+        // WebJsonMeasure can consume) — not a live network check, same reasoning as everything
+        // else in this test project running with no internet connection.
+        var preset = WebJsonPresets.All[index];
+        Assert.False(string.IsNullOrWhiteSpace(preset.Label));
+
+        var parts = preset.Target.Split('|', 2);
+        Assert.Equal(2, parts.Length);
+        Assert.True(Uri.TryCreate(parts[0], UriKind.Absolute, out var uri));
+        Assert.True(uri!.Scheme is "http" or "https");
+        Assert.False(string.IsNullOrWhiteSpace(parts[1])); // every shipped preset has a real path, unlike the root-value edge case WebJsonMeasure also supports
+    }
+
+    public static IEnumerable<object[]> WebJsonPresetIndexes() =>
+        Enumerable.Range(0, WebJsonPresets.All.Count).Select(i => new object[] { i });
 }

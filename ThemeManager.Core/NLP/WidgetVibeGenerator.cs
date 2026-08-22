@@ -172,6 +172,12 @@ public sealed class WidgetVibeGenerator
         if (measures.Contains(MeasureType.WeatherTemp) && !measures.Contains(MeasureType.WeatherCity))
             measures.Insert(measures.IndexOf(MeasureType.WeatherTemp), MeasureType.WeatherCity);
 
+        // Same reasoning as Time->Date: a track recommendation without the artist is half the
+        // answer, so "vibe"/"recommend" pull in the artist line too even though only the title
+        // measure is in the lexicon.
+        if (measures.Contains(MeasureType.VibeTrackTitle) && !measures.Contains(MeasureType.VibeTrackArtist))
+            measures.Insert(measures.IndexOf(MeasureType.VibeTrackTitle) + 1, MeasureType.VibeTrackArtist);
+
         double sizeScale = Math.Clamp(sizeVotes.Count > 0 ? sizeVotes.Average() : 1.0, 0.5, 2.0);
         MeterKind? kindPreference = kindVotes.Count == 0 ? null
             : kindVotes.GroupBy(k => k).OrderByDescending(g => g.Count()).First().Key;
@@ -207,7 +213,12 @@ public sealed class WidgetVibeGenerator
         var skin = new SkinDefinition
         {
             Name = GenerateName(measures, usedFallback, promptText),
-            Enabled = true,
+            // Starts disabled, same as CreateNewSkinAsync's blank widget — a freshly-generated
+            // widget hasn't been reviewed yet, so it shouldn't silently start showing on the
+            // desktop (or start doing so on the next app launch, since SkinManagerService's
+            // startup pass opens a window for every Enabled skin). The user enables it from the
+            // editor/SkinsPage once they've confirmed it's what they wanted.
+            Enabled = false,
         };
 
         double y = DefaultMargin;
@@ -294,7 +305,8 @@ public sealed class WidgetVibeGenerator
         // explicitly requested (kindPreference), in which case we respect the ask anyway.
         bool naturallyTextOnly = type is MeasureType.Time or MeasureType.Date or MeasureType.Uptime or MeasureType.Battery
             or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity
-            or MeasureType.MediaTitle or MeasureType.MediaArtist or MeasureType.MediaState;
+            or MeasureType.MediaTitle or MeasureType.MediaArtist or MeasureType.MediaState
+            or MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood;
 
         // For Time measures, use a bigger, bolder font by default — consumers expect a clock
         // to look like a clock, not a tiny label. Date gets a smaller companion size.
@@ -383,6 +395,9 @@ public sealed class WidgetVibeGenerator
         MeasureType.MediaTitle => ("Now Playing", "🎵 {1}"),
         MeasureType.MediaArtist => ("Artist", "{1}"),
         MeasureType.MediaState => ("Status", "{1}"),
+        MeasureType.VibeTrackTitle => ("Vibe Match", "🎧 {1}"),
+        MeasureType.VibeTrackArtist => ("Artist", "{1}"),
+        MeasureType.VibeMood => ("Mood", "{1}"),
         _ => ("", "{1}"),
     };
 

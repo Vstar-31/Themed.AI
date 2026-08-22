@@ -32,9 +32,19 @@ public sealed class MeasureEditorItem : ViewModelBase
             Definition.Type = value;
             OnPropertyChanged(nameof(NeedsTarget));
             OnPropertyChanged(nameof(TargetPlaceholder));
+            OnPropertyChanged(nameof(IsWebJson));
             _onChanged();
         }
     }
+
+    /// <summary>Gates the presets ComboBox in SkinEditorPage — only WebJson has ready-made
+    /// Target values worth quick-filling; every other type's Target is either a single free-typed
+    /// value (a drive path) or too personal to ship a preset for (weather city, VibeFinderAI
+    /// credentials).</summary>
+    public bool IsWebJson => Type == MeasureType.WebJson;
+
+    /// <summary>The quick-fill options for the presets ComboBox, shown only when <see cref="IsWebJson"/>.</summary>
+    public static IReadOnlyList<WebJsonPreset> WebJsonPresetOptions => WebJsonPresets.All;
 
     private string _target;
     public string Target
@@ -46,7 +56,8 @@ public sealed class MeasureEditorItem : ViewModelBase
     /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
     /// other measure type is self-contained, so the property panel only shows the field then.</summary>
     public bool NeedsTarget => Type is MeasureType.DiskFree or MeasureType.DiskUsed
-        or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity or MeasureType.WebJson or MeasureType.CpuCore;
+        or MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity or MeasureType.WebJson or MeasureType.CpuCore
+        or MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood;
 
     /// <summary>Hint text for the Target field, since what it means depends on the measure type.</summary>
     public string TargetPlaceholder => Type switch
@@ -54,6 +65,8 @@ public sealed class MeasureEditorItem : ViewModelBase
         MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity => "City|API key, e.g. London,GB|your_openweathermap_key",
         MeasureType.WebJson => "URL|JSON path, e.g. https://api.example.com/data|results[0].price",
         MeasureType.CpuCore => "Core index, e.g. 0 (blank = core 0)",
+        MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood
+            => "VibeFinderAI username|password|vibe text, e.g. me|mypass|cozy rainy afternoon",
         _ => @"Drive, e.g. C:\",
     };
 
@@ -220,6 +233,9 @@ internal static class MeterPreview
             MeasureType.MediaTitle => (0.0, "Never Gonna Give You Up"),
             MeasureType.MediaArtist => (0.0, "Rick Astley"),
             MeasureType.MediaState => (0.0, "Playing"),
+            MeasureType.VibeTrackTitle => (0.0, "Golden Hour"),
+            MeasureType.VibeTrackArtist => (0.0, "JVKE"),
+            MeasureType.VibeMood => (0.0, "cozy"),
             _ => (42.0, "42%"), // Cpu, Memory, DiskFree, DiskUsed
         };
 

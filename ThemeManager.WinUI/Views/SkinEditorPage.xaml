@@ -112,6 +112,13 @@
                                                 <TextBox Text="{x:Bind Target, Mode=TwoWay}"
                                                          PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
                                                          Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <ComboBox ItemsSource="{x:Bind vm:MeasureEditorItem.WebJsonPresetOptions}"
+                                                          DisplayMemberPath="Label"
+                                                          PlaceholderText="Or pick a preset…"
+                                                          Tag="{x:Bind}"
+                                                          HorizontalAlignment="Stretch"
+                                                          Visibility="{x:Bind IsWebJson, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                          SelectionChanged="WebJsonPresetCombo_SelectionChanged" />
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>

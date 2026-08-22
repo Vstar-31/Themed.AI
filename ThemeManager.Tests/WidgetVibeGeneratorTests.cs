@@ -32,6 +32,18 @@ public class WidgetVibeGeneratorTests
     }
 
     [Fact]
+    public void Generate_NewWidget_StartsDisabled()
+    {
+        // Regression test: BuildSkin briefly set Enabled = true (introduced alongside the skin
+        // editor UI), contradicting CreateNewSkinAsync's identical "create now, refine in the
+        // editor" pattern for manually-created widgets — see phases.md. A freshly-generated
+        // widget shouldn't silently start showing on the desktop, or start doing so on the next
+        // app launch (SkinManagerService opens a window for every Enabled skin at startup).
+        var skin = _gen.Generate("cpu monitor");
+        Assert.False(skin.Enabled);
+    }
+
+    [Fact]
     public void Generate_NonsenseInput_FallsBackGracefully()
     {
         var (skin, analysis) = _gen.GenerateAndExplain("asdkjaslkdj qwzxpqz");
@@ -55,10 +67,22 @@ public class WidgetVibeGeneratorTests
     [InlineData("a clock", MeasureType.Time)]
     [InlineData("today's date", MeasureType.Date)]
     [InlineData("system uptime", MeasureType.Uptime)]
+    [InlineData("vibe match widget", MeasureType.VibeTrackTitle)]
+    [InlineData("recommend widget", MeasureType.VibeTrackTitle)]
+    [InlineData("mood widget", MeasureType.VibeMood)]
     public void Generate_DetectsExpectedMeasure(string prompt, MeasureType expected)
     {
         var skin = _gen.Generate(prompt);
         Assert.Contains(skin.Measures, m => m.Type == expected);
+    }
+
+    [Fact]
+    public void Generate_VibeTrackTitle_AutoAddsArtist()
+    {
+        // Same "half the answer without its companion" reasoning as Time -> Date.
+        var skin = _gen.Generate("vibe widget");
+        Assert.Contains(skin.Measures, m => m.Type == MeasureType.VibeTrackTitle);
+        Assert.Contains(skin.Measures, m => m.Type == MeasureType.VibeTrackArtist);
     }
 
     [Fact]

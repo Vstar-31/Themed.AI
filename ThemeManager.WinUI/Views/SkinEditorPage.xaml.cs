@@ -95,6 +95,19 @@ public sealed partial class SkinEditorPage : Page
             ViewModel.RemoveMeasure(item);
     }
 
+    /// <summary>
+    /// Quick-fills a WebJson measure's Target from the chosen preset. A plain SelectionChanged
+    /// rather than an x:Bind TwoWay on SelectedItem — the ComboBox is picking from a *different*
+    /// list (presets) than what it writes to (the measure's free-text Target), so there's no
+    /// single bindable property that means both "what's selected" and "what Target should become".
+    /// </summary>
+    private void WebJsonPresetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag as MeasureEditorItem is not { } item) return;
+        if ((sender as ComboBox)?.SelectedItem as WebJsonPreset is not { } preset) return;
+        item.Target = preset.Target;
+    }
+
     private bool _isSyncingMeasureCombo;
 
     private void RefreshMeasureComboItems()

@@ -26,6 +26,9 @@ public static class MeasureFactory
         MeasureType.WeatherDesc => new WeatherMeasure(definition.Name, MeasureType.WeatherDesc, definition.Target, logger),
         MeasureType.WeatherCity => new WeatherMeasure(definition.Name, MeasureType.WeatherCity, definition.Target, logger),
         MeasureType.WebJson     => new WebJsonMeasure(definition.Name, definition.Target, logger),
+        MeasureType.VibeTrackTitle  => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackTitle, definition.Target, logger),
+        MeasureType.VibeTrackArtist => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackArtist, definition.Target, logger),
+        MeasureType.VibeMood        => new VibeFinderMeasure(definition.Name, MeasureType.VibeMood, definition.Target, logger),
         _                       => new UnknownMeasure(definition.Name),
     };
 

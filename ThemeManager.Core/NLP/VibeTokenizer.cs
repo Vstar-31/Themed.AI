@@ -39,7 +39,7 @@ public static class VibeTokenizer
         "sort","bit","lot","way","thing","something","anything","nothing",
         "really","quite","rather","maybe","perhaps","please","want","would",
         "love","enjoy","prefer","think","imagine","create","generate","theme",
-        "color","colour","palette","vibe","style","mood","feel","aesthetic",
+        "color","colour","palette","style","feel","aesthetic",
         "show","shows","display","monitor",
     };
 

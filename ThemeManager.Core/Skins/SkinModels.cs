@@ -24,6 +24,9 @@ public enum MeasureType
     WeatherDesc,
     WeatherCity,
     WebJson,
+    VibeTrackTitle,
+    VibeTrackArtist,
+    VibeMood,
 }
 
 /// <summary>The visual kind a <see cref="MeterDefinition"/> renders as.</summary>

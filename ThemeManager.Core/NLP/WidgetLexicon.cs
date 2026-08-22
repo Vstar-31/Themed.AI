@@ -78,6 +78,16 @@ public static class WidgetLexicon
         // "play" is already taken by the style entry below ("playful"), so no play/pause word
         // for MediaState yet — Title/Artist covers what most people mean by "a music widget."
 
+        // VibeFinderAI (vibefinderai.onrender.com) integration — a *different* "what song" than
+        // MediaTitle above: Media reads Windows' currently-playing session, this asks Vijay's own
+        // backend to recommend a track for a typed vibe phrase (see VibeFinderMeasure). Not
+        // "song"/"playlist" — those already mean MediaTitle and reassigning them would silently
+        // change existing widget-generation behavior.
+        ["vibe"] = ForMeasure(MeasureType.VibeTrackTitle),
+        ["vibefind"] = ForMeasure(MeasureType.VibeTrackTitle), // "vibefinder"/"vibefinderai"
+        ["recommend"] = ForMeasure(MeasureType.VibeTrackTitle), // "recommend"/"recommended"/"recommendation"
+        ["mood"] = ForMeasure(MeasureType.VibeMood),
+
         // ════ STYLE / SIZE ════════════════════════════════════════════════════
         ["minim"] = ForStyle(0.75, bold: false),       // "minimal"
         ["minimalist"] = ForStyle(0.75, bold: false),
