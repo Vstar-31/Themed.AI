@@ -216,22 +216,32 @@ public sealed partial class SkinEditorPage : Page
 
         if (meter.Kind == MeterKind.Icon)
         {
-            return new FontIcon
+            var iconAccent = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
+            var chip = new Border
             {
                 Width = meter.Width,
                 Height = meter.Height,
-                FontSize = Math.Max(8, Math.Min(meter.Width, meter.Height) * 0.8),
-                Glyph = string.IsNullOrWhiteSpace(meter.IconGlyph) ? "\uE946" : meter.IconGlyph,
-                Foreground = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"],
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
+                CornerRadius = new CornerRadius(Math.Min(meter.Width, meter.Height) * 0.25),
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, iconAccent.Color.R, iconAccent.Color.G, iconAccent.Color.B)),
+                Child = new FontIcon
+                {
+                    Width = meter.Width,
+                    Height = meter.Height,
+                    FontSize = Math.Max(8, Math.Min(meter.Width, meter.Height) * 0.55),
+                    Glyph = string.IsNullOrWhiteSpace(meter.IconGlyph) ? "\uE946" : meter.IconGlyph,
+                    Foreground = iconAccent,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
             };
+            return chip;
         }
 
         // Bar and Graph share the same simple "fill preview" visual here — the real scrolling
         // graph only exists where it matters, in the live SkinHostWindow; the editor just needs
         // to convey "roughly this full", which a static fill communicates just as well and is
-        // far simpler to keep correct.
+        // far simpler to keep correct. The gradient below matches SkinHostWindow's Bar fill so
+        // the "roughly this" preview is at least color-accurate even where the shape isn't.
         var track = new Border
         {
             Width = meter.Width,
@@ -239,13 +249,24 @@ public sealed partial class SkinEditorPage : Page
             CornerRadius = new CornerRadius(meter.Kind == MeterKind.Bar ? meter.Height / 2 : 4),
             Background = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"],
         };
+        var fillAccent = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
+        var fillStrong = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
         var fill = new Border
         {
             Width = meter.Width * meter.PreviewFraction,
             Height = meter.Height,
             CornerRadius = new CornerRadius(meter.Kind == MeterKind.Bar ? meter.Height / 2 : 4),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Background = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"],
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 0),
+                GradientStops =
+                {
+                    new GradientStop { Color = fillAccent.Color, Offset = 0 },
+                    new GradientStop { Color = fillStrong.Color, Offset = 1 },
+                },
+            },
         };
         var grid = new Grid { Width = meter.Width, Height = meter.Height };
         grid.Children.Add(track);

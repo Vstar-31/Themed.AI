@@ -274,7 +274,7 @@
                             BorderBrush="{StaticResource BorderSubtleBrush}"
                             BorderThickness="2"
                             CornerRadius="{StaticResource CornerRadiusLarge}"
-                            Background="{StaticResource SurfaceBrush}">
+                            Background="{StaticResource CardBackgroundBrush}">
                         <Canvas x:Name="PreviewCanvas" Background="Transparent" />
                     </Border>
                 </StackPanel>

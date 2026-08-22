@@ -355,13 +355,28 @@ public sealed partial class SkinHostWindow : Window
             Background = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"],
         };
 
+        // A soft light-to-dark sweep along the fill using the theme's own two accent tokens
+        // (not a hardcoded color pair) so it reads as "a nicer bar" under any palette, not just
+        // the Cozy Café defaults — same reasoning as every other brush lookup in this file.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var gradientFill = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = normalBrush.Color, Offset = 0 },
+                new GradientStop { Color = strongBrush.Color, Offset = 1 },
+            },
+        };
+
         var fill = new Border
         {
             Width = vm.Width * vm.FillFraction,
             Height = vm.Height,
             CornerRadius = new CornerRadius(vm.Height / 2),
             HorizontalAlignment = HorizontalAlignment.Left,
-            Background = normalBrush,
+            Background = gradientFill,
         };
 
         SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;
@@ -371,7 +386,7 @@ public sealed partial class SkinHostWindow : Window
             if (e.PropertyName == nameof(BarMeterViewModel.FillFraction))
                 fill.Width = vm.Width * vm.FillFraction;
             if (e.PropertyName == nameof(BarMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
-                fill.Background = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+                fill.Background = vm.IsThresholdCrossed ? thresholdBrush : gradientFill;
         };
 
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
@@ -380,18 +395,33 @@ public sealed partial class SkinHostWindow : Window
         return grid;
     }
 
-    /// <summary>A single font-glyph icon. Size follows whichever of Width/Height is smaller (icons
-    /// are square regardless of the bounding box the editor gives them), and — like Bar and Graph —
-    /// swaps to the threshold color when one's configured and crossed.</summary>
-    private static FontIcon BuildIconVisual(IconMeterViewModel vm)
+    /// <summary>A font-glyph icon on a softly-tinted rounded chip — same "small rounded container"
+    /// language as ColorChipStyle elsewhere in the app, so it reads as a badge rather than a bare
+    /// character floating on the transparent canvas. Size follows whichever of Width/Height is
+    /// smaller (icons are square regardless of the bounding box the editor gives them), and —
+    /// like Bar and Graph — swaps to the threshold color when one's configured and crossed.</summary>
+    private static Border BuildIconVisual(IconMeterViewModel vm)
     {
         var normalBrush = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
+
+        // Tint is a low-alpha cut of the accent color itself, not a separate token, so it's
+        // correct for any theme rather than just the Cozy Café defaults.
+        var chip = new Border
+        {
+            Width = vm.Width,
+            Height = vm.Height,
+            CornerRadius = new CornerRadius(Math.Min(vm.Width, vm.Height) * 0.25),
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B)),
+        };
+
         var icon = new FontIcon
         {
             Glyph = vm.Glyph,
             Width = vm.Width,
             Height = vm.Height,
-            FontSize = Math.Max(8, Math.Min(vm.Width, vm.Height) * 0.8),
+            // Was 0.8 (nearly edge-to-edge) when the glyph had no chip behind it to give it
+            // context; smaller now so the chip's own padding actually reads as padding.
+            FontSize = Math.Max(8, Math.Min(vm.Width, vm.Height) * 0.55),
             Foreground = normalBrush,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -408,11 +438,16 @@ public sealed partial class SkinHostWindow : Window
             };
         }
 
-        return icon;
+        chip.Child = icon;
+        return chip;
     }
 
-    /// <summary>A rounded background plate + a Polyline redrawn every time the meter gets a new sample.</summary>
-    private static Grid BuildGraphVisual(GraphMeterViewModel vm)
+    /// <summary>A rounded background plate + a soft fading area fill + a Polyline on top, all
+    /// redrawn every time the meter gets a new sample. The trio lives inside the background
+    /// Border's Child (rather than as three Grid siblings) specifically so WinUI's automatic
+    /// child-clipping-to-CornerRadius keeps the area fill's square bottom corners from poking out
+    /// past the plate's rounded ones.</summary>
+    private static Border BuildGraphVisual(GraphMeterViewModel vm)
     {
         var normalBrush = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
         var background = new Border
@@ -422,6 +457,20 @@ public sealed partial class SkinHostWindow : Window
             CornerRadius = new CornerRadius(6),
             Background = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"],
         };
+
+        // Fades from a translucent cut of the line's own color down to nothing, so it stays
+        // correct for any accent color rather than a separately-maintained fill token.
+        var areaFill = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop { Color = Windows.UI.Color.FromArgb(0x55, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 0 },
+                new GradientStop { Color = Windows.UI.Color.FromArgb(0x00, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 1 },
+            },
+        };
+        var area = new Polygon { Fill = areaFill };
 
         var line = new Polyline
         {
@@ -436,6 +485,7 @@ public sealed partial class SkinHostWindow : Window
         {
             var samples = vm.Snapshot();
             var points = new PointCollection();
+            var areaPoints = new PointCollection();
             if (samples.Length > 1)
             {
                 double stepX = vm.Width / (samples.Length - 1);
@@ -444,9 +494,15 @@ public sealed partial class SkinHostWindow : Window
                     double x = i * stepX;
                     double y = vm.Height - (samples[i] * vm.Height);
                     points.Add(new Windows.Foundation.Point(x, y));
+                    areaPoints.Add(new Windows.Foundation.Point(x, y));
                 }
+                // Same points as the line, plus the two bottom corners, to close the outline into
+                // a fillable region down to the baseline.
+                areaPoints.Add(new Windows.Foundation.Point(vm.Width, vm.Height));
+                areaPoints.Add(new Windows.Foundation.Point(0, vm.Height));
             }
             line.Points = points;
+            area.Points = areaPoints;
         }
 
         vm.HistoryUpdated += Redraw;
@@ -457,13 +513,17 @@ public sealed partial class SkinHostWindow : Window
             {
                 if (e.PropertyName == nameof(GraphMeterViewModel.IsThresholdCrossed))
                     line.Stroke = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+                // Area fill deliberately stays the accent gradient even past the threshold —
+                // swapping it to a solid threshold color too would compete with the line for
+                // attention; the stroke color change alone is signal enough.
             };
         }
 
-        var grid = new Grid { Width = vm.Width, Height = vm.Height };
-        grid.Children.Add(background);
-        grid.Children.Add(line);
-        return grid;
+        var overlay = new Grid { Width = vm.Width, Height = vm.Height };
+        overlay.Children.Add(area);
+        overlay.Children.Add(line);
+        background.Child = overlay;
+        return background;
     }
 
     // ── Drag to move (disabled while locked; naturally inert while click-through is on,
