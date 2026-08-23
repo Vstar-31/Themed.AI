@@ -163,6 +163,26 @@ public class SkinModelTests
         Assert.Contains(net.Measures, m => m.Type == MeasureType.NetworkUp);
     }
 
+    [Fact]
+    public void CreateSystemRings_HasThreeRingMeters()
+    {
+        var rings = SkinDefaults.CreateAllDefaults().Find(s => s.Name == "System Rings");
+        Assert.NotNull(rings);
+        Assert.Equal(3, rings!.Meters.Count(m => m.Kind == MeterKind.Ring));
+    }
+
+    [Fact]
+    public void CreateSystemRings_UsesDiskUsedNotDiskFree()
+    {
+        // Regression guard for the polarity mix-up this preset's own doc comment calls out:
+        // DiskFree's value is *free* space, so an 85% threshold on it would fire backwards for a
+        // "how full is this" ring gauge.
+        var rings = SkinDefaults.CreateAllDefaults().Find(s => s.Name == "System Rings");
+        Assert.NotNull(rings);
+        Assert.DoesNotContain(rings!.Measures, m => m.Type == MeasureType.DiskFree);
+        Assert.Contains(rings.Measures, m => m.Type == MeasureType.DiskUsed);
+    }
+
     // ── WebJsonPresets ────────────────────────────────────────────────────────
 
     [Fact]

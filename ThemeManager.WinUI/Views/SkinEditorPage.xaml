@@ -143,6 +143,7 @@
                                 <Button Content="+ Bar" Click="AddBarMeterButton_Click" />
                                 <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
                                 <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
+                                <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
                             </StackPanel>
 
                             <ListView ItemsSource="{x:Bind ViewModel.Meters}"
@@ -175,6 +176,7 @@
                                 <Button Content="+ Bar" Click="AddBarMeterButton_Click" />
                                 <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
                                 <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
+                                <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -227,6 +229,8 @@
                                                Value="{x:Bind ViewModel.SelectedMeter.FontSize, Mode=TwoWay}" />
                                     <CheckBox Content="Bold" VerticalAlignment="Bottom" Margin="0,0,0,6"
                                               IsChecked="{x:Bind ViewModel.SelectedMeter.Bold, Mode=TwoWay}" />
+                                    <CheckBox Content="Center" VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                              IsChecked="{x:Bind ViewModel.SelectedMeter.CenterText, Mode=TwoWay}" />
                                 </StackPanel>
                             </StackPanel>
 

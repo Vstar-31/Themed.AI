@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Shapes;
 using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.ViewModels;
 
@@ -142,6 +143,7 @@ public sealed partial class SkinEditorPage : Page
     private void AddBarMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Bar);
     private void AddGraphMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Graph);
     private void AddIconMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Icon);
+    private void AddRingMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Ring);
 
     private void RemoveMeterButton_Click(object sender, RoutedEventArgs e)
     {
@@ -207,6 +209,7 @@ public sealed partial class SkinEditorPage : Page
                 Height = meter.Height,
                 FontSize = meter.FontSize,
                 FontWeight = meter.Bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+                TextAlignment = meter.CenterText ? TextAlignment.Center : TextAlignment.Left,
                 Foreground = (SolidColorBrush)Application.Current.Resources["TextPrimaryBrush"],
                 Text = meter.PreviewText,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -235,6 +238,67 @@ public sealed partial class SkinEditorPage : Page
                 },
             };
             return chip;
+        }
+
+        if (meter.Kind == MeterKind.Ring)
+        {
+            // Same geometry as SkinHostWindow.BuildRingVisual, just computed once from
+            // meter.PreviewFraction rather than redrawn from a ticking measure — this preview
+            // has no live data to tick from, same reasoning as Bar/Graph's static fill below.
+            var ringAccent = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
+            var trackBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"];
+
+            double thickness = Math.Max(3, Math.Min(meter.Width, meter.Height) * 0.12);
+            double cx = meter.Width / 2, cy = meter.Height / 2;
+            double radius = Math.Min(meter.Width, meter.Height) / 2 - thickness / 2;
+
+            var track = new Ellipse
+            {
+                Width = radius * 2,
+                Height = radius * 2,
+                Stroke = trackBrush,
+                StrokeThickness = thickness,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var arc = new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Width = meter.Width,
+                Height = meter.Height,
+                Stroke = ringAccent,
+                StrokeThickness = thickness,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+            };
+
+            if (meter.PreviewFraction > 0.001)
+            {
+                double sweepDeg = Math.Min(meter.PreviewFraction, 0.999) * 360.0;
+
+                Windows.Foundation.Point PointOnCircle(double angleDeg)
+                {
+                    double rad = (angleDeg - 90) * Math.PI / 180.0;
+                    return new Windows.Foundation.Point(cx + radius * Math.Cos(rad), cy + radius * Math.Sin(rad));
+                }
+
+                var figure = new PathFigure { StartPoint = PointOnCircle(0), IsClosed = false };
+                figure.Segments.Add(new ArcSegment
+                {
+                    Point = PointOnCircle(sweepDeg),
+                    Size = new Windows.Foundation.Size(radius, radius),
+                    SweepDirection = SweepDirection.Clockwise,
+                    IsLargeArc = sweepDeg > 180.0,
+                });
+                var geometry = new PathGeometry();
+                geometry.Figures.Add(figure);
+                arc.Data = geometry;
+            }
+
+            var ringGrid = new Grid { Width = meter.Width, Height = meter.Height };
+            ringGrid.Children.Add(track);
+            ringGrid.Children.Add(arc);
+            return ringGrid;
         }
 
         // Bar and Graph share the same simple "fill preview" visual here — the real scrolling

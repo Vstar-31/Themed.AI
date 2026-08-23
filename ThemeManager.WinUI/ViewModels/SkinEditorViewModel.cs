@@ -98,10 +98,11 @@ public sealed class MeterEditorItem : ViewModelBase
     public bool IsBar => Kind == MeterKind.Bar;
     public bool IsGraph => Kind == MeterKind.Graph;
     public bool IsIcon => Kind == MeterKind.Icon;
+    public bool IsRing => Kind == MeterKind.Ring;
 
-    /// <summary>Icon meters share Bar/Graph's "value that reads as full" field — it's what their
-    /// threshold-percent check divides against — but not Graph's history-length field.</summary>
-    public bool UsesBarMax => Kind is MeterKind.Bar or MeterKind.Graph or MeterKind.Icon;
+    /// <summary>Icon and Ring meters share Bar/Graph's "value that reads as full" field — it's
+    /// what their threshold-percent check divides against — but not Graph's history-length field.</summary>
+    public bool UsesBarMax => Kind is MeterKind.Bar or MeterKind.Graph or MeterKind.Icon or MeterKind.Ring;
 
     /// <summary>Icon meters use <see cref="IconGlyph"/> instead of a static-text label, so the
     /// generic "Static text" field only makes sense for the other kinds.</summary>
@@ -110,7 +111,7 @@ public sealed class MeterEditorItem : ViewModelBase
     private double _x, _y, _width, _height, _fontSize, _barMax, _thresholdPercent;
     private int _historyLength;
     private string _measureName, _staticText, _format, _thresholdColorHex, _iconGlyph;
-    private bool _bold, _thresholdAppliesToText;
+    private bool _bold, _thresholdAppliesToText, _centerText;
 
     public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
     public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
@@ -120,6 +121,7 @@ public sealed class MeterEditorItem : ViewModelBase
     public double BarMax { get => _barMax; set { if (SetProperty(ref _barMax, value)) { Definition.BarMax = value; _onChanged(); } } }
     public int HistoryLength { get => _historyLength; set { if (SetProperty(ref _historyLength, value)) { Definition.HistoryLength = value; _onChanged(); } } }
     public bool Bold { get => _bold; set { if (SetProperty(ref _bold, value)) { Definition.Bold = value; _onChanged(); } } }
+    public bool CenterText { get => _centerText; set { if (SetProperty(ref _centerText, value)) { Definition.CenterText = value; _onChanged(); } } }
     public string StaticText { get => _staticText; set { if (SetProperty(ref _staticText, value)) { Definition.StaticText = value; _onChanged(); } } }
     public string Format { get => _format; set { if (SetProperty(ref _format, value)) { Definition.Format = value; _onChanged(); } } }
     public string IconGlyph { get => _iconGlyph; set { if (SetProperty(ref _iconGlyph, value)) { Definition.IconGlyph = value; _onChanged(); } } }
@@ -173,6 +175,7 @@ public sealed class MeterEditorItem : ViewModelBase
         _barMax = definition.BarMax;
         _historyLength = definition.HistoryLength;
         _bold = definition.Bold;
+        _centerText = definition.CenterText;
         _staticText = definition.StaticText;
         _format = definition.Format;
         _iconGlyph = definition.IconGlyph;
@@ -396,8 +399,8 @@ public sealed class SkinEditorViewModel : ViewModelBase
             Kind = kind,
             X = 16,
             Y = 16,
-            Width = kind switch { MeterKind.String => 140, MeterKind.Icon => 28, _ => 160 },
-            Height = kind switch { MeterKind.Bar => 10, MeterKind.Graph => 60, MeterKind.Icon => 28, _ => 22 },
+            Width = kind switch { MeterKind.String => 140, MeterKind.Icon => 28, MeterKind.Ring => 60, _ => 160 },
+            Height = kind switch { MeterKind.Bar => 10, MeterKind.Graph => 60, MeterKind.Icon => 28, MeterKind.Ring => 60, _ => 22 },
         };
         _working.Meters.Add(def);
 

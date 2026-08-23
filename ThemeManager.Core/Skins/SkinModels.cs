@@ -44,6 +44,12 @@ public enum MeterKind
     /// <summary>A single Segoe Fluent Icons glyph (see <see cref="MeterDefinition.IconGlyph"/>),
     /// optionally recolored on threshold cross like a Bar/Graph meter.</summary>
     Icon,
+
+    /// <summary>A circular percentage gauge showing a measure's value against
+    /// <see cref="MeterDefinition.BarMax"/> — the ring/donut style Rainmeter's most recognizable
+    /// skins (Jarvis-style HUDs especially) are built around, and the one shape Bar/Graph/Icon
+    /// couldn't cover. Same data as a Bar (a single 0–1 fill fraction); only the shape differs.</summary>
+    Ring,
 }
 
 /// <summary>
@@ -97,6 +103,11 @@ public sealed class MeterDefinition
 
     public double FontSize { get; set; } = 13;
     public bool Bold { get; set; }
+
+    /// <summary>Centers text horizontally within the meter's own Width, instead of the default
+    /// left alignment — e.g. a percentage label meant to sit centered over a <see cref="MeterKind.Ring"/>
+    /// gauge rather than stuck to its left edge. Only used by <see cref="MeterKind.String"/>.</summary>
+    public bool CenterText { get; set; }
 
     /// <summary>Value a <see cref="MeterKind.Bar"/>/<see cref="MeterKind.Graph"/> meter treats as "100% full".</summary>
     public double BarMax { get; set; } = 100;

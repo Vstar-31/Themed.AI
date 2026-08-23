@@ -105,7 +105,49 @@ public static class SkinDefaults
         }
     };
 
+    /// <summary>Three circular gauges (CPU / RAM / Disk), each with a centered percentage over it
+    /// and a small caption below — Rainmeter's most-imitated widget pattern (the glowing ring
+    /// gauges "Jarvis"/HUD-style skins are built around), and the natural showcase for
+    /// <see cref="MeterKind.Ring"/>. Composed the same way every other preset here is —
+    /// independent String meters layered on top of the gauge, not a special "ring with a
+    /// built-in label" kind. <see cref="MeterDefinition.CenterText"/> (added alongside Ring) is
+    /// what makes the percentage actually sit centered over the gauge instead of stuck to its
+    /// left edge like every other String meter in this file.</summary>
+    public static SkinDefinition CreateSystemRings() => new()
+    {
+        Id = "builtin-system-rings",
+        Name = "System Rings",
+        X = 520,
+        Y = 40,
+        Width = 272,
+        Height = 128,
+        Measures =
+        {
+            new MeasureDefinition { Name = "CpuUsage",  Type = MeasureType.Cpu },
+            new MeasureDefinition { Name = "MemUsage",  Type = MeasureType.Memory },
+            // DiskUsed, not DiskFree (CreateSystemMonitor above uses DiskFree) — DiskFree's value
+            // is *free* space, so a high number there is good news. A ring gauge reads as "how
+            // full is this", so DiskUsed is the one that makes "full ring = getting concerning"
+            // true, and lets all three gauges below share the same 85%-threshold meaning.
+            new MeasureDefinition { Name = "DiskUsage", Type = MeasureType.DiskUsed, Target = @"C:\" },
+        },
+        Meters =
+        {
+            new MeterDefinition { Kind = MeterKind.Ring,   MeasureName = "CpuUsage", X = 16,  Y = 20, Width = 64, Height = 64, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" },
+            new MeterDefinition { Kind = MeterKind.String, MeasureName = "CpuUsage", Format = "{0:F0}%", X = 16,  Y = 41, Width = 64, Height = 22, FontSize = 15, Bold = true, CenterText = true },
+            new MeterDefinition { Kind = MeterKind.String, StaticText = "CPU", X = 16,  Y = 92, Width = 64, Height = 16, FontSize = 11, CenterText = true },
+
+            new MeterDefinition { Kind = MeterKind.Ring,   MeasureName = "MemUsage", X = 104, Y = 20, Width = 64, Height = 64, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" },
+            new MeterDefinition { Kind = MeterKind.String, MeasureName = "MemUsage", Format = "{0:F0}%", X = 104, Y = 41, Width = 64, Height = 22, FontSize = 15, Bold = true, CenterText = true },
+            new MeterDefinition { Kind = MeterKind.String, StaticText = "RAM", X = 104, Y = 92, Width = 64, Height = 16, FontSize = 11, CenterText = true },
+
+            new MeterDefinition { Kind = MeterKind.Ring,   MeasureName = "DiskUsage", X = 192, Y = 20, Width = 64, Height = 64, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" },
+            new MeterDefinition { Kind = MeterKind.String, MeasureName = "DiskUsage", Format = "{0:F0}%", X = 192, Y = 41, Width = 64, Height = 22, FontSize = 15, Bold = true, CenterText = true },
+            new MeterDefinition { Kind = MeterKind.String, StaticText = "DISK", X = 192, Y = 92, Width = 64, Height = 16, FontSize = 11, CenterText = true },
+        }
+    };
+
     /// <summary>All built-in widgets, in the order they should appear on first run.</summary>
     public static List<SkinDefinition> CreateAllDefaults() =>
-        [CreateClock(), CreateSystemMonitor(), CreateUptime(), CreateNetworkMonitor()];
+        [CreateClock(), CreateSystemMonitor(), CreateUptime(), CreateNetworkMonitor(), CreateSystemRings()];
 }

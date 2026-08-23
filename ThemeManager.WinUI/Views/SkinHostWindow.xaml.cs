@@ -231,6 +231,7 @@ public sealed partial class SkinHostWindow : Window
                 BarMeterViewModel bar => BuildBarVisual(bar),
                 GraphMeterViewModel graph => BuildGraphVisual(graph),
                 IconMeterViewModel icon => BuildIconVisual(icon),
+                RingMeterViewModel ring => BuildRingVisual(ring),
                 StringMeterViewModel str => BuildStringVisual(str),
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };
@@ -251,6 +252,7 @@ public sealed partial class SkinHostWindow : Window
             FontSize = vm.FontSize,
             FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontFamily"],
             FontWeight = vm.Bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+            TextAlignment = vm.CenterText ? TextAlignment.Center : TextAlignment.Left,
             Foreground = normalBrush,
             Text = vm.DisplayText,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -440,6 +442,96 @@ public sealed partial class SkinHostWindow : Window
 
         chip.Child = icon;
         return chip;
+    }
+
+    /// <summary>A circular percentage gauge: a full pale "track" ring behind, with a colored arc
+    /// swept clockwise from the top proportional to FillFraction drawn on top of it — the classic
+    /// Rainmeter/iOS-style ring gauge, and the shape Bar/Graph/Icon couldn't cover. Built with
+    /// Path + ArcSegment (the standard WinUI technique for a partial ring) rather than the
+    /// Ellipse+StrokeDashArray trick — dash-array units are relative to StrokeThickness in
+    /// WinUI/UWP, and getting that unit conversion subtly wrong felt like a worse risk to take
+    /// blind than the extra trigonometry below.</summary>
+    private static Grid BuildRingVisual(RingMeterViewModel vm)
+    {
+        var normalBrush = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
+        var trackBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"];
+
+        double thickness = Math.Max(3, Math.Min(vm.Width, vm.Height) * 0.12);
+        double cx = vm.Width / 2, cy = vm.Height / 2;
+        double radius = Math.Min(vm.Width, vm.Height) / 2 - thickness / 2;
+
+        var track = new Ellipse
+        {
+            Width = radius * 2,
+            Height = radius * 2,
+            Stroke = trackBrush,
+            StrokeThickness = thickness,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var arc = new Microsoft.UI.Xaml.Shapes.Path
+        {
+            Width = vm.Width,
+            Height = vm.Height,
+            Stroke = normalBrush,
+            StrokeThickness = thickness,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+        };
+
+        SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;
+
+        Windows.Foundation.Point PointOnCircle(double angleDeg)
+        {
+            // -90 so an angle of 0 sits at 12 o'clock, matching every real ring gauge, rather
+            // than the mathematical convention of 0 degrees = 3 o'clock.
+            double rad = (angleDeg - 90) * Math.PI / 180.0;
+            return new Windows.Foundation.Point(cx + radius * Math.Cos(rad), cy + radius * Math.Sin(rad));
+        }
+
+        void Redraw()
+        {
+            if (vm.FillFraction <= 0.001)
+            {
+                arc.Data = null; // nothing to draw at 0% — sidesteps relying on how a zero-length ArcSegment renders
+                return;
+            }
+
+            // An ArcSegment can't represent a full closed circle (start == end at 360° is
+            // geometrically degenerate), so this clamps just shy of it — at 99.9% the gap is
+            // under half a degree, invisible at any size this app draws widgets.
+            double sweepDeg = Math.Min(vm.FillFraction, 0.999) * 360.0;
+            var start = PointOnCircle(0);
+            var end = PointOnCircle(sweepDeg);
+
+            var figure = new PathFigure { StartPoint = start, IsClosed = false };
+            figure.Segments.Add(new ArcSegment
+            {
+                Point = end,
+                Size = new Windows.Foundation.Size(radius, radius),
+                SweepDirection = SweepDirection.Clockwise,
+                IsLargeArc = sweepDeg > 180.0,
+            });
+            var geometry = new PathGeometry();
+            geometry.Figures.Add(figure);
+            arc.Data = geometry;
+        }
+
+        Redraw();
+
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(RingMeterViewModel.FillFraction))
+                Redraw();
+            if (e.PropertyName == nameof(RingMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
+                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+        };
+
+        var grid = new Grid { Width = vm.Width, Height = vm.Height };
+        grid.Children.Add(track);
+        grid.Children.Add(arc);
+        return grid;
     }
 
     /// <summary>A rounded background plate + a soft fading area fill + a Polyline on top, all

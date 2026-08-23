@@ -55,6 +55,7 @@ public sealed class StringMeterViewModel : MeterViewModelBase
 
     public double FontSize { get; }
     public bool Bold { get; }
+    public bool CenterText { get; }
 
     private string _displayText;
     public string DisplayText
@@ -73,6 +74,7 @@ public sealed class StringMeterViewModel : MeterViewModelBase
         _staticText = definition.StaticText;
         FontSize = definition.FontSize;
         Bold = definition.Bold;
+        CenterText = definition.CenterText;
         _thresholdAppliesToText = definition.ThresholdAppliesToText;
         _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
         _displayText = string.IsNullOrEmpty(_measureName) ? _staticText : "";
@@ -163,6 +165,43 @@ public sealed class BarMeterViewModel : MeterViewModelBase
     }
 
     public BarMeterViewModel(MeterDefinition definition) : base(definition)
+    {
+        _measureName = definition.MeasureName;
+        _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
+    }
+
+    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
+    {
+        if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
+            return;
+
+        FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
+
+        if (HasThreshold)
+            IsThresholdCrossed = (FillFraction * 100) >= ThresholdPercent;
+    }
+}
+
+/// <summary>
+/// A circular percentage gauge — same fill-fraction-from-BarMax data as
+/// <see cref="BarMeterViewModel"/>, kept as a separate class rather than reusing it so the
+/// rendering-side pattern match (<c>meter switch { BarMeterViewModel ... }</c>) can tell the two
+/// shapes apart without an extra Kind check.
+/// </summary>
+public sealed class RingMeterViewModel : MeterViewModelBase
+{
+    private readonly string? _measureName;
+    private readonly double _barMax;
+
+    /// <summary>0.0–1.0 fill fraction, ready to convert into an arc sweep angle.</summary>
+    private double _fillFraction;
+    public double FillFraction
+    {
+        get => _fillFraction;
+        private set => SetProperty(ref _fillFraction, value);
+    }
+
+    public RingMeterViewModel(MeterDefinition definition) : base(definition)
     {
         _measureName = definition.MeasureName;
         _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
