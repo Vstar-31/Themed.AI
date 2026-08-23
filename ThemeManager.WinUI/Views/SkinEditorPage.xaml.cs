@@ -252,7 +252,7 @@ public sealed partial class SkinEditorPage : Page
             double cx = meter.Width / 2, cy = meter.Height / 2;
             double radius = Math.Min(meter.Width, meter.Height) / 2 - thickness / 2;
 
-            var track = new Ellipse
+            var ringTrack = new Ellipse
             {
                 Width = radius * 2,
                 Height = radius * 2,
@@ -296,7 +296,7 @@ public sealed partial class SkinEditorPage : Page
             }
 
             var ringGrid = new Grid { Width = meter.Width, Height = meter.Height };
-            ringGrid.Children.Add(track);
+            ringGrid.Children.Add(ringTrack);
             ringGrid.Children.Add(arc);
             return ringGrid;
         }
