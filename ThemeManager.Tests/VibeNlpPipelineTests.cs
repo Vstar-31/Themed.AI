@@ -131,6 +131,34 @@ public class VibeNlpPipelineTests
             "Expected at least one keyword or fuzzy correction");
     }
 
+    // ── Meta words (vibe/mood) don't leak into the color signal (regression) ──
+    // "vibe"/"mood" were removed from VibeTokenizer's stopword list to support widget-generation
+    // prompts elsewhere; that meant they started reaching VibeAnalyzer here too, where — with no
+    // exact ColorLexicon entry — they'd fall through to FuzzyMatcher. "mood" (4 letters) sits at
+    // edit distance 1 from "wood" (also 4 letters), inside the length-4 threshold, so it was
+    // silently resolving to a warm brown/orange hue that was never asked for.
+
+    [Fact]
+    public void Explain_BareMoodWord_DoesNotFuzzyMatchWood()
+    {
+        var result = _gen.Explain("capture this mood");
+        Assert.False(result.FuzzyCorrections.ContainsKey("mood"));
+    }
+
+    [Fact]
+    public void Explain_BareVibeAndMoodWords_ContributeNoColorSignal()
+    {
+        // Same reasoning, checked the direct way: adding the word changes nothing about the
+        // resulting hue, since both now resolve to an explicit, all-zero-weight ColorLexicon
+        // entry rather than either vanishing (pre-fix) or fuzzy-matching something else (the
+        // bug this locks in).
+        var baseline = _gen.Explain("ocean");
+        var withVibe = _gen.Explain("ocean vibe");
+        var withMood = _gen.Explain("ocean mood");
+        Assert.Equal(baseline.ComputedHue, withVibe.ComputedHue);
+        Assert.Equal(baseline.ComputedHue, withMood.ComputedHue);
+    }
+
     // ── Bigram matching (Phase 3) ────────────────────────────────────────────
 
     [Fact]

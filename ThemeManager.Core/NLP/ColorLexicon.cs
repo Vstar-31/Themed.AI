@@ -214,6 +214,24 @@ public static class ColorLexicon
         ["glow"]    = C( 45, .5f, .70f, .5f, .55f, .6f,  .6f, "mood"),
         ["haze"]    = C(210, .4f, .62f, .4f, .12f, .4f, -.2f, "mood"),
 
+        // ════ META / STRUCTURAL WORDS ═════════════════════════════════════════
+        // "vibe" and "mood" were removed from VibeTokenizer's stopword list (Phase 7 —
+        // WidgetLexicon needs them to survive tokenization for widget-generation prompts like
+        // "vibe match widget"/"mood widget"). That has a side effect here: with no exact
+        // ColorLexicon key for either word, VibeAnalyzer was falling through to FuzzyMatcher,
+        // which resolves bare "mood" to "wood" — both 4 letters, edit distance 1 apart, well
+        // within the length-4/5 → maxDist-1 threshold — silently pulling a warm brown/orange hue
+        // (hueWeight .6, not a negligible nudge) into any theme prompt containing the standalone
+        // word "mood" ("capture this mood", "add some mood"). "moody" is unaffected — it stems to
+        // "moodi", which already has its own correct entry below and was never a stopword.
+        // All-zero weights below make this a true no-op in VibeAnalyzer.Accumulate (every sum it
+        // touches is multiplied by a weight of 0) rather than silently vanishing the word
+        // entirely — "vibe"/"mood" still show up in the insights panel as matched, honestly
+        // categorized as carrying no color signal, instead of either disappearing (the pre-Phase-7
+        // behavor) or misattributing to wood tones (the current live behavior on origin/master).
+        ["vibe"]    = C(  0, 0f, 0f, 0f, 0f, 0f, 0f, "meta"),
+        ["mood"]    = C(  0, 0f, 0f, 0f, 0f, 0f, 0f, "meta"),
+
         // ════ MATERIALS / TEXTURES ════════════════════════════════════════════
 
         ["wood"]    = C( 28, .6f, .42f, .5f, .35f, .6f,  .5f, "material"),
