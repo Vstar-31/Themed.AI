@@ -154,6 +154,15 @@ public static class WidgetLexicon
         ["progress"] = ForKind(MeterKind.Bar),
         ["gaug"] = ForKind(MeterKind.Bar),              // "gauge"
 
+        ["ring"] = ForKind(MeterKind.Ring),
+        ["circl"] = ForKind(MeterKind.Ring),            // "circle"
+        ["circular"] = ForKind(MeterKind.Ring),
+
+        ["icon"] = ForKind(MeterKind.Icon),
+        ["glyph"] = ForKind(MeterKind.Icon),
+        ["imag"] = ForKind(MeterKind.Icon),             // "image"
+        ["symbol"] = ForKind(MeterKind.Icon),
+
         // ════ POSITION ════════════════════════════════════════════════════════
         ["top"] = ForPosition("top", null),
         ["upp"] = ForPosition("top", null),             // "upper"

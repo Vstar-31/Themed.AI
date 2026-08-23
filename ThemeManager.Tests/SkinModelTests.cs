@@ -126,10 +126,10 @@ public class SkinModelTests
     }
 
     [Fact]
-    public void CreateAllDefaults_ReturnsFourWidgets()
+    public void CreateAllDefaults_ReturnsFiveWidgets()
     {
         var all = SkinDefaults.CreateAllDefaults();
-        Assert.Equal(4, all.Count);
+        Assert.Equal(5, all.Count);
         Assert.All(all, s =>
         {
             Assert.NotEmpty(s.Id);
