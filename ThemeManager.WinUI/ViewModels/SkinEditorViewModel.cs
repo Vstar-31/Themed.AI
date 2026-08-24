@@ -66,7 +66,7 @@ public sealed class MeasureEditorItem : ViewModelBase
         MeasureType.WebJson => "URL|JSON path, e.g. https://api.example.com/data|results[0].price",
         MeasureType.CpuCore => "Core index, e.g. 0 (blank = core 0)",
         MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood
-            => "VibeFinderAI username|password|vibe text, e.g. me|mypass|cozy rainy afternoon",
+            => "VibeFinderAI username|password|vibe text (or $theme for the active theme's vibe), e.g. me|mypass|cozy rainy afternoon",
         _ => @"Drive, e.g. C:\",
     };
 

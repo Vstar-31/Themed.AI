@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
+using ThemeManager.Core.Services;
 using ThemeManager.Core.Skins;
 using ThemeManager.Integration.Skins;
 
@@ -21,13 +22,19 @@ public sealed class SkinHostViewModel : ViewModelBase
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
     private readonly ILogger? _logger;
 
-    public SkinHostViewModel(SkinDefinition definition, ILogger? logger = null)
+    /// <param name="activeThemeProvider">Passed straight through to <see cref="MeasureFactory.Create"/>
+    /// for every measure this skin owns — only a VibeFinderAI measure targeting "$theme" actually
+    /// uses it (see phases.md, Phase 6). <c>SkinManagerService</c> is the only current caller and
+    /// passes <c>App.ThemeService</c>; left null here, VibeFinderAI "$theme" widgets fall back to
+    /// "Config Err" but every other measure — and a VibeFinderAI widget with a literal typed
+    /// phrase — is unaffected.</param>
+    public SkinHostViewModel(SkinDefinition definition, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
     {
         Definition = definition;
         _logger = logger;
 
         foreach (var measureDef in definition.Measures)
-            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger);
+            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider);
 
         foreach (var meterDef in definition.Meters)
         {

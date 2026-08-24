@@ -4,6 +4,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ThemeManager.Core.NLP;
+using ThemeManager.Core.Services;
 using ThemeManager.Core.Skins;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,11 +19,20 @@ namespace ThemeManager.Integration.Skins;
 /// parts because, unlike <see cref="WeatherMeasure"/>'s "City|ApiKey", VibeFinderAI has no public
 /// API-key mode (it's a per-account JWT login) *and* needs the free-text phrase to analyze.
 ///
-/// That phrase is typed directly into the widget for this first cut rather than following the
-/// active theme's vibe automatically — doing that would mean threading the current theme's name
-/// into <see cref="IMeasure"/> construction, which nothing here has today (MeasureFactory builds
-/// every measure from just a <see cref="MeasureDefinition"/>, with no ThemeService reference).
-/// Worth revisiting once this lands; see phases.md.
+/// The third part can also be the literal marker <see cref="ActiveThemeSentinel"/> ("$theme")
+/// instead of a fixed typed phrase — the measure then follows whatever theme is active via
+/// <see cref="IActiveThemeProvider"/>, re-resolved (see <see cref="ResolveVibeText"/>) on every
+/// poll so switching themes is picked up on the next 5-minute cycle without re-typing anything.
+/// This was the Phase 6 "follow the active theme automatically" gap: it needed the current
+/// theme threaded into <see cref="IMeasure"/> construction, which nothing here had —
+/// MeasureFactory built every measure from just a <see cref="MeasureDefinition"/>, with no
+/// theme reference at all. <see cref="MeasureFactory"/> now takes an optional <see cref="IActiveThemeProvider"/>
+/// and passes it straight through to this constructor; <c>SkinManagerService</c> is the one
+/// place in <c>ThemeManager.WinUI</c> that supplies it (<c>App.ThemeService</c>, which already
+/// implemented the interface's one member for free). A widget built without a provider wired up
+/// (the parameter is optional and defaults to null) can still use a literal typed phrase exactly
+/// as before — only "$theme" needs the provider, and its absence degrades to "Config Err"
+/// rather than throwing.
 ///
 /// Endpoint/schema confirmed by reading VibeFinderAI's own FastAPI source
 /// (github.com/Vstar-31/vibefinderai, backend/main.py) rather than the live Render deployment,
@@ -39,6 +50,10 @@ public sealed class VibeFinderMeasure : IMeasure
 {
     private const string BaseUrl = "https://vibefinderai.onrender.com";
 
+    /// <summary>Target's third segment, matched case-insensitively (after trimming), means
+    /// "use the active theme's vibe" instead of a literal typed phrase. See the class remarks.</summary>
+    private const string ActiveThemeSentinel = "$theme";
+
     public string Name { get; }
     public double Value { get; private set; }
     public string Text { get; private set; } = "—";
@@ -46,6 +61,7 @@ public sealed class VibeFinderMeasure : IMeasure
     private readonly MeasureType _type;
     private readonly string _target;
     private readonly ILogger _logger;
+    private readonly IActiveThemeProvider? _activeThemeProvider;
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -71,12 +87,13 @@ public sealed class VibeFinderMeasure : IMeasure
         public readonly object Lock = new();
     }
 
-    public VibeFinderMeasure(string name, MeasureType type, string? target, ILogger? logger = null)
+    public VibeFinderMeasure(string name, MeasureType type, string? target, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
     {
         Name = name;
         _type = type;
         _target = target ?? "";
         _logger = logger ?? NullLogger.Instance;
+        _activeThemeProvider = activeThemeProvider;
     }
 
     public void Refresh()
@@ -90,11 +107,22 @@ public sealed class VibeFinderMeasure : IMeasure
 
         var entry = _cache.GetOrAdd(_target, _ => new ResultEntry());
 
+        // Resolved once and reused below for both the fetch and the no-provider fallback, rather
+        // than re-checking the sentinel twice — see ResolveVibeText's own remarks for why a null
+        // result specifically means "can't fetch," not "fetch an empty phrase."
+        string? vibeText = ResolveVibeText(parts[2]);
+
         // Same 5-minute-per-target throttle as WeatherMeasure/WebJsonMeasure — a fixed vibe
         // phrase's recommendation doesn't change fast enough to poll harder than that, and this
         // is someone else's (Vijay's own, but still free-tier) backend to be a good citizen of.
-        if ((DateTime.UtcNow - entry.LastSuccess).TotalMinutes > 5)
-            Task.Run(() => FetchAsync(entry, parts[0], parts[1], parts[2]));
+        // Cache key stays the raw target (creds + "$theme" or creds + literal phrase) rather than
+        // the resolved text — every "$theme" widget on the same account correctly shares one
+        // cached answer for "what does the currently active theme's vibe recommend," the same
+        // way same-phrase widgets already share one answer for a literal phrase. Switching themes
+        // mid-cycle doesn't force an immediate refetch (same trade-off this file already makes
+        // for a literal phrase changing), just picked up on the next scheduled poll.
+        if (vibeText is not null && (DateTime.UtcNow - entry.LastSuccess).TotalMinutes > 5)
+            Task.Run(() => FetchAsync(entry, parts[0], parts[1], vibeText));
 
         if (entry.Data is { } data)
         {
@@ -106,6 +134,31 @@ public sealed class VibeFinderMeasure : IMeasure
                 _                           => "—",
             };
         }
+        else if (vibeText is null)
+        {
+            // Targets "$theme" but nothing ever wired up an IActiveThemeProvider for this
+            // measure, and there's no cached result from before that gap existed to fall back
+            // on — surface that distinctly rather than silently sitting on the "—" placeholder
+            // forever, which would look like a slow first poll instead of a real config problem.
+            Text = "Config Err";
+        }
+    }
+
+    /// <summary>
+    /// Turns the raw third <c>Target</c> segment into the text actually sent to
+    /// <c>/api/vibe/analyze</c>. Returns <paramref name="rawPhrase"/> unchanged unless it's the
+    /// <see cref="ActiveThemeSentinel"/> marker, in which case it derives text from
+    /// <see cref="_activeThemeProvider"/>'s active theme via <see cref="ThemeVibeText.Describe"/>
+    /// — or null if no provider is wired up, so the caller can tell "nothing to fetch" apart
+    /// from "fetch this literal (even if unusual) phrase."
+    /// </summary>
+    private string? ResolveVibeText(string rawPhrase)
+    {
+        if (!string.Equals(rawPhrase.Trim(), ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase))
+            return rawPhrase;
+
+        var theme = _activeThemeProvider?.ActiveTheme;
+        return theme is null ? null : ThemeVibeText.Describe(theme);
     }
 
     private async Task FetchAsync(ResultEntry entry, string username, string password, string vibeText)

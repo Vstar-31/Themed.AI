@@ -9,8 +9,12 @@ namespace ThemeManager.Core.Services;
 /// - Holds the active theme and raises <see cref="ThemeChanged"/> on change.
 /// - Exposes an event so the WinUI layer can update its ResourceDictionary.
 /// - Owns the in-memory theme list and delegates persistence to <see cref="ThemeRepository"/>.
+/// - Implements <see cref="IActiveThemeProvider"/> so <c>ThemeManager.Integration</c> code
+///   (e.g. <c>VibeFinderMeasure</c>'s "$theme" target) can read the active theme without a
+///   dependency on this whole service's CRUD/event/persistence surface — free to implement,
+///   since <see cref="ActiveTheme"/> already existed as a public getter before this.
 /// </summary>
-public sealed class ThemeService : INotifyPropertyChanged
+public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
 {
     private readonly ThemeRepository _repo;
 

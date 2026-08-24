@@ -39,3 +39,13 @@ build.txt
 StressTestReport.md
 *.log
 StressTestPrompts/
+
+## Scratch / one-off verification projects ##
+# This accumulated repeatedly (root Program.cs/StemTest.cs/test.cs, StemTest/, TestStem/,
+# TestStem2/ — see phases.md, Phase 6 session note) as ad-hoc "run PorterStemmer on a few
+# words and eyeball it" checks that never got cleaned up. Real regression coverage for that
+# now lives in ThemeManager.Tests/StemmingTests.cs — add cases there instead of a new scratch
+# project. If a throwaway console check is still the fastest way to eyeball something, prefix
+# it with "scratch-" (e.g. scratch-Program.cs, scratch-stem/) and it won't get tracked.
+/scratch-*
+/scratch-*/

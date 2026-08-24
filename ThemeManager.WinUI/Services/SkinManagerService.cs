@@ -232,7 +232,10 @@ public sealed class SkinManagerService : IDisposable
     {
         if (_open.ContainsKey(skin.Id)) return; // already open
 
-        var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>());
+        // App.ThemeService (same static-service pattern already used for App.MainWindow below)
+        // is how a VibeFinderAI measure targeting "$theme" resolves the active theme — see
+        // SkinHostViewModel's activeThemeProvider param and phases.md, Phase 6.
+        var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>(), App.ThemeService);
         var window = new SkinHostWindow(viewModel);
 
         window.PositionChanged += (x, y) => OnWindowMoved(skin, x, y);
