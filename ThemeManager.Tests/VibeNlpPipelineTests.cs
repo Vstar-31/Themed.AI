@@ -233,4 +233,12 @@ public class VibeNlpPipelineTests
         Assert.Equal(theme1.BackgroundBase, theme2.BackgroundBase);
         Assert.Equal(theme1.AccentPrimary, theme2.AccentPrimary);
     }
+
+    [Fact]
+    public void Generate_CircularCpuGauge_ReturnsRingMeter()
+    {
+        var widgetGen = new WidgetVibeGenerator();
+        var skin = widgetGen.Generate("Add a circular CPU gauge");
+        Assert.Contains(skin.Meters, m => m.Kind == ThemeManager.Core.Skins.MeterKind.Ring);
+    }
 }

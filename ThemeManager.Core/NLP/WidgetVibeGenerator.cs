@@ -349,6 +349,30 @@ public sealed class WidgetVibeGenerator
             });
             y += graphHeight + sectionGap;
         }
+        else if (effectiveKind == MeterKind.Ring)
+        {
+            double ringSize = 100 * sizeScale;
+            skin.Meters.Add(new MeterDefinition
+            {
+                Kind = MeterKind.Ring, MeasureName = measureName,
+                X = DefaultMargin + (meterWidth - ringSize) / 2, 
+                Y = y, Width = ringSize, Height = ringSize,
+                BarMax = DefaultBarMax(type)
+            });
+            y += ringSize + sectionGap;
+        }
+        else if (effectiveKind == MeterKind.Icon)
+        {
+            double iconSize = 48 * sizeScale;
+            skin.Meters.Add(new MeterDefinition
+            {
+                Kind = MeterKind.Icon, MeasureName = measureName,
+                X = DefaultMargin + (meterWidth - iconSize) / 2, 
+                Y = y, Width = iconSize, Height = iconSize,
+                IconGlyph = "\uE946"
+            });
+            y += iconSize + sectionGap;
+        }
         else
         {
             y += rowGap * 2;
