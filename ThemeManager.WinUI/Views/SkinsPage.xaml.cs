@@ -83,4 +83,25 @@ public sealed partial class SkinsPage : Page
         if (skin is null) return;
         Frame.Navigate(typeof(SkinEditorPage), skin);
     }
+
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        var skin = (sender as FrameworkElement)?.Tag as SkinDefinition;
+        if (skin is null) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete this widget?",
+            Content = $"\"{skin.Name}\" will be removed for good — this can't be undone.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await ViewModel.DeleteSkinAsync(skin);
+        }
+    }
 }

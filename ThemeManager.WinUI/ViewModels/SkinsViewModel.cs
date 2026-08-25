@@ -95,6 +95,12 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         StatusMessage = "New widget created — open the editor to add measures and meters.";
     }
 
+    public async Task DeleteSkinAsync(SkinDefinition skin)
+    {
+        await _manager.DeleteSkinAsync(skin);
+        StatusMessage = $"\"{skin.Name}\" deleted.";
+    }
+
     public void Dispose()
     {
         _manager.SkinsChanged -= _skinsChangedHandler;

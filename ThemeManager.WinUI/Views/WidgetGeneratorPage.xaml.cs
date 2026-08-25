@@ -14,13 +14,21 @@ public sealed partial class WidgetGeneratorPage : Page
         ViewModel = new WidgetGeneratorViewModel(App.SkinManager);
     }
 
-    private async void GenerateButton_Click(object sender, RoutedEventArgs e) =>
+    private async void GenerateButton_Click(object sender, RoutedEventArgs e)
+    {
         await ViewModel.GenerateAsync();
+        if (ViewModel.HasResult)
+            ResultCard.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true });
+    }
 
     private async void Chip_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.Tag is string chip)
+        {
             await ViewModel.UseChipAsync(chip);
+            if (ViewModel.HasResult)
+                ResultCard.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true });
+        }
     }
 
     private async void OpenEditorButton_Click(object sender, RoutedEventArgs e)

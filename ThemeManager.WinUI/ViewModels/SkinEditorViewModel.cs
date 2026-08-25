@@ -423,9 +423,13 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public async Task SaveAsync()
     {
+        // Auto-enable on save so the widget immediately appears on the desktop —
+        // a freshly-generated or newly-edited widget shouldn't require a separate
+        // trip to the Widgets page just to flip the Enabled toggle.
+        _working.Enabled = true;
         await _manager.SaveSkinAsync(_working);
         Dirty = false;
-        StatusMessage = $"\"{_working.Name}\" saved.";
+        StatusMessage = $"\"{_working.Name}\" saved and enabled.";
     }
 
     public async Task DeleteAsync()

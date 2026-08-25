@@ -195,7 +195,25 @@ public sealed partial class SkinHostWindow : Window
 
     public void ApplyOpacity(double opacity)
     {
-        CardBorder.Opacity = opacity;
+        // Opacity controls the card background plate only — meters always stay fully opaque.
+        // At 0 the card is invisible ("modular" mode, meters float directly on the desktop).
+        // Above 0 the translucent card shows, giving a visible background plate like Rainmeter
+        // skins that use a background image or tinted glass.
+        if (opacity <= 0.001)
+        {
+            CardBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            CardBorder.BorderThickness = new Thickness(0);
+        }
+        else
+        {
+            var cardBrush = (SolidColorBrush)Application.Current.Resources["CardBackgroundBrush"];
+            var borderBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"];
+            var color = cardBrush.Color;
+            CardBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(
+                (byte)(opacity * 255), color.R, color.G, color.B));
+            CardBorder.BorderBrush = borderBrush;
+            CardBorder.BorderThickness = new Thickness(1);
+        }
     }
 
     public void ApplyClickThrough(bool enabled) =>

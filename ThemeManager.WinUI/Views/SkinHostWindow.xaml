@@ -9,8 +9,12 @@
         String meter, one Border-pair per Bar meter) rather than via XAML data templates. That
         trades a little XAML purity for code that's much easier to hand-verify without a live
         WinUI3 designer — see the remarks at the top of SkinHostWindow.xaml.cs.
+
+        CardBorder defaults to fully transparent — "modular" mode, where meters float directly
+        on the desktop with no visible background plate. The user's Opacity slider controls
+        how visible the card is: 0 = pure modular (no card), >0 = translucent card shows.
     -->
-    <Border x:Name="CardBorder" CornerRadius="{StaticResource CornerRadiusLarge}" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+    <Border x:Name="CardBorder" CornerRadius="{StaticResource CornerRadiusLarge}" Background="Transparent" BorderThickness="0">
         <Canvas x:Name="RootCanvas" Background="Transparent" />
     </Border>
 </Window>

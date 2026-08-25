@@ -93,9 +93,9 @@
 
                                 <!-- Opacity -->
                                 <StackPanel Grid.Row="1" Spacing="2">
-                                    <TextBlock Text="Card opacity" Style="{StaticResource CaptionStyle}" />
+                                    <TextBlock Text="Card background" Style="{StaticResource CaptionStyle}" />
                                     <Slider Tag="{x:Bind}"
-                                            Minimum="0.2" Maximum="1.0" StepFrequency="0.05"
+                                            Minimum="0" Maximum="1.0" StepFrequency="0.05"
                                             Value="{x:Bind Opacity}"
                                             Foreground="{StaticResource PrimaryAccentBrush}"
                                             ValueChanged="OpacitySlider_ValueChanged" />
@@ -121,7 +121,7 @@
                                     </StackPanel>
                                 </StackPanel>
 
-                                <!-- Reset position / Edit -->
+                                <!-- Reset position / Edit / Delete -->
                                 <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
                                     <Button Content="Reset position"
                                             Tag="{x:Bind}"
@@ -129,6 +129,10 @@
                                     <Button Content="Edit"
                                             Tag="{x:Bind}"
                                             Click="EditButton_Click" />
+                                    <Button Content="Delete"
+                                            Tag="{x:Bind}"
+                                            Style="{StaticResource DangerButtonStyle}"
+                                            Click="DeleteButton_Click" />
                                 </StackPanel>
 
                             </Grid>

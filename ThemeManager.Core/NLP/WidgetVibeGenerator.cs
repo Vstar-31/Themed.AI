@@ -261,6 +261,11 @@ public sealed class WidgetVibeGenerator
         skin.Width = meterWidth + DefaultMargin * 2;
         skin.Height = y + DefaultMargin;
 
+        // Ring/Icon widgets look best floating directly on the desktop (modular mode).
+        // Text-heavy widgets get a semi-transparent card for readability.
+        bool isModular = kindPreference is MeterKind.Ring or MeterKind.Icon;
+        skin.Opacity = isModular ? 0.0 : 0.5;
+
         (skin.X, skin.Y) = ComputePosition(vertical, horizontal, skin.Width, skin.Height, screenWidth, screenHeight);
 
         return skin;

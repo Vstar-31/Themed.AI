@@ -92,7 +92,7 @@
                     </Border>
 
                     <!-- Result card -->
-                    <Border Style="{StaticResource CardStyle}"
+                    <Border x:Name="ResultCard" Style="{StaticResource CardStyle}"
                             Visibility="{x:Bind ViewModel.HasResult, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Spacing="16">
                             <StackPanel Spacing="4">
