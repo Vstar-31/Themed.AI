@@ -241,4 +241,17 @@ public class VibeNlpPipelineTests
         var skin = widgetGen.Generate("Add a circular CPU gauge");
         Assert.Contains(skin.Meters, m => m.Kind == ThemeManager.Core.Skins.MeterKind.Ring);
     }
+
+    /// <summary>
+    /// Regression: "gauge" (→Bar) before "circular" (→Ring) used to produce Bar
+    /// because the old tie-break resolved by word order. With the specificity fix,
+    /// Ring wins regardless of position.
+    /// </summary>
+    [Fact]
+    public void Generate_GaugeBeforeCircular_StillReturnsRing()
+    {
+        var widgetGen = new WidgetVibeGenerator();
+        var skin = widgetGen.Generate("add a gauge for CPU, circular");
+        Assert.Contains(skin.Meters, m => m.Kind == ThemeManager.Core.Skins.MeterKind.Ring);
+    }
 }

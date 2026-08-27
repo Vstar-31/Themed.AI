@@ -49,3 +49,9 @@ StressTestPrompts/
 # it with "scratch-" (e.g. scratch-Program.cs, scratch-stem/) and it won't get tracked.
 /scratch-*
 /scratch-*/
+/TestStem*/
+/TestVibe/
+/StemTest*/
+/StemTool/
+/Program.cs
+/test.cs

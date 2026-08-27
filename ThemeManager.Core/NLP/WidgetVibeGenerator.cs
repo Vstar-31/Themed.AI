@@ -179,8 +179,7 @@ public sealed class WidgetVibeGenerator
             measures.Insert(measures.IndexOf(MeasureType.VibeTrackTitle) + 1, MeasureType.VibeTrackArtist);
 
         double sizeScale = Math.Clamp(sizeVotes.Count > 0 ? sizeVotes.Average() : 1.0, 0.5, 2.0);
-        MeterKind? kindPreference = kindVotes.Count == 0 ? null
-            : kindVotes.GroupBy(k => k).OrderByDescending(g => g.Count()).First().Key;
+        MeterKind? kindPreference = ResolveKindPreference(kindVotes);
 
         // Find a matching emoji decoration based on matched keywords
         string? emoji = null;
@@ -382,6 +381,37 @@ public sealed class WidgetVibeGenerator
         {
             y += rowGap * 2;
         }
+    }
+
+    /// <summary>
+    /// Resolves which <see cref="MeterKind"/> wins from a list of votes.
+    /// Majority wins; on a tie the more visually-specific kind wins:
+    /// Ring > Icon > Graph > Bar.
+    ///
+    /// Rationale: Bar is the generic default — "gauge", "progress" are vague words that
+    /// often co-occur with a more specific shape word ("circular gauge", "ring progress").
+    /// Treating the specific shape as the tiebreaker keeps the result stable regardless
+    /// of word order in the prompt.
+    /// </summary>
+    private static MeterKind? ResolveKindPreference(List<MeterKind> kindVotes)
+    {
+        if (kindVotes.Count == 0) return null;
+
+        // Specificity ranking — higher value = wins ties.
+        static int Specificity(MeterKind k) => k switch
+        {
+            MeterKind.Ring  => 4,
+            MeterKind.Icon  => 3,
+            MeterKind.Graph => 2,
+            MeterKind.Bar   => 1,
+            _               => 0,
+        };
+
+        return kindVotes
+            .GroupBy(k => k)
+            .OrderByDescending(g => g.Count())       // majority wins first
+            .ThenByDescending(g => Specificity(g.Key)) // then specificity breaks ties
+            .First().Key;
     }
 
     private static (double X, double Y) ComputePosition(
