@@ -22,7 +22,7 @@
                 <!-- Credentials Section -->
                 <StackPanel Spacing="10">
                     <TextBlock Text="Widget Credentials" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <TextBlock Text="Enter your VibeFinder account details to sync the widgets with your vibe." TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="Enter your VibeFinder account details to sync the widgets with your vibe." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
                     
                     <TextBox x:Name="UsernameBox" Header="Username" PlaceholderText="listener"/>
                     <PasswordBox x:Name="PasswordBox" Header="Password" PlaceholderText="hunter2"/>
@@ -37,7 +37,7 @@
                 <!-- Widgets Section -->
                 <StackPanel Spacing="10">
                     <TextBlock Text="Dope Widgets" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <TextBlock Text="Toggle predefined widgets for your desktop." TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="Toggle predefined widgets for your desktop." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
 
                     <ToggleSwitch x:Name="TogglePrimary" Header="VibeFinder Primary" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Primary"/>
                     <ToggleSwitch x:Name="ToggleMinimal" Header="VibeFinder Minimal" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Minimal"/>
