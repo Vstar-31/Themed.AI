@@ -103,6 +103,36 @@ public sealed class MediaMeasure : IMeasure
         });
     }
 
+    /// <summary>
+    /// Attempts to send a transport control command to the current active media session.
+    /// Expected commands: playpause, next, prev
+    /// </summary>
+    public static async Task TrySendCommandAsync(string command)
+    {
+        if (_currentSession == null) return;
+
+        try
+        {
+            switch (command.ToLowerInvariant())
+            {
+                case "playpause":
+                    await _currentSession.TryTogglePlayPauseAsync();
+                    break;
+                case "next":
+                    await _currentSession.TrySkipNextAsync();
+                    break;
+                case "prev":
+                case "previous":
+                    await _currentSession.TrySkipPreviousAsync();
+                    break;
+            }
+        }
+        catch
+        {
+            // Ignore command failures
+        }
+    }
+
     public void Refresh()
     {
         if (_currentSession == null || _currentProperties == null)

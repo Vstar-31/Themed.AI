@@ -187,6 +187,8 @@ public sealed class MeterEditorItem : ViewModelBase
         _thresholdPercent = definition.ThresholdPercent;
         _thresholdColorHex = definition.ThresholdColorHex;
         _thresholdAppliesToText = definition.ThresholdAppliesToText;
+        _actionUrl = definition.ActionUrl;
+        _secondaryActionUrl = definition.SecondaryActionUrl;
     }
 
     /// <summary>Called by the drag handler in the editor's preview canvas — same anchor-delta math

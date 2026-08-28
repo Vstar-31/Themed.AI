@@ -1,0 +1,54 @@
+<Page
+    x:Class="ThemeManager.WinUI.Views.VibeFinderAIPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ThemeManager.WinUI.Views"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="350"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Panel: Settings and Widgets -->
+        <ScrollViewer Grid.Column="0" Padding="20">
+            <StackPanel Spacing="20">
+                <TextBlock Text="VibeFinder AI" Style="{StaticResource TitleTextBlockStyle}"/>
+
+                <!-- Credentials Section -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Widget Credentials" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock Text="Enter your VibeFinder account details to sync the widgets with your vibe." TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    
+                    <TextBox x:Name="UsernameBox" Header="Username" PlaceholderText="listener"/>
+                    <PasswordBox x:Name="PasswordBox" Header="Password" PlaceholderText="hunter2"/>
+                    <TextBox x:Name="PromptBox" Header="Vibe Prompt" Text="$theme" PlaceholderText="e.g. cozy rainy afternoon, or $theme"/>
+                    
+                    <Button Content="Save &amp; Apply" Click="SaveCredentials_Click" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" Margin="0,10,0,0"/>
+                    <TextBlock x:Name="StatusText" Text="Saved!" Foreground="Green" Visibility="Collapsed"/>
+                </StackPanel>
+
+                <MenuFlyoutSeparator Margin="0,10,0,10"/>
+
+                <!-- Widgets Section -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Dope Widgets" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock Text="Toggle predefined widgets for your desktop." TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                    <ToggleSwitch x:Name="TogglePrimary" Header="VibeFinder Primary" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Primary"/>
+                    <ToggleSwitch x:Name="ToggleMinimal" Header="VibeFinder Minimal" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Minimal"/>
+                    <ToggleSwitch x:Name="TogglePlaylist" Header="VibeFinder Playlist" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Playlist"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Right Panel: Web Embed -->
+        <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1,0,0,0">
+            <WebView2 x:Name="VibeFinderWebView" Source="https://vibefinderai.onrender.com/"/>
+        </Border>
+    </Grid>
+</Page>

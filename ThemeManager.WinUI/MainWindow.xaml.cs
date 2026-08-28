@@ -104,6 +104,12 @@ public sealed partial class MainWindow : Window
         SetActiveNav(NavWidgetVibe);
     }
 
+    private void NavVibeFinderAI_Click(object sender, RoutedEventArgs e)
+    {
+        ContentFrame.Navigate(typeof(VibeFinderAIPage));
+        SetActiveNav(NavVibeFinderAI);
+    }
+
     /// <summary>Brings the window to the foreground (it may be hidden to the tray) and navigates
     /// straight to the editor for a specific widget. Used by the right-click "Edit" item on a
     /// floating widget itself, which lives in its own Window and has no Frame of its own.</summary>

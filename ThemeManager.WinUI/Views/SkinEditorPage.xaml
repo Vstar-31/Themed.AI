@@ -245,6 +245,19 @@
                                            Visibility="{x:Bind ViewModel.SelectedMeter.IsGraph, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </StackPanel>
 
+                            <!-- Click actions -->
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Click actions" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />
+                                <TextBlock Text="Optional URLs to launch when clicked (e.g. https://... or themed://media/playpause)"
+                                           Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                                <TextBox Header="Click URL"
+                                         Text="{x:Bind ViewModel.SelectedMeter.ActionUrl, Mode=TwoWay}"
+                                         PlaceholderText="themed://media/playpause" />
+                                <TextBox Header="Right-Click URL"
+                                         Text="{x:Bind ViewModel.SelectedMeter.SecondaryActionUrl, Mode=TwoWay}"
+                                         PlaceholderText="themed://media/next" />
+                            </StackPanel>
+
                             <!-- Threshold alert -->
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Threshold alert" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />

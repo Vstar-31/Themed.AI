@@ -282,7 +282,16 @@ public sealed partial class SkinHostWindow : Window
 
                 try
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                    const string mediaPrefix = "themed://media/";
+                    if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var command = url.Substring(mediaPrefix.Length);
+                        _ = MediaMeasure.TrySendCommandAsync(command);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                    }
                     e.Handled = true;
                 }
                 catch (Exception ex)

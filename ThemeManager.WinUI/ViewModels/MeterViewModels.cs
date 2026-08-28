@@ -56,8 +56,11 @@ public abstract class MeterViewModelBase : ViewModelBase
         protected set => SetProperty(ref _imageUrl, value);
     }
 
+    protected readonly MeterDefinition Definition;
+
     protected MeterViewModelBase(MeterDefinition definition)
     {
+        Definition = definition;
         X = definition.X;
         Y = definition.Y;
         Width = definition.Width;
@@ -110,16 +113,16 @@ public sealed class StringMeterViewModel : MeterViewModelBase
         {
             DisplayText = _staticText;
             IsThresholdCrossed = false;
-            ActionUrl = null;
-            SecondaryActionUrl = null;
+            ActionUrl = Definition.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl;
             ImageUrl = null;
             return;
         }
 
         if (measuresByName.TryGetValue(_measureName, out var measure))
         {
-            ActionUrl = measure.ActionUrl;
-            SecondaryActionUrl = measure.SecondaryActionUrl;
+            ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
             ImageUrl = measure.ImageUrl;
             try
             {
@@ -164,14 +167,14 @@ public sealed class GraphMeterViewModel : MeterViewModelBase
     {
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
         {
-            ActionUrl = null;
-            SecondaryActionUrl = null;
+            ActionUrl = Definition.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl;
             ImageUrl = null;
             return;
         }
 
-        ActionUrl = measure.ActionUrl;
-        SecondaryActionUrl = measure.SecondaryActionUrl;
+        ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
+        SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
         ImageUrl = measure.ImageUrl;
         double normalized = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
         _history.Enqueue(normalized);
@@ -212,14 +215,14 @@ public sealed class BarMeterViewModel : MeterViewModelBase
     {
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
         {
-            ActionUrl = null;
-            SecondaryActionUrl = null;
+            ActionUrl = Definition.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl;
             ImageUrl = null;
             return;
         }
 
-        ActionUrl = measure.ActionUrl;
-        SecondaryActionUrl = measure.SecondaryActionUrl;
+        ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
+        SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
         ImageUrl = measure.ImageUrl;
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
 
@@ -257,14 +260,14 @@ public sealed class RingMeterViewModel : MeterViewModelBase
     {
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
         {
-            ActionUrl = null;
-            SecondaryActionUrl = null;
+            ActionUrl = Definition.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl;
             ImageUrl = null;
             return;
         }
 
-        ActionUrl = measure.ActionUrl;
-        SecondaryActionUrl = measure.SecondaryActionUrl;
+        ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
+        SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
         ImageUrl = measure.ImageUrl;
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
 
@@ -300,16 +303,16 @@ public sealed class IconMeterViewModel : MeterViewModelBase
     {
         if (string.IsNullOrEmpty(_measureName))
         {
-            ActionUrl = null;
-            SecondaryActionUrl = null;
+            ActionUrl = Definition.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl;
             ImageUrl = null;
             return;
         }
 
         if (measuresByName.TryGetValue(_measureName, out var measure))
         {
-            ActionUrl = measure.ActionUrl;
-            SecondaryActionUrl = measure.SecondaryActionUrl;
+            ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
+            SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
             ImageUrl = measure.ImageUrl;
             if (HasThreshold)
                 IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;

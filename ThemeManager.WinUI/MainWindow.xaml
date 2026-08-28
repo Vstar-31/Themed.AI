@@ -85,6 +85,11 @@
                         Style="{StaticResource NavItemStyle}"
                         Click="NavWidgetVibe_Click" />
 
+                <Button x:Name="NavVibeFinderAI"
+                        Content="🎵  VibeFinder AI"
+                        Style="{StaticResource NavItemStyle}"
+                        Click="NavVibeFinderAI_Click" />
+
                 <Button x:Name="NavSettings"
                         Content="🔧  Settings"
                         Style="{StaticResource NavItemStyle}"
