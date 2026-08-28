@@ -107,8 +107,9 @@ public sealed partial class SkinHostWindow : Window
 
     private void ConfigurePresenter()
     {
-        // Same "no title bar" technique MainWindow already uses successfully in this app.
-        ExtendsContentIntoTitleBar = true;
+        // For a widget, we only need to remove the OS border/titlebar via the Presenter.
+        // Calling ExtendsContentIntoTitleBar = true here (like MainWindow does) causes WinUI 
+        // to render fallback caption buttons inside the client area, which look like a glitch.
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
