@@ -274,12 +274,14 @@ public sealed partial class SkinHostWindow : Window
             {
                 if (meter.ActionUrl is not null)
                 {
-                    element.ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
+                    typeof(UIElement).GetProperty("ProtectedCursor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
+                        .SetValue(element, Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand));
                 }
             };
             element.PointerExited += (s, e) =>
             {
-                element.ProtectedCursor = null;
+                typeof(UIElement).GetProperty("ProtectedCursor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
+                    .SetValue(element, null);
             };
 
             Canvas.SetLeft(element, meter.X);
