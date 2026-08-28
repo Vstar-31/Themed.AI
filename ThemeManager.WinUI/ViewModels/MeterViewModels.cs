@@ -40,6 +40,22 @@ public abstract class MeterViewModelBase : ViewModelBase
         protected set => SetProperty(ref _actionUrl, value);
     }
 
+    private string? _secondaryActionUrl;
+    /// <summary>Optional alternate URL to open on a right-click, independent of <see cref="ActionUrl"/>.</summary>
+    public string? SecondaryActionUrl
+    {
+        get => _secondaryActionUrl;
+        protected set => SetProperty(ref _secondaryActionUrl, value);
+    }
+
+    private string? _imageUrl;
+    /// <summary>Optional image URL a meter can render instead of (or alongside) a static glyph.</summary>
+    public string? ImageUrl
+    {
+        get => _imageUrl;
+        protected set => SetProperty(ref _imageUrl, value);
+    }
+
     protected MeterViewModelBase(MeterDefinition definition)
     {
         X = definition.X;
@@ -95,12 +111,16 @@ public sealed class StringMeterViewModel : MeterViewModelBase
             DisplayText = _staticText;
             IsThresholdCrossed = false;
             ActionUrl = null;
+            SecondaryActionUrl = null;
+            ImageUrl = null;
             return;
         }
 
         if (measuresByName.TryGetValue(_measureName, out var measure))
         {
             ActionUrl = measure.ActionUrl;
+            SecondaryActionUrl = measure.SecondaryActionUrl;
+            ImageUrl = measure.ImageUrl;
             try
             {
                 DisplayText = string.Format(_format, measure.Value, measure.Text);
@@ -145,10 +165,14 @@ public sealed class GraphMeterViewModel : MeterViewModelBase
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
         {
             ActionUrl = null;
+            SecondaryActionUrl = null;
+            ImageUrl = null;
             return;
         }
 
         ActionUrl = measure.ActionUrl;
+        SecondaryActionUrl = measure.SecondaryActionUrl;
+        ImageUrl = measure.ImageUrl;
         double normalized = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
         _history.Enqueue(normalized);
         while (_history.Count > _historyLength)
@@ -189,10 +213,14 @@ public sealed class BarMeterViewModel : MeterViewModelBase
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
         {
             ActionUrl = null;
+            SecondaryActionUrl = null;
+            ImageUrl = null;
             return;
         }
 
         ActionUrl = measure.ActionUrl;
+        SecondaryActionUrl = measure.SecondaryActionUrl;
+        ImageUrl = measure.ImageUrl;
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
 
         if (HasThreshold)
@@ -230,10 +258,14 @@ public sealed class RingMeterViewModel : MeterViewModelBase
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
         {
             ActionUrl = null;
+            SecondaryActionUrl = null;
+            ImageUrl = null;
             return;
         }
 
         ActionUrl = measure.ActionUrl;
+        SecondaryActionUrl = measure.SecondaryActionUrl;
+        ImageUrl = measure.ImageUrl;
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
 
         if (HasThreshold)
@@ -243,8 +275,10 @@ public sealed class RingMeterViewModel : MeterViewModelBase
 
 /// <summary>
 /// A single static icon glyph — optionally bound to a measure purely so it can recolor on
-/// threshold cross, the same way a Bar or Graph meter does. Unlike those two, the glyph itself
-/// never changes at runtime; only its color does.
+/// threshold cross, the same way a Bar or Graph meter does. The glyph itself never changes at
+/// runtime; only its color does. A bound measure can additionally supply <see cref="MeterViewModelBase.ImageUrl"/>
+/// (e.g. album art), which the rendering side shows in place of the glyph when present — that
+/// part *is* tick-reactive, unlike the glyph.
 /// </summary>
 public sealed class IconMeterViewModel : MeterViewModelBase
 {
@@ -267,12 +301,16 @@ public sealed class IconMeterViewModel : MeterViewModelBase
         if (string.IsNullOrEmpty(_measureName))
         {
             ActionUrl = null;
+            SecondaryActionUrl = null;
+            ImageUrl = null;
             return;
         }
 
         if (measuresByName.TryGetValue(_measureName, out var measure))
         {
             ActionUrl = measure.ActionUrl;
+            SecondaryActionUrl = measure.SecondaryActionUrl;
+            ImageUrl = measure.ImageUrl;
             if (HasThreshold)
                 IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
         }

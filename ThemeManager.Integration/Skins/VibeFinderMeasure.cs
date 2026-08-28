@@ -58,6 +58,8 @@ public sealed class VibeFinderMeasure : IMeasure
     public double Value { get; private set; }
     public string Text { get; private set; } = "—";
     public string? ActionUrl { get; private set; }
+    public string? SecondaryActionUrl { get; private set; }
+    public string? ImageUrl { get; private set; }
 
     private readonly MeasureType _type;
     private readonly string _target;
@@ -82,7 +84,7 @@ public sealed class VibeFinderMeasure : IMeasure
 
     private sealed class ResultEntry
     {
-        public (string Title, string Artist, string Mood, string? SpotifyUrl)? Data;
+        public (string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl)? Data;
         public DateTime LastAttempt = DateTime.MinValue;
         public DateTime LastSuccess = DateTime.MinValue;
         public readonly object Lock = new();
@@ -135,6 +137,8 @@ public sealed class VibeFinderMeasure : IMeasure
                 _                           => "—",
             };
             ActionUrl = data.SpotifyUrl;
+            SecondaryActionUrl = data.AppleUrl;
+            ImageUrl = data.CoverArtUrl;
         }
         else if (vibeText is null)
         {
@@ -205,6 +209,8 @@ public sealed class VibeFinderMeasure : IMeasure
             string mood = root.TryGetProperty("dominant_vibe", out var vEl) ? vEl.GetString() ?? "—" : "—";
             string title = "No match", artist = "—";
             string? spotifyUrl = null;
+            string? appleUrl = null;
+            string? coverArtUrl = null;
             if (root.TryGetProperty("tracks", out var tracksEl)
                 && tracksEl.ValueKind == JsonValueKind.Array && tracksEl.GetArrayLength() > 0)
             {
@@ -219,9 +225,25 @@ public sealed class VibeFinderMeasure : IMeasure
                     else if (uri != null && uri.StartsWith("spotify:search:"))
                         spotifyUrl = $"https://open.spotify.com/search/{uri.Substring(15)}";
                 }
+
+                // apple_uri is already a launchable "music://" URI (built server-side as
+                // f"music://search?term={q}", q already URL-encoded) — pass it straight through,
+                // no reassembly needed the way spotify_uri gets rebuilt into an https:// link above.
+                if (first.TryGetProperty("apple_uri", out var appleEl))
+                    appleUrl = appleEl.GetString();
+
+                // cover_art is iTunes' artworkUrl100 — swap the fixed "100x100bb" segment for a
+                // larger render so it isn't upscaled-blurry on an icon meter sized bigger than
+                // 100px. Safe no-op via Replace if a future response ever changes that convention.
+                if (first.TryGetProperty("cover_art", out var artEl))
+                {
+                    var art = artEl.GetString();
+                    if (art != null)
+                        coverArtUrl = art.Replace("100x100bb", "512x512bb");
+                }
             }
 
-            entry.Data = (title, artist, mood, spotifyUrl);
+            entry.Data = (title, artist, mood, spotifyUrl, appleUrl, coverArtUrl);
             entry.LastSuccess = DateTime.UtcNow;
         }
         catch (Exception ex)

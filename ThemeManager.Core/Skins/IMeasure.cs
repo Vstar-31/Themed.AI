@@ -25,4 +25,14 @@ public interface IMeasure
 
     /// <summary>Optional URL or URI to launch when a meter bound to this measure is clicked.</summary>
     string? ActionUrl => null;
+
+    /// <summary>Optional alternate URL or URI to launch on a secondary (right-click) action —
+    /// e.g. an alternate service link for a measure that has more than one place to open the
+    /// same thing. Independent of <see cref="ActionUrl"/>; a meter may have either, both, or neither.</summary>
+    string? SecondaryActionUrl => null;
+
+    /// <summary>Optional image URL a meter can render in place of a static glyph (e.g. Icon
+    /// meters). Unlike a meter's own glyph configuration this is expected to change over time as
+    /// the underlying measure updates, so meters that support it should treat it as tick-reactive.</summary>
+    string? ImageUrl => null;
 }

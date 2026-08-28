@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using Microsoft.Extensions.Logging;
 using Windows.Graphics;
@@ -240,6 +241,14 @@ public sealed partial class SkinHostWindow : Window
 
     // ── Meter rendering (built in code, refreshed via each meter VM's PropertyChanged) ─────
 
+    // Reflection is the standard WinUI3 workaround for setting a pointer cursor on an arbitrary
+    // UIElement built outside its own class — ProtectedCursor is intentionally protected, with no
+    // public equivalent. Resolved once here rather than inside PointerEntered/Exited, since
+    // GetProperty isn't cached internally and hover events can fire often as the cursor crosses
+    // tiny meter regions.
+    private static readonly System.Reflection.PropertyInfo? ProtectedCursorProperty =
+        typeof(UIElement).GetProperty("ProtectedCursor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
     private void BuildMeterVisuals()
     {
         foreach (var meter in _viewModel.Meters)
@@ -256,32 +265,41 @@ public sealed partial class SkinHostWindow : Window
 
             element.PointerPressed += (s, e) =>
             {
-                if (meter.ActionUrl is not null)
+                var props = e.GetCurrentPoint(element).Properties;
+
+                // Left-click opens the primary action; right-click opens the secondary action
+                // *only* when one is configured. A right-click with no SecondaryActionUrl is left
+                // unhandled so it bubbles up to RootCanvas_PointerPressed and still opens the
+                // widget's Edit/Lock/Disable menu, same as right-clicking anywhere else on the
+                // widget. (Previously this fired on any button and marked every right-click Handled
+                // whenever ActionUrl was set, which silently ate the context menu on top of any
+                // VibeFinder meter that had a track loaded — fixed here alongside the new action.)
+                string? url = props.IsLeftButtonPressed ? meter.ActionUrl
+                            : props.IsRightButtonPressed ? meter.SecondaryActionUrl
+                            : null;
+                if (url is null) return;
+
+                try
                 {
-                    try
-                    {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(meter.ActionUrl) { UseShellExecute = true });
-                        e.Handled = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        App.LoggerFactory.CreateLogger<SkinHostWindow>()
-                            .LogWarning(ex, "Failed to launch action URL: {Url}", meter.ActionUrl);
-                    }
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+                    e.Handled = true;
+                }
+                catch (Exception ex)
+                {
+                    App.LoggerFactory.CreateLogger<SkinHostWindow>()
+                        .LogWarning(ex, "Failed to launch action URL: {Url}", url);
                 }
             };
             element.PointerEntered += (s, e) =>
             {
-                if (meter.ActionUrl is not null)
+                if (meter.ActionUrl is not null || meter.SecondaryActionUrl is not null)
                 {
-                    typeof(UIElement).GetProperty("ProtectedCursor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
-                        .SetValue(element, Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand));
+                    ProtectedCursorProperty?.SetValue(element, Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand));
                 }
             };
             element.PointerExited += (s, e) =>
             {
-                typeof(UIElement).GetProperty("ProtectedCursor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
-                    .SetValue(element, null);
+                ProtectedCursorProperty?.SetValue(element, null);
             };
 
             Canvas.SetLeft(element, meter.X);
@@ -477,6 +495,39 @@ public sealed partial class SkinHostWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        // Cover art (from a bound measure's ImageUrl, e.g. VibeFinderMeasure) layers over the
+        // glyph when one loads successfully, same rounded chip so it stays one visual family with
+        // every other Icon meter. Starts collapsed and only turns visible on ImageOpened, so a
+        // missing/dead URL just leaves the glyph showing instead of a blank square — ImageFailed
+        // explicitly collapses it back rather than trusting a half-loaded state.
+        var image = new Image
+        {
+            Width = vm.Width,
+            Height = vm.Height,
+            Stretch = Stretch.UniformToFill,
+            Visibility = Visibility.Collapsed,
+        };
+        image.ImageOpened += (_, _) => image.Visibility = Visibility.Visible;
+        image.ImageFailed += (_, _) => image.Visibility = Visibility.Collapsed;
+
+        if (vm.ImageUrl is string initialUrl && Uri.TryCreate(initialUrl, UriKind.Absolute, out var initialUri))
+            image.Source = new BitmapImage(initialUri);
+
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(IconMeterViewModel.ImageUrl)) return;
+
+            if (vm.ImageUrl is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                image.Source = new BitmapImage(uri);
+            }
+            else
+            {
+                image.Source = null;
+                image.Visibility = Visibility.Collapsed;
+            }
+        };
+
         SolidColorBrush? thresholdBrush = vm.HasThreshold ? ParseHexBrush(vm.ThresholdColorHex) : null;
 
         if (thresholdBrush is not null)
@@ -488,7 +539,10 @@ public sealed partial class SkinHostWindow : Window
             };
         }
 
-        chip.Child = icon;
+        var layers = new Grid { Width = vm.Width, Height = vm.Height };
+        layers.Children.Add(icon);
+        layers.Children.Add(image);
+        chip.Child = layers;
         return chip;
     }
 
