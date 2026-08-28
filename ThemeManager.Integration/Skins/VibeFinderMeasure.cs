@@ -57,6 +57,7 @@ public sealed class VibeFinderMeasure : IMeasure
     public string Name { get; }
     public double Value { get; private set; }
     public string Text { get; private set; } = "—";
+    public string? ActionUrl { get; private set; }
 
     private readonly MeasureType _type;
     private readonly string _target;
@@ -81,7 +82,7 @@ public sealed class VibeFinderMeasure : IMeasure
 
     private sealed class ResultEntry
     {
-        public (string Title, string Artist, string Mood)? Data;
+        public (string Title, string Artist, string Mood, string? SpotifyUrl)? Data;
         public DateTime LastAttempt = DateTime.MinValue;
         public DateTime LastSuccess = DateTime.MinValue;
         public readonly object Lock = new();
@@ -133,6 +134,7 @@ public sealed class VibeFinderMeasure : IMeasure
                 MeasureType.VibeMood        => data.Mood,
                 _                           => "—",
             };
+            ActionUrl = data.SpotifyUrl;
         }
         else if (vibeText is null)
         {
@@ -202,15 +204,24 @@ public sealed class VibeFinderMeasure : IMeasure
 
             string mood = root.TryGetProperty("dominant_vibe", out var vEl) ? vEl.GetString() ?? "—" : "—";
             string title = "No match", artist = "—";
+            string? spotifyUrl = null;
             if (root.TryGetProperty("tracks", out var tracksEl)
                 && tracksEl.ValueKind == JsonValueKind.Array && tracksEl.GetArrayLength() > 0)
             {
                 var first = tracksEl[0];
                 title = first.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "—" : "—";
                 artist = first.TryGetProperty("artist", out var aEl) ? aEl.GetString() ?? "—" : "—";
+                if (first.TryGetProperty("spotify_uri", out var uriEl))
+                {
+                    var uri = uriEl.GetString();
+                    if (uri != null && uri.StartsWith("spotify:track:"))
+                        spotifyUrl = $"https://open.spotify.com/track/{uri.Substring(14)}";
+                    else if (uri != null && uri.StartsWith("spotify:search:"))
+                        spotifyUrl = $"https://open.spotify.com/search/{uri.Substring(15)}";
+                }
             }
 
-            entry.Data = (title, artist, mood);
+            entry.Data = (title, artist, mood, spotifyUrl);
             entry.LastSuccess = DateTime.UtcNow;
         }
         catch (Exception ex)

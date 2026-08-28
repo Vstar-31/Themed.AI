@@ -32,6 +32,14 @@ public abstract class MeterViewModelBase : ViewModelBase
     /// <summary>Whether this meter has a non-zero threshold configured at all.</summary>
     public bool HasThreshold => ThresholdPercent > 0;
 
+    private string? _actionUrl;
+    /// <summary>Optional URL to open when this meter is clicked.</summary>
+    public string? ActionUrl
+    {
+        get => _actionUrl;
+        protected set => SetProperty(ref _actionUrl, value);
+    }
+
     protected MeterViewModelBase(MeterDefinition definition)
     {
         X = definition.X;
@@ -86,11 +94,13 @@ public sealed class StringMeterViewModel : MeterViewModelBase
         {
             DisplayText = _staticText;
             IsThresholdCrossed = false;
+            ActionUrl = null;
             return;
         }
 
         if (measuresByName.TryGetValue(_measureName, out var measure))
         {
+            ActionUrl = measure.ActionUrl;
             try
             {
                 DisplayText = string.Format(_format, measure.Value, measure.Text);
@@ -133,8 +143,12 @@ public sealed class GraphMeterViewModel : MeterViewModelBase
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
     {
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
+        {
+            ActionUrl = null;
             return;
+        }
 
+        ActionUrl = measure.ActionUrl;
         double normalized = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
         _history.Enqueue(normalized);
         while (_history.Count > _historyLength)
@@ -173,8 +187,12 @@ public sealed class BarMeterViewModel : MeterViewModelBase
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
     {
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
+        {
+            ActionUrl = null;
             return;
+        }
 
+        ActionUrl = measure.ActionUrl;
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
 
         if (HasThreshold)
@@ -210,8 +228,12 @@ public sealed class RingMeterViewModel : MeterViewModelBase
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
     {
         if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
+        {
+            ActionUrl = null;
             return;
+        }
 
+        ActionUrl = measure.ActionUrl;
         FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
 
         if (HasThreshold)
@@ -242,10 +264,17 @@ public sealed class IconMeterViewModel : MeterViewModelBase
 
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
     {
-        if (string.IsNullOrEmpty(_measureName) || !HasThreshold)
+        if (string.IsNullOrEmpty(_measureName))
+        {
+            ActionUrl = null;
             return;
+        }
 
         if (measuresByName.TryGetValue(_measureName, out var measure))
-            IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
+        {
+            ActionUrl = measure.ActionUrl;
+            if (HasThreshold)
+                IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
+        }
     }
 }

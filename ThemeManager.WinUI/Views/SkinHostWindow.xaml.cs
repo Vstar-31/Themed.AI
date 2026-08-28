@@ -254,6 +254,34 @@ public sealed partial class SkinHostWindow : Window
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };
 
+            element.PointerPressed += (s, e) =>
+            {
+                if (meter.ActionUrl is not null)
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(meter.ActionUrl) { UseShellExecute = true });
+                        e.Handled = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        App.LoggerFactory.CreateLogger<SkinHostWindow>()
+                            .LogWarning(ex, "Failed to launch action URL: {Url}", meter.ActionUrl);
+                    }
+                }
+            };
+            element.PointerEntered += (s, e) =>
+            {
+                if (meter.ActionUrl is not null)
+                {
+                    element.ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Hand);
+                }
+            };
+            element.PointerExited += (s, e) =>
+            {
+                element.ProtectedCursor = null;
+            };
+
             Canvas.SetLeft(element, meter.X);
             Canvas.SetTop(element, meter.Y);
             RootCanvas.Children.Add(element);

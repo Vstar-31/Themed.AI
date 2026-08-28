@@ -22,4 +22,7 @@ public interface IMeasure
 
     /// <summary>Re-reads the underlying value. Safe to call every tick; must never throw.</summary>
     void Refresh();
+
+    /// <summary>Optional URL or URI to launch when a meter bound to this measure is clicked.</summary>
+    string? ActionUrl => null;
 }
