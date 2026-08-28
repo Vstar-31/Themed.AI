@@ -135,6 +135,13 @@ public sealed class MeterDefinition
     /// <summary>When true, string meters also swap their foreground color on threshold cross.
     /// Bar/Graph meters always swap — this flag only gates text meters.</summary>
     public bool ThresholdAppliesToText { get; set; }
+
+    // ── Click Actions ────────────────────────────────────────────────────────
+    /// <summary>Optional URL or URI to launch when this meter is left-clicked.</summary>
+    public string? ActionUrl { get; set; }
+
+    /// <summary>Optional alternate URL or URI to launch when this meter is right-clicked.</summary>
+    public string? SecondaryActionUrl { get; set; }
 }
 
 /// <summary>

@@ -111,6 +111,7 @@ public sealed class MeterEditorItem : ViewModelBase
     private double _x, _y, _width, _height, _fontSize, _barMax, _thresholdPercent;
     private int _historyLength;
     private string _measureName, _staticText, _format, _thresholdColorHex, _iconGlyph;
+    private string? _actionUrl, _secondaryActionUrl;
     private bool _bold, _thresholdAppliesToText, _centerText;
 
     public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
@@ -143,6 +144,9 @@ public sealed class MeterEditorItem : ViewModelBase
         set { if (SetProperty(ref _thresholdAppliesToText, value)) { Definition.ThresholdAppliesToText = value; _onChanged(); } }
     }
     public bool HasThreshold => ThresholdPercent > 0;
+
+    public string? ActionUrl { get => _actionUrl; set { if (SetProperty(ref _actionUrl, value)) { Definition.ActionUrl = value; _onChanged(); } } }
+    public string? SecondaryActionUrl { get => _secondaryActionUrl; set { if (SetProperty(ref _secondaryActionUrl, value)) { Definition.SecondaryActionUrl = value; _onChanged(); } } }
 
     /// <summary>Empty string means "static text, no measure" — the property panel's "measure" ComboBox
     /// has a matching blank entry for this at the top of its list.</summary>
