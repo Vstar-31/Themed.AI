@@ -184,9 +184,8 @@ public sealed partial class SkinHostWindow : Window
             if (_viewModel.Definition.DesktopLayer)
             {
                 DesktopLayerInterop.Detach(_hwnd);
+                this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = null;
             }
-
-            this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = null;
         }
         catch { }
     }
