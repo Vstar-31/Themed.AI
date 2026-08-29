@@ -117,5 +117,6 @@
                Grid.Column="2"
                Background="{StaticResource AppBackgroundBrush}" />
 
+        <WebView2 x:Name="HiddenYoutubePlayer" Width="0" Height="0" Opacity="0" IsHitTestVisible="False" />
     </Grid>
 </Window>

@@ -288,15 +288,13 @@ public sealed partial class SkinHostWindow : Window
                     if (url.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         // VibeFinderMeasure's own-preview playback action (Phase 6 "actual
-                        // playback"): percent-decode the URL it encoded and hand it to
-                        // VibeFinderPreviewPlayer's native MediaPlayer instead of launching
-                        // anything externally. Same dispatch shape as themed://media/ just below
-                        // — a custom scheme this window understands itself, never passed to
-                        // Process.Start.
-                        var encodedPreviewUrl = url.Substring(vibeFinderPreviewPrefix.Length);
-                        VibeFinderPreviewPlayer.TogglePreview(
-                            Uri.UnescapeDataString(encodedPreviewUrl),
-                            App.LoggerFactory.CreateLogger<SkinHostWindow>());
+                        // playback"): command the hidden YouTube player in the main window
+                        // instead of launching anything externally.
+                        var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
+                        if (vibeMeasure != null)
+                        {
+                            App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
+                        }
                     }
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
                     {
@@ -304,15 +302,13 @@ public sealed partial class SkinHostWindow : Window
                         
                         if (command.Equals("playpause", StringComparison.OrdinalIgnoreCase))
                         {
+                            var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             var previewMeter = _viewModel.Meters.FirstOrDefault(m => 
                                 m.ActionUrl != null && m.ActionUrl.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase));
                                 
-                            if (previewMeter != null)
+                            if (previewMeter != null && vibeMeasure != null)
                             {
-                                var encodedPreviewUrl = previewMeter.ActionUrl!.Substring(vibeFinderPreviewPrefix.Length);
-                                VibeFinderPreviewPlayer.TogglePreview(
-                                    Uri.UnescapeDataString(encodedPreviewUrl),
-                                    App.LoggerFactory.CreateLogger<SkinHostWindow>());
+                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
                                 e.Handled = true;
                                 return;
                             }
@@ -324,6 +320,7 @@ public sealed partial class SkinHostWindow : Window
                             if (vibeMeasure != null)
                             {
                                 vibeMeasure.SkipNext();
+                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
                                 e.Handled = true;
                                 return;
                             }
@@ -334,6 +331,7 @@ public sealed partial class SkinHostWindow : Window
                             if (vibeMeasure != null)
                             {
                                 vibeMeasure.SkipPrevious();
+                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
                                 e.Handled = true;
                                 return;
                             }

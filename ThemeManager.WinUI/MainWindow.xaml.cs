@@ -6,6 +6,9 @@ using Microsoft.UI.Xaml.Media;
 using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.Views;
 using Windows.Graphics;
+using Microsoft.Extensions.Logging;
+using ThemeManager.Integration.Skins;
+using Microsoft.UI.Dispatching;
 
 namespace ThemeManager.WinUI;
 
@@ -15,6 +18,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ConfigureTitleBar();
+
+        InitializeYouTubePlayer();
 
         // Navigate to Themes list on startup.
         ContentFrame.Navigate(typeof(ThemesPage));
@@ -131,5 +136,108 @@ public sealed partial class MainWindow : Window
                 ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemActiveStyle"]
                 : (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemStyle"];
         }
+    }
+
+    // ── YouTube Player ─────────────────────────────────────────────────────────
+
+    private string? _currentYouTubeQuery;
+    private bool _youtubeReady;
+    private DispatcherQueueTimer? _youtubePollTimer;
+
+    private async void InitializeYouTubePlayer()
+    {
+        try
+        {
+            await HiddenYoutubePlayer.EnsureCoreWebView2Async();
+            var html = @"<!DOCTYPE html>
+            <html>
+            <body>
+              <div id='player'></div>
+              <script>
+                var player;
+                function onYouTubeIframeAPIReady() {
+                  player = new YT.Player('player', {
+                    height: '0',
+                    width: '0',
+                    playerVars: { 'autoplay': 1, 'controls': 0 },
+                  });
+                }
+                function playTrack(query) {
+                  if (player && player.loadPlaylist) {
+                      player.loadPlaylist({ listType: 'search', list: query });
+                  }
+                }
+                function togglePause() {
+                    if (player && player.getPlayerState) {
+                        var state = player.getPlayerState();
+                        if (state === 1) { // PLAYING
+                            player.pauseVideo();
+                        } else {
+                            player.playVideo();
+                        }
+                    }
+                }
+              </script>
+              <script src='https://www.youtube.com/iframe_api'></script>
+            </body>
+            </html>";
+            HiddenYoutubePlayer.NavigateToString(html);
+            _youtubeReady = true;
+
+            _youtubePollTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _youtubePollTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _youtubePollTimer.Tick += YoutubePollTimer_Tick;
+            _youtubePollTimer.Start();
+        }
+        catch (System.Exception ex)
+        {
+            App.LoggerFactory.CreateLogger<MainWindow>().LogWarning(ex, "Failed to initialize hidden YouTube WebView2");
+        }
+    }
+
+    public async void PlayYouTubeTrack(string title, string artist)
+    {
+        if (!_youtubeReady) return;
+        var query = $"{title} {artist}".Trim();
+        if (string.IsNullOrEmpty(query) || query == "—") return;
+
+        if (_currentYouTubeQuery == query)
+        {
+            // Toggle play/pause if it's the exact same query
+            await HiddenYoutubePlayer.ExecuteScriptAsync("togglePause();");
+        }
+        else
+        {
+            // Load and play new search query
+            _currentYouTubeQuery = query;
+            var script = $"playTrack('{query.Replace("'", "\\'")}');";
+            await HiddenYoutubePlayer.ExecuteScriptAsync(script);
+        }
+    }
+
+    private async void YoutubePollTimer_Tick(object? sender, object e)
+    {
+        if (!_youtubeReady) return;
+        try
+        {
+            var stateStr = await HiddenYoutubePlayer.ExecuteScriptAsync("player && player.getPlayerState ? player.getPlayerState() : -1");
+            var timeStr = await HiddenYoutubePlayer.ExecuteScriptAsync("player && player.getCurrentTime ? player.getCurrentTime() : 0");
+            var durStr = await HiddenYoutubePlayer.ExecuteScriptAsync("player && player.getDuration ? player.getDuration() : 0");
+
+            if (int.TryParse(stateStr, out int state))
+            {
+                YouTubePlaybackState.IsPlaying = (state == 1); // 1 = PLAYING
+            }
+
+            if (double.TryParse(timeStr, out double time) && double.TryParse(durStr, out double duration) && duration > 0)
+            {
+                YouTubePlaybackState.Progress = time / duration;
+            }
+            else
+            {
+                YouTubePlaybackState.Progress = 0;
+            }
+        }
+        catch { }
     }
 }

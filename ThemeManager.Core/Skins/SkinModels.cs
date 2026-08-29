@@ -27,6 +27,8 @@ public enum MeasureType
     VibeTrackTitle,
     VibeTrackArtist,
     VibeMood,
+    VibeTrackProgress,
+    VibePlaybackState
 }
 
 /// <summary>The visual kind a <see cref="MeterDefinition"/> renders as.</summary>

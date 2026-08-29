@@ -75,6 +75,12 @@ public sealed class VibeFinderMeasure : IMeasure
     public string? SecondaryActionUrl { get; private set; }
     public string? ImageUrl { get; private set; }
 
+    public string CurrentTrackTitle { get; private set; } = "—";
+    public string CurrentTrackArtist { get; private set; } = "—";
+
+    public void UpdateMeasure()
+    { }
+
     private readonly MeasureType _type;
     private readonly string _target;
     private readonly ILogger _logger;
@@ -145,13 +151,27 @@ public sealed class VibeFinderMeasure : IMeasure
         if (entry.Tracks.Count > 0)
         {
             var data = entry.Tracks[entry.CurrentIndex];
+            CurrentTrackTitle = data.Title;
+            CurrentTrackArtist = data.Artist;
+
             Text = _type switch
             {
                 MeasureType.VibeTrackTitle  => data.Title,
                 MeasureType.VibeTrackArtist => data.Artist,
                 MeasureType.VibeMood        => data.Mood,
+                MeasureType.VibePlaybackState => YouTubePlaybackState.IsPlaying ? "PLAYING" : "PAUSED",
                 _                           => "—",
             };
+
+            if (_type == MeasureType.VibeTrackProgress)
+            {
+                Value = YouTubePlaybackState.Progress;
+                Text = Value.ToString("P0");
+            }
+            else
+            {
+                Value = 0;
+            }
             // Primary click plays the 30s iTunes preview natively (VibeFinderPreviewPlayer)
             // instead of opening Spotify — the Phase 6 "actual playback" decision. preview_url
             // was already present on every /api/vibe/analyze track (see the parsing below);
@@ -254,7 +274,11 @@ public sealed class VibeFinderMeasure : IMeasure
                     }
                     if (track.TryGetProperty("preview_url", out var previewEl)) tPreview = previewEl.GetString();
                     
-                    newTracks.Add((tTitle, tArtist, mood, tSpotify, tApple, tCover, tPreview));
+                    // We only require cover art now, since YouTube handles playback instead of iTunes preview URL
+                    if (!string.IsNullOrEmpty(tCover))
+                    {
+                        newTracks.Add((tTitle, tArtist, mood, tSpotify, tApple, tCover, tPreview));
+                    }
                 }
             }
             if (newTracks.Count == 0)
@@ -331,7 +355,6 @@ public sealed class VibeFinderMeasure : IMeasure
             if (entry.Tracks.Count > 0)
                 entry.CurrentIndex = (entry.CurrentIndex + 1) % entry.Tracks.Count;
         }
-        VibeFinderPreviewPlayer.Stop();
     }
 
     public void SkipPrevious()
@@ -345,6 +368,5 @@ public sealed class VibeFinderMeasure : IMeasure
                 if (entry.CurrentIndex < 0) entry.CurrentIndex = entry.Tracks.Count - 1;
             }
         }
-        VibeFinderPreviewPlayer.Stop();
     }
 }

@@ -288,15 +288,20 @@ public sealed class IconMeterViewModel : MeterViewModelBase
     private readonly string? _measureName;
     private readonly double _barMax;
 
+    private string _glyph;
     /// <summary>Segoe Fluent Icons glyph to draw. Falls back to a generic "info" glyph if the
     /// definition was left blank, so a freshly-added Icon meter is never an empty rectangle.</summary>
-    public string Glyph { get; }
+    public string Glyph
+    {
+        get => _glyph;
+        private set => SetProperty(ref _glyph, value);
+    }
 
     public IconMeterViewModel(MeterDefinition definition) : base(definition)
     {
         _measureName = definition.MeasureName;
         _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
-        Glyph = string.IsNullOrWhiteSpace(definition.IconGlyph) ? "\uE946" : definition.IconGlyph;
+        _glyph = string.IsNullOrWhiteSpace(definition.IconGlyph) ? "\uE946" : definition.IconGlyph;
     }
 
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
@@ -314,6 +319,10 @@ public sealed class IconMeterViewModel : MeterViewModelBase
             ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
             SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
             ImageUrl = measure.ImageUrl;
+            
+            if (measure.Text == "PLAYING") Glyph = "\uE769"; // Pause icon
+            else if (measure.Text == "PAUSED") Glyph = "\uE768"; // Play icon
+
             if (HasThreshold)
                 IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
         }
