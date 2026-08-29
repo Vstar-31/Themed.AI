@@ -45,6 +45,21 @@ public sealed class SkinManagerService : IDisposable
     {
         _skins = await _repo.LoadAllAsync();
 
+        bool changed = false;
+        foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
+        {
+            foreach (var meter in skin.Meters.Where(m => m.Kind == MeterKind.String && 
+                (m.MeasureName == "VibeTitle" || m.MeasureName == "VibeArtist" || m.MeasureName == "VibeMood")))
+            {
+                if (string.IsNullOrEmpty(meter.Format) || meter.Format == "{0:F0}")
+                {
+                    meter.Format = "{1}";
+                    changed = true;
+                }
+            }
+        }
+        if (changed) await PersistAsync(false);
+
         foreach (var skin in _skins.Where(s => s.Enabled))
             OpenWindowFor(skin);
 

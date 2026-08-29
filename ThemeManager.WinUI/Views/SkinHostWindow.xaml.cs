@@ -318,6 +318,27 @@ public sealed partial class SkinHostWindow : Window
                             }
                         }
 
+                        else if (command.Equals("next", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
+                            if (vibeMeasure != null)
+                            {
+                                vibeMeasure.SkipNext();
+                                e.Handled = true;
+                                return;
+                            }
+                        }
+                        else if (command.Equals("prev", StringComparison.OrdinalIgnoreCase) || command.Equals("previous", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
+                            if (vibeMeasure != null)
+                            {
+                                vibeMeasure.SkipPrevious();
+                                e.Handled = true;
+                                return;
+                            }
+                        }
+
                         _ = MediaMeasure.TrySendCommandAsync(command);
                     }
                     else

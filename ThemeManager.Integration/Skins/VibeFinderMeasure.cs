@@ -98,7 +98,8 @@ public sealed class VibeFinderMeasure : IMeasure
 
     private sealed class ResultEntry
     {
-        public (string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl)? Data;
+        public System.Collections.Generic.List<(string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl)> Tracks = new();
+        public int CurrentIndex = 0;
         public DateTime LastAttempt = DateTime.MinValue;
         public DateTime LastSuccess = DateTime.MinValue;
         public readonly object Lock = new();
@@ -141,8 +142,9 @@ public sealed class VibeFinderMeasure : IMeasure
         if (vibeText is not null && (DateTime.UtcNow - entry.LastSuccess).TotalMinutes > 5)
             Task.Run(() => FetchAsync(entry, parts[0], parts[1], vibeText));
 
-        if (entry.Data is { } data)
+        if (entry.Tracks.Count > 0)
         {
+            var data = entry.Tracks[entry.CurrentIndex];
             Text = _type switch
             {
                 MeasureType.VibeTrackTitle  => data.Title,
@@ -229,50 +231,40 @@ public sealed class VibeFinderMeasure : IMeasure
             var root = doc.RootElement;
 
             string mood = root.TryGetProperty("dominant_vibe", out var vEl) ? vEl.GetString() ?? "—" : "—";
-            string title = "No match", artist = "—";
-            string? spotifyUrl = null;
-            string? appleUrl = null;
-            string? coverArtUrl = null;
-            string? previewUrl = null;
-            if (root.TryGetProperty("tracks", out var tracksEl)
-                && tracksEl.ValueKind == JsonValueKind.Array && tracksEl.GetArrayLength() > 0)
+            var newTracks = new System.Collections.Generic.List<(string, string, string, string?, string?, string?, string?)>();
+            if (root.TryGetProperty("tracks", out var tracksEl) && tracksEl.ValueKind == JsonValueKind.Array)
             {
-                var first = tracksEl[0];
-                title = first.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "—" : "—";
-                artist = first.TryGetProperty("artist", out var aEl) ? aEl.GetString() ?? "—" : "—";
-                if (first.TryGetProperty("spotify_uri", out var uriEl))
+                foreach (var track in tracksEl.EnumerateArray())
                 {
-                    var uri = uriEl.GetString();
-                    if (uri != null && uri.StartsWith("spotify:track:"))
-                        spotifyUrl = $"https://open.spotify.com/track/{uri.Substring(14)}";
-                    else if (uri != null && uri.StartsWith("spotify:search:"))
-                        spotifyUrl = $"https://open.spotify.com/search/{uri.Substring(15)}";
+                    string tTitle = track.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "—" : "—";
+                    string tArtist = track.TryGetProperty("artist", out var aEl) ? aEl.GetString() ?? "—" : "—";
+                    string? tSpotify = null, tApple = null, tCover = null, tPreview = null;
+                    
+                    if (track.TryGetProperty("spotify_uri", out var uriEl))
+                    {
+                        var uri = uriEl.GetString();
+                        if (uri != null && uri.StartsWith("spotify:track:")) tSpotify = $"https://open.spotify.com/track/{uri.Substring(14)}";
+                        else if (uri != null && uri.StartsWith("spotify:search:")) tSpotify = $"https://open.spotify.com/search/{uri.Substring(15)}";
+                    }
+                    if (track.TryGetProperty("apple_uri", out var appleEl)) tApple = appleEl.GetString();
+                    if (track.TryGetProperty("cover_art", out var artEl))
+                    {
+                        var art = artEl.GetString();
+                        if (art != null) tCover = art.Replace("100x100bb", "512x512bb");
+                    }
+                    if (track.TryGetProperty("preview_url", out var previewEl)) tPreview = previewEl.GetString();
+                    
+                    newTracks.Add((tTitle, tArtist, mood, tSpotify, tApple, tCover, tPreview));
                 }
-
-                // apple_uri is already a launchable "music://" URI (built server-side as
-                // f"music://search?term={q}", q already URL-encoded) — pass it straight through,
-                // no reassembly needed the way spotify_uri gets rebuilt into an https:// link above.
-                if (first.TryGetProperty("apple_uri", out var appleEl))
-                    appleUrl = appleEl.GetString();
-
-                // cover_art is iTunes' artworkUrl100 — swap the fixed "100x100bb" segment for a
-                // larger render so it isn't upscaled-blurry on an icon meter sized bigger than
-                // 100px. Safe no-op via Replace if a future response ever changes that convention.
-                if (first.TryGetProperty("cover_art", out var artEl))
-                {
-                    var art = artEl.GetString();
-                    if (art != null)
-                        coverArtUrl = art.Replace("100x100bb", "512x512bb");
-                }
-
-                // Already present on every track this endpoint returns (backend/main.py builds
-                // it from iTunes' search API, the same enrichment pass that supplies cover_art
-                // right above) — nothing upstream needed to change for this to start flowing.
-                if (first.TryGetProperty("preview_url", out var previewEl))
-                    previewUrl = previewEl.GetString();
             }
+            if (newTracks.Count == 0)
+                newTracks.Add(("No match", "—", mood, null, null, null, null));
 
-            entry.Data = (title, artist, mood, spotifyUrl, appleUrl, coverArtUrl, previewUrl);
+            lock (entry.Lock)
+            {
+                entry.Tracks = newTracks;
+                entry.CurrentIndex = 0;
+            }
             entry.LastSuccess = DateTime.UtcNow;
         }
         catch (Exception ex)
@@ -290,7 +282,7 @@ public sealed class VibeFinderMeasure : IMeasure
         {
             // track_limit: 1 — the widget only ever shows the top match, so there's no reason to
             // make VibeFinderAI's own analysis pipeline do more work than that per poll.
-            Content = JsonContent.Create(new { text = vibeText, track_limit = 1 }),
+            Content = JsonContent.Create(new { text = vibeText, track_limit = 20 }),
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return _http.SendAsync(req);
@@ -329,5 +321,30 @@ public sealed class VibeFinderMeasure : IMeasure
             _logger.LogWarning(ex, "VibeFinderAI login request failed");
             return null;
         }
+    }
+
+    public void SkipNext()
+    {
+        var entry = _cache.GetOrAdd(_target, _ => new ResultEntry());
+        lock (entry.Lock)
+        {
+            if (entry.Tracks.Count > 0)
+                entry.CurrentIndex = (entry.CurrentIndex + 1) % entry.Tracks.Count;
+        }
+        VibeFinderPreviewPlayer.Stop();
+    }
+
+    public void SkipPrevious()
+    {
+        var entry = _cache.GetOrAdd(_target, _ => new ResultEntry());
+        lock (entry.Lock)
+        {
+            if (entry.Tracks.Count > 0)
+            {
+                entry.CurrentIndex--;
+                if (entry.CurrentIndex < 0) entry.CurrentIndex = entry.Tracks.Count - 1;
+            }
+        }
+        VibeFinderPreviewPlayer.Stop();
     }
 }
