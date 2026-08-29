@@ -34,9 +34,17 @@ public static class MeasureFactory
         MeasureType.WeatherDesc => new WeatherMeasure(definition.Name, MeasureType.WeatherDesc, definition.Target, logger),
         MeasureType.WeatherCity => new WeatherMeasure(definition.Name, MeasureType.WeatherCity, definition.Target, logger),
         MeasureType.WebJson     => new WebJsonMeasure(definition.Name, definition.Target, logger),
-        MeasureType.VibeTrackTitle  => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackTitle, definition.Target, logger, activeThemeProvider),
-        MeasureType.VibeTrackArtist => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackArtist, definition.Target, logger, activeThemeProvider),
-        MeasureType.VibeMood        => new VibeFinderMeasure(definition.Name, MeasureType.VibeMood, definition.Target, logger, activeThemeProvider),
+        MeasureType.VibeTrackTitle    => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackTitle, definition.Target, logger, activeThemeProvider),
+        MeasureType.VibeTrackArtist   => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackArtist, definition.Target, logger, activeThemeProvider),
+        MeasureType.VibeMood          => new VibeFinderMeasure(definition.Name, MeasureType.VibeMood, definition.Target, logger, activeThemeProvider),
+        // These two were defined on MeasureType, read from inside VibeFinderMeasure.Refresh(), and
+        // even had default Bar/Icon meters wired up in EnsureVibeFinderSkinsExist() — but were
+        // never added here, so both silently resolved to UnknownMeasure below (fixed Value=0,
+        // Text="—") instead of a real VibeFinderMeasure. That's the entire reason the progress bar
+        // never moved and the play/pause icon never flipped: the data those visuals bind to was
+        // never actually being produced.
+        MeasureType.VibeTrackProgress => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackProgress, definition.Target, logger, activeThemeProvider),
+        MeasureType.VibePlaybackState => new VibeFinderMeasure(definition.Name, MeasureType.VibePlaybackState, definition.Target, logger, activeThemeProvider),
         _                       => new UnknownMeasure(definition.Name),
     };
 

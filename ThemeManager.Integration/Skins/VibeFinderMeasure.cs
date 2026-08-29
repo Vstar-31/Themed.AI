@@ -59,6 +59,18 @@ namespace ThemeManager.Integration.Skins;
 /// the Spotify link, falling back to that link only when iTunes has no match for the track.
 /// <see cref="SecondaryActionUrl"/> (Apple Music, right-click) is unchanged. None of this needed
 /// any change on the VibeFinderAI side — the data was already there.
+///
+/// LATER UPDATE, found while auditing a commit that never updated phases.md: the paragraph above
+/// is no longer the live path. <c>MainWindow</c> now hosts a hidden WebView2 running the bare
+/// YouTube iframe API directly (searched by "{title} {artist}", nothing VibeFinderAI-side), and
+/// <c>SkinHostWindow</c> now dispatches <see cref="ActionUrl"/>'s <c>themed://vibefinder/preview</c>
+/// scheme to that player instead of to <c>VibeFinderPreviewPlayer</c> — a third approach neither
+/// this comment nor phases.md's "still genuinely open" framing anticipated. <see cref="MeasureType"/>
+/// gained <c>VibePlaybackState</c>/<c>VibeTrackProgress</c> alongside it (handled below, reading
+/// the new <c>YouTubePlaybackState</c> static) to drive a live play/pause icon and progress bar in
+/// the default presets — both were defined but never reached <see cref="MeasureFactory"/>'s switch
+/// until this session. <c>PreviewUrl</c> is still parsed above and <c>VibeFinderPreviewPlayer</c>
+/// still exists; nothing calls it on this path any more.
 /// </summary>
 public sealed class VibeFinderMeasure : IMeasure
 {
@@ -165,8 +177,16 @@ public sealed class VibeFinderMeasure : IMeasure
 
             if (_type == MeasureType.VibeTrackProgress)
             {
-                Value = YouTubePlaybackState.Progress;
-                Text = Value.ToString("P0");
+                // 0-100 here, not YouTubePlaybackState.Progress's raw 0.0-1.0 fraction, to match
+                // every other measure's "Value is a percentage" convention (see IMeasure.Value's
+                // own doc comment: "For CPU/Memory/Disk measures this is a 0-100 percentage").
+                // BarMeterViewModel/RingMeterViewModel both normalize as measure.Value / BarMax,
+                // and BarMax defaults to 100 — so a 0.0-1.0 Value here was rendering a
+                // half-played track as a 0.5%-full bar, not a 50%-full one. Text is reformatted
+                // to match; ToString("P0") assumes its input is a fraction and would have shown
+                // "5000%" once Value was corrected to already be 0-100.
+                Value = YouTubePlaybackState.Progress * 100;
+                Text = $"{Value:F0}%"; // same style as CpuMeasure's Text formatting
             }
             else
             {

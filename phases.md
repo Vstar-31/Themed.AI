@@ -63,6 +63,49 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
       - This bullet's own claim that `SkinHostWindow` had no per-meter click-handling is now stale — that infrastructure (the left/right `ActionUrl`/`SecondaryActionUrl` dispatch, `themed://media/` passthrough, reflection-based hover cursor) was built in the session that added Apple Music as the secondary click action, before this one started. Left uncorrected until now.
       - Still genuinely open: full-length playback. That's the piece that actually requires the browser-vs-native call this bullet originally posed — VibeFinderAI's full tracks only play through the YouTube iframe/postMessage path, which has no native equivalent short of embedding a real web surface (WebView2) somewhere in the app, a bigger architectural change (and a product one — it turns part of a lightweight always-on-top overlay into an embedded browser) than this session should make unilaterally. Two shapes worth Vijay picking between when that's wanted: (a) WebView2 panel pointed at VibeFinderAI's existing public `/playlist/:token` share page (would need one new, small, non-core backend call from `VibeFinderMeasure` to `POST /api/playlist/save` to mint that token — but note that page's own playback is *also* the iTunes preview, not YouTube, so this buys a nicer in-app surface, not full length); (b) open VibeFinderAI in a real browser tab/window and let it register with Windows' Media Session — `MediaMeasure`'s existing `themed://media/playpause`/`next` already control *whatever* app currently owns the OS "Now Playing" session, no VibeFinderAI-specific code needed on the Themed.AI side, but VibeFinderAI sets no `navigator.mediaSession` metadata today, so title/artist shown by Windows would be whatever Chrome/Edge infers from the raw YouTube iframe rather than VibeFinderAI's own clean strings — untested, and the one option that would want a (small, additive) VibeFinderAI-side change to be worth doing properly.
       - Not build- or live-verified — same standing caveat as the rest of this integration.
+      - **This "still genuinely open" framing is now stale.** Full-length playback exists —
+        landed in `e0d3a3b` ("implement MainWindow shell with navigation and YouTube playback..."),
+        a commit that never updated this file, so it went undiscovered until this session's audit.
+        `MainWindow` hosts a hidden `WebView2` (`HiddenYoutubePlayer`) running the bare YouTube
+        iframe API (`loadPlaylist({listType:'search', list:"{title} {artist}"})`), polled every
+        500ms into a new `YouTubePlaybackState` static (`Integration/Skins`: `IsPlaying`/`Progress`).
+        That's a third shape neither of the two options above anticipated — not VibeFinderAI's own
+        site via WebView2, not the OS Media Session, but a bare iframe embedded directly in
+        Themed.AI. `SkinHostWindow` now dispatches the `themed://vibefinder/preview` click to
+        `MainWindow.PlayYouTubeTrack(title, artist)` instead of `VibeFinderPreviewPlayer`, which
+        still exists but is unused on that path (calling it again with the same title/artist toggles
+        play/pause via a `togglePause()` JS function already defined alongside the iframe, which is
+        also what `themed://media/playpause`/`next`/`prev` now call for a VibeFinder-bearing widget
+        specifically, ahead of falling through to `MediaMeasure`'s OS-wide command for any other
+        widget). Two new `MeasureType`s, `VibePlaybackState`/`VibeTrackProgress`, plus default
+        Icon+Bar meters bound to them, were added to every `EnsureVibeFinderSkinsExist` preset to
+        surface it as a play/pause icon and a progress bar.
+      - **That machinery was fully wired except for one gap that neutered it completely**, found and
+        fixed this session: `MeasureFactory.Create`'s switch had no cases for the two new
+        `MeasureType`s, so both silently resolved to the defensive `UnknownMeasure` fallback (fixed
+        `Value=0`, `Text="—"`) instead of a real `VibeFinderMeasure` — meaning the progress bar was
+        hardwired to 0% and the play/pause icon's bound text could never actually read "PLAYING" or
+        "PAUSED", regardless of what `YouTubePlaybackState` said. Added both arms, same pattern as
+        the three existing `Vibe*` cases. Fixing that surfaced two more bugs that were harmless
+        while the data was fake and became real the moment it wasn't:
+        1. `VibeTrackProgress`'s `Value` was `YouTubePlaybackState.Progress` verbatim — a raw
+           0.0–1.0 fraction — but `BarMeterViewModel`/`RingMeterViewModel` both normalize as
+           `measure.Value / BarMax`, and `BarMax` defaults to 100 (matching `IMeasure.Value`'s own
+           documented "0–100 percentage" convention, which every other measure follows). A
+           half-played track (`0.5`) was rendering as a bar 0.5% full, not 50%. Now stored as
+           `Progress * 100`, with `Text` reformatted as `{Value:F0}%` (matching `CpuMeasure`'s own
+           formatting) instead of `ToString("P0")`, which assumes its input is still a fraction and
+           would've printed "5000%" once `Value` was corrected.
+        2. Even with correct data reaching it, `SkinHostWindow.BuildIconVisual` built its `FontIcon`
+           from `vm.Glyph` once at construction and never subscribed to `Glyph` changes — unlike the
+           `ImageUrl` and `IsThresholdCrossed` subscriptions a few lines below it in the same method,
+           which do exactly that for their own properties. `IconMeterViewModel.Tick()`'s Play/Pause
+           glyph swap (already present, just never fed real measure text until fix 1 above) was
+           updating a ViewModel property nothing on screen was listening to. Added the missing
+           subscription. Also corrected `IconMeterViewModel`'s class doc comment, which flatly
+           stated "the glyph itself never changes at runtime" — true when that comment was written,
+           left uncorrected once the Play/Pause logic below it made it false.
+        - Not build- or live-verified — same standing caveat as the rest of this integration.
     - **Session hygiene note:** auditing the commit that added the Ring/Icon NLP trigger words (`705f9ead`) surfaced a pattern worth naming — verifying what `PorterStemmer.Stem()` does to a handful of words had been re-implemented from scratch *seven times* across this repo's history (root `Program.cs`/`StemTest.cs`/`test.cs`, `StemTest/`, `TestStem/`, `TestStem2/`, and a `StemmingTests.PrintStems` xUnit test that printed but never asserted), including one (`TestStem2`) that doesn't compile — invalid escape sequences in a non-verbatim string literal writing to a hardcoded `G:\my projects\...` path — and one (`TestStem`) targeting `net10.0`, inconsistent with the rest of the repo's `net8.0`. All six scratch variants deleted; `StemmingTests.cs` rewritten as real `[Theory]`/`[Fact]` assertions (values checked against a faithful Python port of `PorterStemmer.cs`, not hand-traced) covering the VibeFinder and Ring/Icon trigger words. One genuinely interesting, verified-not-assumed finding from that exercise: `WidgetLexicon["play"]` (→ style boost, comment says `// "playful"`) is *not* a fixed point of its own stemmer — `Stem("play")` alone gives `"plai"` (step 1c's trailing-y rule fires on the bare word), but `Stem("playful")` correctly gives `"play"` (step 3's `-ful` rule fires first and consumes the suffix before step 1c would ever see the shortened word again). The entry is correct and reachable exactly as commented; a blanket "every lexicon key should equal `Stem(key)`" test — the first version written this session — would have flagged it as a false regression, so that blanket assertion was replaced with the narrower, empirically-checked one now in `StemmingTests.cs`. `TestVibe/` and `StressTestPrompts/` were left alone — both compile correctly (proper `ProjectReference` to `ThemeManager.Core`) and do something the new xUnit tests don't (ad-hoc single-prompt output inspection and bulk NLP accuracy sweeps, respectively).
 - **External data:**
   - [x] Generic Web/JSON measure (`WebJsonMeasure`) — URL + JSON path, polled on an interval.
