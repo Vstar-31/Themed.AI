@@ -368,6 +368,19 @@ public sealed class SkinManagerService : IDisposable
             changed = true;
         }
 
+        foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
+        {
+            foreach (var meter in skin.Meters.Where(m => m.Kind == MeterKind.String && 
+                (m.MeasureName == "VibeTitle" || m.MeasureName == "VibeArtist" || m.MeasureName == "VibeMood")))
+            {
+                if (string.IsNullOrEmpty(meter.Format) || meter.Format == "{0:F0}")
+                {
+                    meter.Format = "{1}";
+                    changed = true;
+                }
+            }
+        }
+
         if (changed)
         {
             _ = PersistAsync(true);

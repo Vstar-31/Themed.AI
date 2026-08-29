@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Windowing;
@@ -300,6 +301,23 @@ public sealed partial class SkinHostWindow : Window
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         var command = url.Substring(mediaPrefix.Length);
+                        
+                        if (command.Equals("playpause", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var previewMeter = _viewModel.Meters.FirstOrDefault(m => 
+                                m.ActionUrl != null && m.ActionUrl.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase));
+                                
+                            if (previewMeter != null)
+                            {
+                                var encodedPreviewUrl = previewMeter.ActionUrl!.Substring(vibeFinderPreviewPrefix.Length);
+                                VibeFinderPreviewPlayer.TogglePreview(
+                                    Uri.UnescapeDataString(encodedPreviewUrl),
+                                    App.LoggerFactory.CreateLogger<SkinHostWindow>());
+                                e.Handled = true;
+                                return;
+                            }
+                        }
+
                         _ = MediaMeasure.TrySendCommandAsync(command);
                     }
                     else
