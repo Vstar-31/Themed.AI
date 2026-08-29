@@ -283,7 +283,21 @@ public sealed partial class SkinHostWindow : Window
                 try
                 {
                     const string mediaPrefix = "themed://media/";
-                    if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
+                    const string vibeFinderPreviewPrefix = "themed://vibefinder/preview?url=";
+                    if (url.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // VibeFinderMeasure's own-preview playback action (Phase 6 "actual
+                        // playback"): percent-decode the URL it encoded and hand it to
+                        // VibeFinderPreviewPlayer's native MediaPlayer instead of launching
+                        // anything externally. Same dispatch shape as themed://media/ just below
+                        // — a custom scheme this window understands itself, never passed to
+                        // Process.Start.
+                        var encodedPreviewUrl = url.Substring(vibeFinderPreviewPrefix.Length);
+                        VibeFinderPreviewPlayer.TogglePreview(
+                            Uri.UnescapeDataString(encodedPreviewUrl),
+                            App.LoggerFactory.CreateLogger<SkinHostWindow>());
+                    }
+                    else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         var command = url.Substring(mediaPrefix.Length);
                         _ = MediaMeasure.TrySendCommandAsync(command);

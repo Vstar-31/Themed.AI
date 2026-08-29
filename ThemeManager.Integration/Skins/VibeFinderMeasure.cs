@@ -45,6 +45,20 @@ namespace ThemeManager.Integration.Skins;
 /// or a reachable VibeFinderAI instance in-session, so not build- or live-verified. If the free
 /// tier has spun down, the first poll after a cold start can take 30-60s — the generous timeout
 /// below is deliberate, not an oversight.
+///
+/// PLAYBACK (Phase 6's open item, closed here): VibeFinderAI's own player (<c>MusicPlayer.jsx</c>)
+/// is a React component wired to a YouTube &lt;iframe&gt;+postMessage remote for full tracks, or
+/// an HTML &lt;audio&gt; element for its own 30s-preview fallback — both are DOM/JS constructs
+/// with nothing callable from a native process, so there is no "VibeFinderAI playback API" this
+/// class could invoke even in principle. What <i>is</i> portable is the 30s iTunes preview clip
+/// (<c>preview_url</c> — sourced from iTunes' search API server-side, nothing to do with Spotify)
+/// that <c>/api/vibe/analyze</c> already returns on every track, in the same response this class
+/// was already parsing for Title/Artist/Mood; it just wasn't being read. It's read now, and
+/// <see cref="ActionUrl"/> plays it natively via <c>VibeFinderPreviewPlayer</c>
+/// (<c>Windows.Media.Playback.MediaPlayer</c>, no browser/WebView2 involved) instead of opening
+/// the Spotify link, falling back to that link only when iTunes has no match for the track.
+/// <see cref="SecondaryActionUrl"/> (Apple Music, right-click) is unchanged. None of this needed
+/// any change on the VibeFinderAI side — the data was already there.
 /// </summary>
 public sealed class VibeFinderMeasure : IMeasure
 {
@@ -84,7 +98,7 @@ public sealed class VibeFinderMeasure : IMeasure
 
     private sealed class ResultEntry
     {
-        public (string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl)? Data;
+        public (string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl)? Data;
         public DateTime LastAttempt = DateTime.MinValue;
         public DateTime LastSuccess = DateTime.MinValue;
         public readonly object Lock = new();
@@ -136,7 +150,15 @@ public sealed class VibeFinderMeasure : IMeasure
                 MeasureType.VibeMood        => data.Mood,
                 _                           => "—",
             };
-            ActionUrl = data.SpotifyUrl;
+            // Primary click plays the 30s iTunes preview natively (VibeFinderPreviewPlayer)
+            // instead of opening Spotify — the Phase 6 "actual playback" decision. preview_url
+            // was already present on every /api/vibe/analyze track (see the parsing below);
+            // this measure just wasn't reading it before. Falls back to the old Spotify deep
+            // link when iTunes has no match for this track (PreviewUrl null), so a left-click
+            // never goes dead. SecondaryActionUrl (Apple, right-click) is untouched.
+            ActionUrl = data.PreviewUrl is { Length: > 0 } previewUrl
+                ? $"themed://vibefinder/preview?url={Uri.EscapeDataString(previewUrl)}"
+                : data.SpotifyUrl;
             SecondaryActionUrl = data.AppleUrl;
             ImageUrl = data.CoverArtUrl;
         }
@@ -211,6 +233,7 @@ public sealed class VibeFinderMeasure : IMeasure
             string? spotifyUrl = null;
             string? appleUrl = null;
             string? coverArtUrl = null;
+            string? previewUrl = null;
             if (root.TryGetProperty("tracks", out var tracksEl)
                 && tracksEl.ValueKind == JsonValueKind.Array && tracksEl.GetArrayLength() > 0)
             {
@@ -241,9 +264,15 @@ public sealed class VibeFinderMeasure : IMeasure
                     if (art != null)
                         coverArtUrl = art.Replace("100x100bb", "512x512bb");
                 }
+
+                // Already present on every track this endpoint returns (backend/main.py builds
+                // it from iTunes' search API, the same enrichment pass that supplies cover_art
+                // right above) — nothing upstream needed to change for this to start flowing.
+                if (first.TryGetProperty("preview_url", out var previewEl))
+                    previewUrl = previewEl.GetString();
             }
 
-            entry.Data = (title, artist, mood, spotifyUrl, appleUrl, coverArtUrl);
+            entry.Data = (title, artist, mood, spotifyUrl, appleUrl, coverArtUrl, previewUrl);
             entry.LastSuccess = DateTime.UtcNow;
         }
         catch (Exception ex)

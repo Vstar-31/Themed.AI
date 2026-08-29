@@ -27,6 +27,26 @@ public sealed partial class VibeFinderAIPage : Page
         var playlist = skins.FirstOrDefault(s => s.Name == "VibeFinder Playlist");
         if (playlist != null) TogglePlaylist.IsOn = playlist.Enabled;
 
+        // Load saved credentials
+        var vibeSkin = skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
+        if (vibeSkin != null)
+        {
+            var measure = vibeSkin.Measures.FirstOrDefault(m => 
+                m.Type == ThemeManager.Core.Skins.MeasureType.VibeTrackTitle || 
+                m.Type == ThemeManager.Core.Skins.MeasureType.VibeTrackArtist || 
+                m.Type == ThemeManager.Core.Skins.MeasureType.VibeMood);
+            
+            if (measure != null && !string.IsNullOrWhiteSpace(measure.Target))
+            {
+                var targetStr = measure.Target;
+                if (targetStr.StartsWith("|")) targetStr = targetStr.Substring(1);
+                var parts = targetStr.Split('|', 3);
+                if (parts.Length >= 1) UsernameBox.Text = parts[0];
+                if (parts.Length >= 2) PasswordBox.Password = parts[1];
+                if (parts.Length >= 3) PromptBox.Text = parts[2];
+            }
+        }
+
         _isInitializing = false;
     }
 

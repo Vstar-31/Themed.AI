@@ -326,8 +326,8 @@ public sealed class SkinManagerService : IDisposable
         if (!_skins.Any(s => s.Name == "VibeFinder Primary"))
         {
             var primary = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Primary", Enabled = true, X = 50, Y = 50, Width = 300, Height = 120 };
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "|listener|hunter2|$theme" });
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = "|listener|hunter2|$theme" });
+            primary.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "listener|hunter2|$theme" });
+            primary.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = "listener|hunter2|$theme" });
             
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 100, Height = 100 });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 120, Y = 15, Width = 170, Height = 30, FontSize = 16, Bold = true });
@@ -342,7 +342,7 @@ public sealed class SkinManagerService : IDisposable
         if (!_skins.Any(s => s.Name == "VibeFinder Minimal"))
         {
             var minimal = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Minimal", Enabled = false, X = 50, Y = 200, Width = 200, Height = 60 };
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "|listener|hunter2|$theme" });
+            minimal.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "listener|hunter2|$theme" });
             
             minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 140, Height = 40, FontSize = 14, Bold = true });
             minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 160, Y = 15, Width = 30, Height = 30, FontSize = 14, IconGlyph = "\uE768" });
@@ -354,9 +354,9 @@ public sealed class SkinManagerService : IDisposable
         if (!_skins.Any(s => s.Name == "VibeFinder Playlist"))
         {
             var playlist = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Playlist", Enabled = false, X = 400, Y = 50, Width = 250, Height = 300 };
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeMood", Type = MeasureType.VibeMood, Target = "|listener|hunter2|$theme" });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "|listener|hunter2|$theme" });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = "|listener|hunter2|$theme" });
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeMood", Type = MeasureType.VibeMood, Target = "listener|hunter2|$theme" });
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "listener|hunter2|$theme" });
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = "listener|hunter2|$theme" });
             
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, StaticText = "Now Playing from Vibe", X = 10, Y = 10, Width = 230, Height = 20, FontSize = 12 });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeMood", X = 10, Y = 30, Width = 230, Height = 40, FontSize = 24, Bold = true });
