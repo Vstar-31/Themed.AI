@@ -556,6 +556,18 @@ public sealed partial class SkinHostWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        // Most Icon meters have a fixed glyph (see the class-level remarks on IconMeterViewModel),
+        // but a VibePlaybackState-bound one flips Glyph between Play/Pause as the track's playing
+        // state changes — this subscription is what was missing to actually repaint that on
+        // screen. Without it, IconMeterViewModel.Tick() could update the ViewModel's Glyph
+        // property correctly every tick and the FontIcon above would still show whatever it was
+        // built with, forever, since nothing ever wrote the new value into icon.Glyph.
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(IconMeterViewModel.Glyph))
+                icon.Glyph = vm.Glyph;
+        };
+
         // Cover art (from a bound measure's ImageUrl, e.g. VibeFinderMeasure) layers over the
         // glyph when one loads successfully, same rounded chip so it stays one visual family with
         // every other Icon meter. Starts collapsed and only turns visible on ImageOpened, so a

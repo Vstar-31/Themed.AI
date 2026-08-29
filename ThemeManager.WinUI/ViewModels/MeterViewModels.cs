@@ -277,11 +277,17 @@ public sealed class RingMeterViewModel : MeterViewModelBase
 }
 
 /// <summary>
-/// A single static icon glyph — optionally bound to a measure purely so it can recolor on
-/// threshold cross, the same way a Bar or Graph meter does. The glyph itself never changes at
-/// runtime; only its color does. A bound measure can additionally supply <see cref="MeterViewModelBase.ImageUrl"/>
-/// (e.g. album art), which the rendering side shows in place of the glyph when present — that
-/// part *is* tick-reactive, unlike the glyph.
+/// A single icon glyph — bound to a measure purely so it can recolor on threshold cross, the same
+/// way a Bar or Graph meter does, same as a plain static caption. CORRECTION (this class used to
+/// claim here that "the glyph itself never changes at runtime; only its color does" — no longer
+/// true): a measure whose <see cref="ThemeManager.Core.Skins.IMeasure.Text"/> reads "PLAYING" or
+/// "PAUSED" — currently only <c>VibePlaybackState</c> — additionally swaps the glyph itself
+/// between the Play (<c>\uE768</c>) and Pause (<c>\uE769</c>) Segoe Fluent Icons glyphs; see
+/// <see cref="Tick"/>. Every other measure's glyph still only ever comes from
+/// <see cref="ThemeManager.Core.Skins.MeterDefinition.IconGlyph"/> and stays fixed. A bound measure
+/// can additionally supply <see cref="MeterViewModelBase.ImageUrl"/> (e.g. album art), which the
+/// rendering side shows in place of the glyph when present — also tick-reactive, same as the
+/// play/pause swap.
 /// </summary>
 public sealed class IconMeterViewModel : MeterViewModelBase
 {

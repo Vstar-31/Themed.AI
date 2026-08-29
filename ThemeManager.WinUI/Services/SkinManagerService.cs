@@ -277,11 +277,18 @@ public sealed class SkinManagerService : IDisposable
         if (!_open.TryGetValue(skin.Id, out var entry)) return;
         _open.Remove(skin.Id);
         entry.ViewModel.IsClosed = true;
+
+        // Hide the window immediately so it visually disappears without delay
+        entry.Window.AppWindow.Hide();
+
         entry.Window.PrepareForClose();
 
-        // Yield to the WinUI compositor so it can process the reparenting/backdrop changes
-        // before we destroy the HWND. Without this, WinUI throws STATUS_STOWED_EXCEPTION.
-        await Task.Delay(150);
+        if (skin.DesktopLayer)
+        {
+            // Yield to the WinUI compositor so it can process the reparenting/backdrop changes
+            // before we destroy the HWND. Without this, WinUI throws STATUS_STOWED_EXCEPTION.
+            await Task.Delay(150);
+        }
 
         try
         {
