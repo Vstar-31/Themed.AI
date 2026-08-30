@@ -303,10 +303,7 @@ public sealed partial class SkinHostWindow : Window
                         if (command.Equals("playpause", StringComparison.OrdinalIgnoreCase))
                         {
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
-                            var previewMeter = _viewModel.Meters.FirstOrDefault(m => 
-                                m.ActionUrl != null && m.ActionUrl.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase));
-                                
-                            if (previewMeter != null && vibeMeasure != null)
+                            if (vibeMeasure != null)
                             {
                                 App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
                                 e.Handled = true;

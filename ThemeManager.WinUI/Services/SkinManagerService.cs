@@ -500,7 +500,9 @@ public sealed class SkinManagerService : IDisposable
                 {
                     if (measure.Type == MeasureType.VibeTrackTitle || 
                         measure.Type == MeasureType.VibeTrackArtist || 
-                        measure.Type == MeasureType.VibeMood)
+                        measure.Type == MeasureType.VibeMood ||
+                        measure.Type == MeasureType.VibePlaybackState ||
+                        measure.Type == MeasureType.VibeTrackProgress)
                     {
                         measure.Target = target;
                         changed = true;
