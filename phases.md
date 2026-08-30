@@ -106,6 +106,90 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
            stated "the glyph itself never changes at runtime" — true when that comment was written,
            left uncorrected once the Play/Pause logic below it made it false.
         - Not build- or live-verified — same standing caveat as the rest of this integration.
+      - **Real-world testing (screenshot: Visual Studio + live floating widgets) surfaced three
+        more problems the code-only audit above couldn't have caught, plus a fourth that's a real
+        feature request, not a bug:**
+        1. **No audio ever played, at all — root cause verified via search, not assumed:**
+           `playTrackById`'s predecessor called `player.loadPlaylist({listType: 'search', list:
+           query})`, and YouTube deprecated `listType: 'search'` on 15 Nov 2020 — every call since
+           returns a 4xx and loads nothing
+           (https://developers.google.com/youtube/iframe_api_reference). This has never worked,
+           not once, regardless of anything fixed earlier in this integration; it's not a
+           regression, it's dead on arrival from whenever this was first written. There's no
+           supported client-side replacement for free-text search — resolving a query to a
+           concrete `videoId` has to happen server-side now. VibeFinderAI's own backend already
+           does exactly this for its own player (`core/youtube_cache.py` + `GET
+           /api/services/youtube/search`, cached, quota-aware), so rather than duplicating that in
+           Themed.AI, `/api/vibe/analyze` now resolves it too: added
+           `youtube_cache.resolve_video_id(title, artist)` (cache-checked, same underlying Data API
+           v3 search the existing route uses) and a `youtube_video_id` field on `TrackInfo`,
+           populated per track via the same `asyncio.gather` pattern already used for iTunes
+           previews a few lines above it. `VibeFinderMeasure` threads it through as a new
+           `CurrentVideoId`, and `MainWindow.PlayYouTubeTrack` now takes a real video ID and calls
+           `loadVideoById` (still fully supported) instead of the dead search call — a null/missing
+           id (no server-side key configured, quota exceeded, or no match) means there's genuinely
+           nothing to play, not a fallback this method can search its way out of.
+        2. **Even with a real video ID, audio likely still wouldn't have been audible:** Chromium's
+           default autoplay policy blocks unmuted audio/video unless playback is tied to a genuine
+           user gesture on that frame, and every play here originates from a native C# call into
+           `ExecuteScriptAsync` — never a real click inside the WebView2 itself — which Chromium
+           doesn't count as a gesture. `playerVars: {autoplay:1}` alone was always at risk of being
+           silently blocked, with zero visible error since this WebView2 is never shown to the
+           user. Fixed with the standard, documented answer for exactly this "nothing ever clicks
+           inside the page" case: a dedicated `CoreWebView2Environment` carrying
+           `--autoplay-policy=no-user-gesture-required`. Given its own **separate user data
+           folder** rather than the app's default one — `VibeFinderAIPage.VibeFinderWebView`
+           (embedding the live site: see point 4 below) already uses the default environment for
+           its own purposes, and WebView2 requires identical environment options for every control
+           sharing a user data folder, so bolting this argument onto the default folder would throw
+           the moment both controls exist in the same process. Separately (found while in this
+           code, not reported): `_youtubeReady` was being set immediately after `NavigateToString`
+           fired — which only means the WebView2 was told to start loading, not that the YouTube
+           IFrame API script finished loading over the network, ran, and actually constructed a
+           player object. A click landing in that window would have silently no-opped against the
+           JS-side `player &&` guards. Now waits for the player's own `onReady` event, relayed back
+           via `window.chrome.webview.postMessage('ready')`.
+        3. **No progress bar, unresponsive-looking play button — different root cause, nothing to
+           do with YouTube:** `EnsureVibeFinderSkinsExist()` gates purely on a skin's *name*
+           already existing (`!_skins.Any(s => s.Name == "VibeFinder Primary")`), not on whether an
+           existing same-named skin actually contains everything the current preset defines. A
+           widget auto-created before `VibeState`/`VibeProgress` existed — like the one in the
+           screenshot — never received them once they were added, even after every fix earlier in
+           this integration made them fully functional in principle: there was simply no bar or
+           reactive icon in that widget's saved definition to *be* functional. Restructured so each
+           preset's "does the skin exist" check only gates creating the skin itself; separate
+           `if (!skin.Measures.Any(...))` / `if (!skin.Meters.Any(...))` checks — mirroring the
+           `Format` back-fill loop already at the bottom of this same method — now run
+           unconditionally and heal an existing skin that's missing either. This runs every time
+           `VibeFinderAIPage` loads (its constructor calls `EnsureVibeFinderSkinsExist()`), not just
+           on first install, so existing widgets get healed on next visit to that page, not a
+           rebuild.
+        4. **"That right panel [VibeFinder Playlist, the 'Now Playing from Vibe' widget] should
+           show actual VibeFinder controls — like an embed of the engine with all the controls
+           from my site":** genuine feature request, not a bug, and a bigger one than the three
+           above — flagged rather than rushed into this same pass. `VibeFinder Playlist` never had
+           play/pause/next in *any* version (a pure display by original design), so it got the
+           same two icons Primary has, added via the same healing mechanism as point 3 — its layout
+           already packed content to the original bottom edge (a Bar at Y=290 in what was a
+           300-tall widget), so the widget grows 40px downward to make room rather than overlapping
+           anything already there. That's a real but small improvement, not what was actually
+           asked for: an embedded live view of VibeFinderAI's own site, with its real interactive
+           controls, inside the floating widget itself, not a native re-implementation
+           approximating it via Icon/Bar meters. `VibeFinderAIPage` already proves the basic
+           mechanism works elsewhere in this app (`VibeFinderWebView`, a plain `WebView2` XAML
+           control navigated to `https://vibefinderai.onrender.com/`, wired up entirely
+           declaratively) — but every floating widget goes through `SkinHostWindow`/
+           `SkinEditorPage`, which build native XAML elements per meter in code (`BuildBarVisual`,
+           `BuildIconVisual`, etc.), never a browser control. Bringing that into a floating widget
+           needs a new `MeterKind` (e.g. `WebEmbed`) with its own `Build*Visual` in both renderers,
+           each hosting a real `WebView2` sized to the meter's bounds — plus a decision on what URL
+           to point it at (the live root site has full nav chrome, which may be too much for a
+           small floating widget; a compact player-only route doesn't exist yet on the frontend and
+           would need work there too, not just here) and on how a second real WebView2 environment
+           interacts with the two already in this app (see point 2's user-data-folder note — a
+           third environment is more of the same consideration, not a new problem). Worth doing,
+           not done here.
+        - Not build- or live-verified — same standing caveat as the rest of this integration.
     - **Session hygiene note:** auditing the commit that added the Ring/Icon NLP trigger words (`705f9ead`) surfaced a pattern worth naming — verifying what `PorterStemmer.Stem()` does to a handful of words had been re-implemented from scratch *seven times* across this repo's history (root `Program.cs`/`StemTest.cs`/`test.cs`, `StemTest/`, `TestStem/`, `TestStem2/`, and a `StemmingTests.PrintStems` xUnit test that printed but never asserted), including one (`TestStem2`) that doesn't compile — invalid escape sequences in a non-verbatim string literal writing to a hardcoded `G:\my projects\...` path — and one (`TestStem`) targeting `net10.0`, inconsistent with the rest of the repo's `net8.0`. All six scratch variants deleted; `StemmingTests.cs` rewritten as real `[Theory]`/`[Fact]` assertions (values checked against a faithful Python port of `PorterStemmer.cs`, not hand-traced) covering the VibeFinder and Ring/Icon trigger words. One genuinely interesting, verified-not-assumed finding from that exercise: `WidgetLexicon["play"]` (→ style boost, comment says `// "playful"`) is *not* a fixed point of its own stemmer — `Stem("play")` alone gives `"plai"` (step 1c's trailing-y rule fires on the bare word), but `Stem("playful")` correctly gives `"play"` (step 3's `-ful` rule fires first and consumes the suffix before step 1c would ever see the shortened word again). The entry is correct and reachable exactly as commented; a blanket "every lexicon key should equal `Stem(key)`" test — the first version written this session — would have flagged it as a false regression, so that blanket assertion was replaced with the narrower, empirically-checked one now in `StemmingTests.cs`. `TestVibe/` and `StressTestPrompts/` were left alone — both compile correctly (proper `ProjectReference` to `ThemeManager.Core`) and do something the new xUnit tests don't (ad-hoc single-prompt output inspection and bulk NLP accuracy sweeps, respectively).
 - **External data:**
   - [x] Generic Web/JSON measure (`WebJsonMeasure`) — URL + JSON path, polled on an interval.

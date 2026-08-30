@@ -344,58 +344,129 @@ public sealed class SkinManagerService : IDisposable
     public void EnsureVibeFinderSkinsExist()
     {
         bool changed = false;
+        const string vibeTarget = "listener|hunter2|$theme";
 
-        if (!_skins.Any(s => s.Name == "VibeFinder Primary"))
+        // ── VibeFinder Primary ──────────────────────────────────────────────
+        // VibeState/VibeProgress used to be added inline here, same as everything else — but that
+        // meant a skin from before those two existed (gated below by name, not by content) would
+        // never receive them: `!_skins.Any(s => s.Name == "VibeFinder Primary")` is false for an
+        // existing skin regardless of what's actually inside it, so a same-named skin auto-created
+        // months ago stays frozen at whatever the preset looked like that day, forever, even after
+        // the preset itself grows new fields. This was silently true for both play/pause and the
+        // progress bar — both correctly wired end-to-end after this session's other fixes, but
+        // invisible on any widget that predates them. Splitting the checks below out of the
+        // "already exists, skip" gate is what actually surfaces them.
+        var primary = _skins.FirstOrDefault(s => s.Name == "VibeFinder Primary");
+        if (primary is null)
         {
-            var primary = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Primary", Enabled = true, X = 50, Y = 50, Width = 300, Height = 120 };
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "listener|hunter2|$theme" });
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = "listener|hunter2|$theme" });
-            
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = "listener|hunter2|$theme" });
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = "listener|hunter2|$theme" });
-            
+            primary = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Primary", Enabled = true, X = 50, Y = 50, Width = 300, Height = 120 };
+            primary.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = vibeTarget });
+            primary.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = vibeTarget });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 100, Height = 100 });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 120, Y = 15, Width = 170, Height = 30, FontSize = 16, Bold = true });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeArtist", X = 120, Y = 45, Width = 170, Height = 25, FontSize = 14 });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 120, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 160, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 120, Y = 110, Width = 170, Height = 4 });
-            
             _skins.Add(primary);
             changed = true;
         }
-
-        if (!_skins.Any(s => s.Name == "VibeFinder Minimal"))
+        if (!primary.Measures.Any(m => m.Name == "VibeState"))
         {
-            var minimal = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Minimal", Enabled = false, X = 50, Y = 200, Width = 200, Height = 65 };
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "listener|hunter2|$theme" });
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = "listener|hunter2|$theme" });
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = "listener|hunter2|$theme" });
-            
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 140, Height = 40, FontSize = 14, Bold = true });
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 160, Y = 15, Width = 30, Height = 30, FontSize = 14, IconGlyph = "\uE768" });
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 50, Width = 180, Height = 4 });
-            
-            _skins.Add(minimal);
+            primary.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = vibeTarget });
+            changed = true;
+        }
+        if (!primary.Meters.Any(m => m.MeasureName == "VibeState"))
+        {
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 120, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
+            changed = true;
+        }
+        if (!primary.Measures.Any(m => m.Name == "VibeProgress"))
+        {
+            primary.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = vibeTarget });
+            changed = true;
+        }
+        if (!primary.Meters.Any(m => m.MeasureName == "VibeProgress"))
+        {
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 120, Y = 110, Width = 170, Height = 4 });
             changed = true;
         }
 
-        if (!_skins.Any(s => s.Name == "VibeFinder Playlist"))
+        // ── VibeFinder Minimal ──────────────────────────────────────────────
+        var minimal = _skins.FirstOrDefault(s => s.Name == "VibeFinder Minimal");
+        if (minimal is null)
         {
-            var playlist = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Playlist", Enabled = false, X = 400, Y = 50, Width = 250, Height = 300 };
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeMood", Type = MeasureType.VibeMood, Target = "listener|hunter2|$theme" });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = "listener|hunter2|$theme" });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = "listener|hunter2|$theme" });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = "listener|hunter2|$theme" });
-            
+            minimal = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Minimal", Enabled = false, X = 50, Y = 200, Width = 200, Height = 65 };
+            minimal.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = vibeTarget });
+            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 140, Height = 40, FontSize = 14, Bold = true });
+            _skins.Add(minimal);
+            changed = true;
+        }
+        if (!minimal.Measures.Any(m => m.Name == "VibeState"))
+        {
+            minimal.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = vibeTarget });
+            changed = true;
+        }
+        if (!minimal.Meters.Any(m => m.MeasureName == "VibeState"))
+        {
+            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 160, Y = 15, Width = 30, Height = 30, FontSize = 14, IconGlyph = "\uE768" });
+            changed = true;
+        }
+        if (!minimal.Measures.Any(m => m.Name == "VibeProgress"))
+        {
+            minimal.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = vibeTarget });
+            changed = true;
+        }
+        if (!minimal.Meters.Any(m => m.MeasureName == "VibeProgress"))
+        {
+            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 50, Width = 180, Height = 4 });
+            changed = true;
+        }
+
+        // ── VibeFinder Playlist ──────────────────────────────────────────────
+        var playlist = _skins.FirstOrDefault(s => s.Name == "VibeFinder Playlist");
+        if (playlist is null)
+        {
+            playlist = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Playlist", Enabled = false, X = 400, Y = 50, Width = 250, Height = 300 };
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeMood", Type = MeasureType.VibeMood, Target = vibeTarget });
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = vibeTarget });
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = vibeTarget });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, StaticText = "Now Playing from Vibe", X = 10, Y = 10, Width = 230, Height = 20, FontSize = 12 });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeMood", X = 10, Y = 30, Width = 230, Height = 40, FontSize = 24, Bold = true });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 80, Width = 230, Height = 150 });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 10, Y = 240, Width = 230, Height = 25, FontSize = 16, Bold = true });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeArtist", X = 10, Y = 265, Width = 230, Height = 20, FontSize = 14 });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 290, Width = 230, Height = 4 });
-            
             _skins.Add(playlist);
+            changed = true;
+        }
+        if (!playlist.Measures.Any(m => m.Name == "VibeProgress"))
+        {
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = vibeTarget });
+            changed = true;
+        }
+        if (!playlist.Meters.Any(m => m.MeasureName == "VibeProgress"))
+        {
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 290, Width = 230, Height = 4 });
+            changed = true;
+        }
+        // Playlist never had play/pause/next at all, in any version — a pure "now playing"
+        // display by original design, which is exactly the gap flagged this session ("that right
+        // panel should show...actual controls"). Its layout already packs content to the original
+        // bottom edge (the Bar above sits at Y=290 in what was, until now, a 300-tall widget), so
+        // there's no existing room for a control row without overlapping something already there.
+        // Grows the widget downward instead — additive, doesn't move anything already placed —
+        // then adds the row into that new strip. Uses the skin's *current* Height rather than a
+        // hardcoded 300, so this is correct whether the skin is brand new or already
+        // user-resized.
+        if (!playlist.Measures.Any(m => m.Name == "VibeState"))
+        {
+            playlist.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = vibeTarget });
+            changed = true;
+        }
+        if (!playlist.Meters.Any(m => m.MeasureName == "VibeState"))
+        {
+            var newRowY = playlist.Height;
+            playlist.Height += 40;
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 10, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 50, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
             changed = true;
         }
 

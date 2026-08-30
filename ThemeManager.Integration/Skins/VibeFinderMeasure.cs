@@ -89,6 +89,10 @@ public sealed class VibeFinderMeasure : IMeasure
 
     public string CurrentTrackTitle { get; private set; } = "—";
     public string CurrentTrackArtist { get; private set; } = "—";
+    // Null when resolve_video_id couldn't find a match server-side (no API key configured,
+    // quota exceeded, or no search results) — PlayYouTubeTrack treats null as "nothing to play"
+    // rather than falling back to a text search, since that search path is what was broken.
+    public string? CurrentVideoId { get; private set; }
 
     public void UpdateMeasure()
     { }
@@ -116,7 +120,7 @@ public sealed class VibeFinderMeasure : IMeasure
 
     private sealed class ResultEntry
     {
-        public System.Collections.Generic.List<(string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl)> Tracks = new();
+        public System.Collections.Generic.List<(string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl, string? VideoId)> Tracks = new();
         public int CurrentIndex = 0;
         public DateTime LastAttempt = DateTime.MinValue;
         public DateTime LastSuccess = DateTime.MinValue;
@@ -165,6 +169,7 @@ public sealed class VibeFinderMeasure : IMeasure
             var data = entry.Tracks[entry.CurrentIndex];
             CurrentTrackTitle = data.Title;
             CurrentTrackArtist = data.Artist;
+            CurrentVideoId = data.VideoId;
 
             Text = _type switch
             {
@@ -271,14 +276,14 @@ public sealed class VibeFinderMeasure : IMeasure
             var root = doc.RootElement;
 
             string mood = root.TryGetProperty("dominant_vibe", out var vEl) ? vEl.GetString() ?? "—" : "—";
-            var newTracks = new System.Collections.Generic.List<(string, string, string, string?, string?, string?, string?)>();
+            var newTracks = new System.Collections.Generic.List<(string, string, string, string?, string?, string?, string?, string?)>();
             if (root.TryGetProperty("tracks", out var tracksEl) && tracksEl.ValueKind == JsonValueKind.Array)
             {
                 foreach (var track in tracksEl.EnumerateArray())
                 {
                     string tTitle = track.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "—" : "—";
                     string tArtist = track.TryGetProperty("artist", out var aEl) ? aEl.GetString() ?? "—" : "—";
-                    string? tSpotify = null, tApple = null, tCover = null, tPreview = null;
+                    string? tSpotify = null, tApple = null, tCover = null, tPreview = null, tVideoId = null;
                     
                     if (track.TryGetProperty("spotify_uri", out var uriEl))
                     {
@@ -293,16 +298,26 @@ public sealed class VibeFinderMeasure : IMeasure
                         if (art != null) tCover = art.Replace("100x100bb", "512x512bb");
                     }
                     if (track.TryGetProperty("preview_url", out var previewEl)) tPreview = previewEl.GetString();
+                    // Added alongside the fields above — /api/vibe/analyze now resolves this
+                    // server-side (core/youtube_cache.resolve_video_id) the same way our own
+                    // frontend does, instead of Themed.AI trying to search YouTube itself: the
+                    // IFrame Player API's loadPlaylist({listType:'search'}) that PlayYouTubeTrack
+                    // used to rely on was deprecated by YouTube in Nov 2020 and has returned a 4xx
+                    // on every call since — see MainWindow.PlayYouTubeTrack. Null here (no key
+                    // configured server-side, quota exceeded, or no results) means this track has
+                    // nothing to actually play; that's handled where CurrentVideoId is read, not
+                    // here.
+                    if (track.TryGetProperty("youtube_video_id", out var videoIdEl)) tVideoId = videoIdEl.GetString();
                     
                     // We only require cover art now, since YouTube handles playback instead of iTunes preview URL
                     if (!string.IsNullOrEmpty(tCover))
                     {
-                        newTracks.Add((tTitle, tArtist, mood, tSpotify, tApple, tCover, tPreview));
+                        newTracks.Add((tTitle, tArtist, mood, tSpotify, tApple, tCover, tPreview, tVideoId));
                     }
                 }
             }
             if (newTracks.Count == 0)
-                newTracks.Add(("No match", "—", mood, null, null, null, null));
+                newTracks.Add(("No match", "—", mood, null, null, null, null, null));
 
             lock (entry.Lock)
             {

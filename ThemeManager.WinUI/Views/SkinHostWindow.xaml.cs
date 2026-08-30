@@ -293,7 +293,7 @@ public sealed partial class SkinHostWindow : Window
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                         if (vibeMeasure != null)
                         {
-                            App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
+                            App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
                         }
                     }
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
@@ -308,7 +308,7 @@ public sealed partial class SkinHostWindow : Window
                                 
                             if (previewMeter != null && vibeMeasure != null)
                             {
-                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
+                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
                                 e.Handled = true;
                                 return;
                             }
@@ -320,7 +320,7 @@ public sealed partial class SkinHostWindow : Window
                             if (vibeMeasure != null)
                             {
                                 vibeMeasure.SkipNext();
-                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
+                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
                                 e.Handled = true;
                                 return;
                             }
@@ -331,7 +331,7 @@ public sealed partial class SkinHostWindow : Window
                             if (vibeMeasure != null)
                             {
                                 vibeMeasure.SkipPrevious();
-                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentTrackTitle, vibeMeasure.CurrentTrackArtist);
+                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
                                 e.Handled = true;
                                 return;
                             }

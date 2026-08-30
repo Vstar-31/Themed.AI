@@ -9,6 +9,7 @@ using Windows.Graphics;
 using Microsoft.Extensions.Logging;
 using ThemeManager.Integration.Skins;
 using Microsoft.UI.Dispatching;
+using Microsoft.Web.WebView2.Core;
 
 namespace ThemeManager.WinUI;
 
@@ -140,7 +141,7 @@ public sealed partial class MainWindow : Window
 
     // ── YouTube Player ─────────────────────────────────────────────────────────
 
-    private string? _currentYouTubeQuery;
+    private string? _currentYouTubeVideoId;
     private bool _youtubeReady;
     private DispatcherQueueTimer? _youtubePollTimer;
 
@@ -148,7 +149,37 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            await HiddenYoutubePlayer.EnsureCoreWebView2Async();
+            // A dedicated environment + user data folder, not the app's default one.
+            // VibeFinderAIPage's own WebView2 (VibeFinderWebView, embedding the live site) already
+            // uses the default environment, and WebView2 requires every control sharing a user data
+            // folder to be created from *identical* environment options — mixing a custom
+            // AdditionalBrowserArguments into the default folder would throw as soon as both
+            // controls exist in the same process. This one gets its own folder specifically so it
+            // can carry an argument the other one has no reason to.
+            //
+            // The argument itself: Chromium's default autoplay policy blocks unmuted audio/video
+            // unless playback is tied to a genuine user gesture on that frame. Every "play" here
+            // originates from a native C# call into ExecuteScriptAsync — Chromium never counts that
+            // as a gesture — so playerVars: {autoplay:1} alone was reliably getting silently
+            // blocked with no visible error (this WebView2 is never shown). This is the standard,
+            // documented fix for exactly that "nothing ever clicks inside the page itself" case.
+            var envOptions = new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required");
+            var userDataFolder = System.IO.Path.Combine(
+                Windows.Storage.ApplicationData.Current.LocalFolder.Path, "YouTubePlayerWebView2");
+            var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, envOptions);
+            await HiddenYoutubePlayer.EnsureCoreWebView2Async(environment);
+
+            // _youtubeReady used to be set immediately after NavigateToString below, which only
+            // means "we asked the WebView2 to start loading" — not that the YouTube iframe API
+            // finished loading over the network, ran, and actually constructed a player object.
+            // A click landing in that window would silently no-op (the JS-side `player &&` guards
+            // below see `player` as still undefined). This waits for the player's own onReady
+            // event instead, which is the real signal.
+            HiddenYoutubePlayer.CoreWebView2.WebMessageReceived += (_, e) =>
+            {
+                if (e.TryGetWebMessageAsString() == "ready") _youtubeReady = true;
+            };
+
             var html = @"<!DOCTYPE html>
             <html>
             <body>
@@ -160,11 +191,14 @@ public sealed partial class MainWindow : Window
                     height: '0',
                     width: '0',
                     playerVars: { 'autoplay': 1, 'controls': 0 },
+                    events: {
+                      'onReady': function() { window.chrome.webview.postMessage('ready'); }
+                    },
                   });
                 }
-                function playTrack(query) {
-                  if (player && player.loadPlaylist) {
-                      player.loadPlaylist({ listType: 'search', list: query });
+                function playTrackById(videoId) {
+                  if (player && player.loadVideoById) {
+                      player.loadVideoById(videoId);
                   }
                 }
                 function togglePause() {
@@ -182,7 +216,6 @@ public sealed partial class MainWindow : Window
             </body>
             </html>";
             HiddenYoutubePlayer.NavigateToString(html);
-            _youtubeReady = true;
 
             _youtubePollTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
             _youtubePollTimer.Interval = TimeSpan.FromMilliseconds(500);
@@ -195,23 +228,42 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    public async void PlayYouTubeTrack(string title, string artist)
-    {
-        if (!_youtubeReady) return;
-        var query = $"{title} {artist}".Trim();
-        if (string.IsNullOrEmpty(query) || query == "—") return;
+    private static readonly System.Text.RegularExpressions.Regex YouTubeVideoIdPattern =
+        new(@"^[A-Za-z0-9_-]{11}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-        if (_currentYouTubeQuery == query)
+    /// <summary>
+    /// Loads and plays a track in the hidden YouTube player, or toggles play/pause if it's already
+    /// the currently-loaded video.
+    /// </summary>
+    /// <param name="videoId">
+    /// A resolved YouTube video ID (from VibeFinderMeasure.CurrentVideoId, ultimately
+    /// /api/vibe/analyze's youtube_video_id) — NOT a free-text "{title} {artist}" query. This used
+    /// to take (title, artist) and hand the query straight to the IFrame Player API's
+    /// loadPlaylist({listType: 'search', list: query}), which YouTube deprecated on 15 Nov 2020;
+    /// every call since has returned a 4xx and never loaded anything
+    /// (https://developers.google.com/youtube/iframe_api_reference). There's no supported
+    /// client-side replacement for "search by free text" any more — resolution has to happen
+    /// server-side (see core/youtube_cache.resolve_video_id in the VibeFinderAI backend) before a
+    /// video is nameable at all, so a null/missing id here means there's genuinely nothing to play,
+    /// not a step this method can fall back to doing itself.
+    /// </param>
+    public async void PlayYouTubeTrack(string? videoId)
+    {
+        if (!_youtubeReady || string.IsNullOrEmpty(videoId) || !YouTubeVideoIdPattern.IsMatch(videoId))
+            return;
+
+        if (_currentYouTubeVideoId == videoId)
         {
-            // Toggle play/pause if it's the exact same query
+            // Toggle play/pause if it's the exact same video already loaded
             await HiddenYoutubePlayer.ExecuteScriptAsync("togglePause();");
         }
         else
         {
-            // Load and play new search query
-            _currentYouTubeQuery = query;
-            var script = $"playTrack('{query.Replace("'", "\\'")}');";
-            await HiddenYoutubePlayer.ExecuteScriptAsync(script);
+            // Real YouTube video IDs are always exactly 11 chars of [A-Za-z0-9_-] (validated
+            // above), so this can't break out of the single-quoted JS string literal the way the
+            // old free-text query needed a Replace("'", "\\'") escape for.
+            _currentYouTubeVideoId = videoId;
+            await HiddenYoutubePlayer.ExecuteScriptAsync($"playTrackById('{videoId}');");
         }
     }
 
