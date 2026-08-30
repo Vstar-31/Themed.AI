@@ -163,10 +163,10 @@ public sealed partial class MainWindow : Window
             // as a gesture — so playerVars: {autoplay:1} alone was reliably getting silently
             // blocked with no visible error (this WebView2 is never shown). This is the standard,
             // documented fix for exactly that "nothing ever clicks inside the page itself" case.
-            var envOptions = new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required");
+            var envOptions = new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required" };
             var userDataFolder = System.IO.Path.Combine(
                 Windows.Storage.ApplicationData.Current.LocalFolder.Path, "YouTubePlayerWebView2");
-            var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, envOptions);
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, userDataFolder, envOptions);
             await HiddenYoutubePlayer.EnsureCoreWebView2Async(environment);
 
             // _youtubeReady used to be set immediately after NavigateToString below, which only
