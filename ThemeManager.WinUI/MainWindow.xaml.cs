@@ -165,7 +165,7 @@ public sealed partial class MainWindow : Window
             // documented fix for exactly that "nothing ever clicks inside the page itself" case.
             var envOptions = new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required" };
             var userDataFolder = System.IO.Path.Combine(
-                Windows.Storage.ApplicationData.Current.LocalFolder.Path, "YouTubePlayerWebView2");
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemeManager.WinUI", "YouTubePlayerWebView2");
             var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, userDataFolder, envOptions);
             await HiddenYoutubePlayer.EnsureCoreWebView2Async(environment);
 
