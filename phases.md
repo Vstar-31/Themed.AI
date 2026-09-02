@@ -190,6 +190,81 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
            third environment is more of the same consideration, not a new problem). Worth doing,
            not done here.
         - Not build- or live-verified — same standing caveat as the rest of this integration.
+      - **Follow-up session (chat) — the same symptoms reported again, this time run to ground.**
+        Vijay reported all three bugs above plus point 4's feature request in one message, worded
+        closely enough to the "Real-world testing" bullet above that it's clearly the same widget
+        being tested again after that session's fixes landed. Turned out two of "those fixes" were
+        never actually live, one genuinely new bug had crept in from the ImageUrl change in fix 2
+        above, and point 4 (the feature) hadn't been started. In order:
+        1. **Root cause of "no audio ever played" was never actually in this repo — it was a
+           cross-repo deployment gap.** `MainWindow.PlayYouTubeTrack` already correctly expected a
+           real resolved `youtube_video_id` (a prior session's fix for the deprecated
+           `listType:'search'` call). What was supposed to supply that id — `core/youtube_cache.
+           resolve_video_id` plus a `youtube_video_id` field on `/api/vibe/analyze`'s response —
+           only ever existed as two draft files (`main.py`, `youtube_cache.py`) sitting at *this*
+           repo's root, never actually applied to the real `vibefinderai` backend (confirmed by
+           cloning that repo fresh and diffing: neither file it ships had ever seen those changes).
+           So `CurrentVideoId` was always null and `PlayYouTubeTrack` silently no-opped every time.
+           Applied the patch directly to `vibefinderai/backend/core/youtube_cache.py` (new
+           `resolve_video_id`, same cache-checked-before-spending-quota shape as the existing
+           `/api/services/youtube/search` route) and `backend/main.py` (`TrackInfo.
+           youtube_video_id`, resolved via `asyncio.gather` alongside the existing iTunes-preview
+           lookup). Build-verified there the only way available — `python3 -m py_compile` and an
+           `ast.parse` on both files — not live-verified (no way to actually run the FastAPI app or
+           hit Render from this environment). The two stale draft files at this repo's root are
+           deleted; the real patch now lives where it actually does something.
+        2. **New bug, introduced by fix 2's own `ImageUrl = data.CoverArtUrl` line — "the play
+           button doesn't turn to pause, it switches to the album cover":** that line ran
+           unconditionally for every `VibeFinderMeasure` instance sharing a target, including the
+           `VibeState` measure the play/pause Icon meter binds to. `IconMeterViewModel.Tick()`
+           copies `measure.ImageUrl` straight through, and `BuildIconVisual` layers that image on
+           top of the glyph `FontIcon` inside the same chip — so once a track's cover art loaded,
+           it sat over the play/pause glyph permanently, regardless of which icon the glyph itself
+           was actually showing underneath. The glyph swap (Play ↔ Pause) was firing correctly the
+           whole time; it just couldn't be seen. Fixed by gating `ImageUrl` in
+           `VibeFinderMeasure.Refresh()` on `_type` — only Title/Artist/Mood are genuinely
+           display-type measures where cover art on an Icon meter makes sense; `VibePlaybackState`
+           and `VibeTrackProgress` now get `null`.
+        3. **Progress bar was never actually broken — it was just never actually receiving
+           anything to show, same root cause as point 1.** Bar-fill wiring (`FillFraction =
+           measure.Value / _barMax`) was already correct; it just never moved because nothing was
+           ever playing. "No timestamps" was real, though: `YouTubePlaybackState` only tracked a
+           0–1 fraction, nothing in seconds. Added `CurrentTime`/`Duration` to that static class,
+           populated from the same `getCurrentTime()`/`getDuration()` polls `MainWindow` already
+           ran every 500ms but previously discarded past computing the fraction.
+           `VibeFinderMeasure`'s `VibeTrackProgress` text is now `"1:23 / 3:45"` (new `FormatClock`
+           helper) instead of a bare percentage — `Value` is untouched (still 0–100, what
+           `BarMeterViewModel` needs), only `Text` changed, and `Text` needs a String meter to
+           actually render (a Bar meter never reads it) — added one under the bar in all three
+           presets, healed onto existing widgets the same `!skin.Meters.Any(...)`-gated,
+           grow-don't-move way point 3's original fix healed `VibeState`/`VibeProgress` in.
+        4. **Point 4, actually built — a new `MeterKind.WebEmbed`, not just a design for one.**
+           `ThemeManager.Core.Skins.MeterKind` gained `WebEmbed` plus a `WebEmbedUrl` string on
+           `MeterDefinition`; a new `WebEmbedMeterViewModel` (no bound measure, no `Tick()` work —
+           the embedded page is its own live thing); `SkinHostWindow.BuildWebEmbedVisual` hosts a
+           real `Microsoft.UI.Xaml.Controls.WebView2` sized to the meter's bounds, deliberately on
+           WebView2's *default* environment (no custom `CoreWebView2EnvironmentOptions`) — the same
+           one `VibeFinderAIPage.VibeFinderWebView` already uses — specifically so a session signed
+           into VibeFinderAI through *that* embedded browser carries over automatically (WebView2
+           profiles share `localStorage`/cookies per-profile, not per-control-instance), with no
+           credentials passed through the URL and no separate login inside the smaller panel.
+           `SkinEditorPage`/`SkinEditorViewModel` got the matching editor-side support (toolbar
+           button, an Embed URL property field gated on the new kind, a placeholder preview box —
+           the canvas has no live WebView2 to actually render into). The frontend half point 4
+           flagged as needed ("a compact player-only route doesn't exist yet") is now built too:
+           `frontend/src/EmbedPlayer.jsx`, routed at `/embed/player` — no site nav/hero/marketing,
+           just a mood search box calling `/api/vibe/analyze` directly and the same `MusicPlayer.
+           jsx` component the main site's own player uses, reading the shared `vf_token` from
+           `localStorage` rather than shipping its own login form. `EnsureVibeFinderSkinsExist`'s
+           `VibeFinder Playlist` preset now grows to add this as a panel below its existing native
+           "Now Playing" display (kept, not replaced or moved — same additive healing discipline as
+           every other gate in that method) pointed at `https://vibefinderai.onrender.com/embed/
+           player`.
+        - Frontend changes (`EmbedPlayer.jsx`, the `main.jsx` route) are build- and lint-verified —
+          `npm install && npx vite build` succeeds, `npx eslint` is clean on both changed files.
+          The C# side isn't — still no dotnet/NuGet access in this environment, same standing
+          caveat as every other session in this integration; needs a real build on Windows before
+          any of this is trusted, same as everything above it.
     - **Session hygiene note:** auditing the commit that added the Ring/Icon NLP trigger words (`705f9ead`) surfaced a pattern worth naming — verifying what `PorterStemmer.Stem()` does to a handful of words had been re-implemented from scratch *seven times* across this repo's history (root `Program.cs`/`StemTest.cs`/`test.cs`, `StemTest/`, `TestStem/`, `TestStem2/`, and a `StemmingTests.PrintStems` xUnit test that printed but never asserted), including one (`TestStem2`) that doesn't compile — invalid escape sequences in a non-verbatim string literal writing to a hardcoded `G:\my projects\...` path — and one (`TestStem`) targeting `net10.0`, inconsistent with the rest of the repo's `net8.0`. All six scratch variants deleted; `StemmingTests.cs` rewritten as real `[Theory]`/`[Fact]` assertions (values checked against a faithful Python port of `PorterStemmer.cs`, not hand-traced) covering the VibeFinder and Ring/Icon trigger words. One genuinely interesting, verified-not-assumed finding from that exercise: `WidgetLexicon["play"]` (→ style boost, comment says `// "playful"`) is *not* a fixed point of its own stemmer — `Stem("play")` alone gives `"plai"` (step 1c's trailing-y rule fires on the bare word), but `Stem("playful")` correctly gives `"play"` (step 3's `-ful` rule fires first and consumes the suffix before step 1c would ever see the shortened word again). The entry is correct and reachable exactly as commented; a blanket "every lexicon key should equal `Stem(key)`" test — the first version written this session — would have flagged it as a false regression, so that blanket assertion was replaced with the narrower, empirically-checked one now in `StemmingTests.cs`. `TestVibe/` and `StressTestPrompts/` were left alone — both compile correctly (proper `ProjectReference` to `ThemeManager.Core`) and do something the new xUnit tests don't (ad-hoc single-prompt output inspection and bulk NLP accuracy sweeps, respectively).
 - **External data:**
   - [x] Generic Web/JSON measure (`WebJsonMeasure`) — URL + JSON path, polled on an interval.

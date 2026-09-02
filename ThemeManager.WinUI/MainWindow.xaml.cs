@@ -284,10 +284,14 @@ public sealed partial class MainWindow : Window
             if (double.TryParse(timeStr, out double time) && double.TryParse(durStr, out double duration) && duration > 0)
             {
                 YouTubePlaybackState.Progress = time / duration;
+                YouTubePlaybackState.CurrentTime = time;
+                YouTubePlaybackState.Duration = duration;
             }
             else
             {
                 YouTubePlaybackState.Progress = 0;
+                YouTubePlaybackState.CurrentTime = 0;
+                YouTubePlaybackState.Duration = 0;
             }
         }
         catch { }

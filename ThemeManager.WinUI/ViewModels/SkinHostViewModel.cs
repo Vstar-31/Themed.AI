@@ -45,6 +45,7 @@ public sealed class SkinHostViewModel : ViewModelBase
                 MeterKind.Graph => new GraphMeterViewModel(meterDef),
                 MeterKind.Icon => new IconMeterViewModel(meterDef),
                 MeterKind.Ring => new RingMeterViewModel(meterDef),
+                MeterKind.WebEmbed => new WebEmbedMeterViewModel(meterDef),
                 _ => new StringMeterViewModel(meterDef),
             };
             Meters.Add(vm);

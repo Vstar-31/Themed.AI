@@ -144,6 +144,7 @@
                                 <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
                                 <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
                                 <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
+                                <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
 
                             <ListView ItemsSource="{x:Bind ViewModel.Meters}"
@@ -177,6 +178,7 @@
                                 <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
                                 <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
                                 <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
+                                <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -198,7 +200,8 @@
                                            Value="{x:Bind ViewModel.SelectedMeter.Height, Mode=TwoWay}" />
                             </StackPanel>
 
-                            <StackPanel Spacing="6">
+                            <StackPanel Spacing="6"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.UsesMeasureAndClickFields, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <TextBlock Text="Measure (leave blank for static text)" Style="{StaticResource CaptionStyle}" />
                                 <ComboBox x:Name="MeasureCombo"
                                           HorizontalAlignment="Stretch"
@@ -208,6 +211,17 @@
                             <TextBox Header="Static text"
                                      Text="{x:Bind ViewModel.SelectedMeter.StaticText, Mode=TwoWay}"
                                      Visibility="{x:Bind ViewModel.SelectedMeter.ShowStaticTextField, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <StackPanel Spacing="6"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.IsWebEmbed, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBox Header="Embed URL"
+                                         Text="{x:Bind ViewModel.SelectedMeter.WebEmbedUrl, Mode=TwoWay}"
+                                         PlaceholderText="https://vibefinderai.onrender.com/embed/player" />
+                                <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap">
+                                    A live web page, rendered full-size inside this meter. It navigates once —
+                                    changing this after the widget is running needs a restart to take effect.
+                                </TextBlock>
+                            </StackPanel>
 
                             <StackPanel Spacing="6"
                                         Visibility="{x:Bind ViewModel.SelectedMeter.IsIcon, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -246,7 +260,8 @@
                             </StackPanel>
 
                             <!-- Click actions -->
-                            <StackPanel Spacing="10">
+                            <StackPanel Spacing="10"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.UsesMeasureAndClickFields, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <TextBlock Text="Click actions" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />
                                 <TextBlock Text="Optional URLs to launch when clicked (e.g. https://... or themed://media/playpause)"
                                            Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />

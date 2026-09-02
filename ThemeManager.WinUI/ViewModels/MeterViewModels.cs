@@ -334,3 +334,31 @@ public sealed class IconMeterViewModel : MeterViewModelBase
         }
     }
 }
+
+/// <summary>
+/// A live embedded web page — a real WebView2 rendered at the meter's bounds, not a native
+/// approximation of one. Unlike every other meter kind here, it has no bound measure to read: the
+/// embedded page is its own live thing (VibeFinderAI's compact player, in the one place this is
+/// used today), so there's nothing for <see cref="Tick"/> to pull each second the way a Bar or
+/// Icon meter pulls a measure's Value/Text. The URL is resolved once at construction and handed
+/// to <see cref="Views.SkinHostWindow"/>'s BuildWebEmbedVisual, which owns the actual WebView2
+/// control and its navigation.
+/// </summary>
+public sealed class WebEmbedMeterViewModel : MeterViewModelBase
+{
+    /// <summary>The URL this embed navigates to. "about:blank" if the definition left it empty,
+    /// so a hand-edited skins.json with a blank WebEmbedUrl gets a harmless blank panel instead of
+    /// a null-reference navigating the WebView2.</summary>
+    public string Url { get; }
+
+    public WebEmbedMeterViewModel(MeterDefinition definition) : base(definition)
+    {
+        Url = string.IsNullOrWhiteSpace(definition.WebEmbedUrl) ? "about:blank" : definition.WebEmbedUrl;
+    }
+
+    // No-op: nothing to re-read on a tick (see class remarks above). ActionUrl/SecondaryActionUrl/
+    // ImageUrl all stay at MeterViewModelBase's null defaults, which is correct here — real clicks
+    // inside the rendered page go to the WebView2 itself once it's on screen, not through this
+    // app's own synthetic click-URL dispatch in SkinHostWindow.
+    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName) { }
+}

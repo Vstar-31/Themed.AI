@@ -262,6 +262,7 @@ public sealed partial class SkinHostWindow : Window
                 IconMeterViewModel icon => BuildIconVisual(icon),
                 RingMeterViewModel ring => BuildRingVisual(ring),
                 StringMeterViewModel str => BuildStringVisual(str),
+                WebEmbedMeterViewModel embed => BuildWebEmbedVisual(embed),
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };
 
@@ -394,6 +395,53 @@ public sealed partial class SkinHostWindow : Window
         };
 
         return text;
+    }
+
+    /// <summary>
+    /// A live web page rendered at the meter's bounds — no fill/text bindings to wire up, since
+    /// unlike every other Build*Visual here this one has no ticking measure behind it (see
+    /// <see cref="WebEmbedMeterViewModel"/>'s remarks). Deliberately uses WebView2's *default*
+    /// environment (no custom <c>CoreWebView2EnvironmentOptions</c>, same as
+    /// <see cref="VibeFinderAIPage"/>'s own embedded browser) rather than the hidden YouTube
+    /// player's dedicated environment in <see cref="MainWindow"/> — sharing the default profile
+    /// means this panel picks up whatever VibeFinderAI session already exists in that profile
+    /// (localStorage/cookies persist per-profile, not per-WebView2-instance), so if the user has
+    /// signed in once via VibeFinderAIPage's browser, every WebEmbed meter using this same default
+    /// environment is signed in too — no separate login, no credentials passed through the URL.
+    /// </summary>
+    private static Microsoft.UI.Xaml.Controls.WebView2 BuildWebEmbedVisual(WebEmbedMeterViewModel vm)
+    {
+        var webView = new Microsoft.UI.Xaml.Controls.WebView2
+        {
+            Width = vm.Width,
+            Height = vm.Height,
+        };
+
+        // CoreWebView2 initializes lazily off the Source setter below; this just surfaces a
+        // failure (e.g. WebView2 Runtime missing on the machine) to the log instead of leaving a
+        // silently blank panel with no clue why.
+        webView.CoreWebView2Initialized += (_, e) =>
+        {
+            if (e.Exception != null)
+            {
+                App.LoggerFactory.CreateLogger<SkinHostWindow>()
+                    .LogWarning(e.Exception, "WebEmbed meter failed to initialize CoreWebView2 for {Url}", vm.Url);
+            }
+        };
+
+        try
+        {
+            webView.Source = new Uri(vm.Url);
+        }
+        catch (UriFormatException ex)
+        {
+            // A hand-edited skins.json can put anything in WebEmbedUrl — a malformed one shouldn't
+            // crash the whole widget, just leave this one panel blank.
+            App.LoggerFactory.CreateLogger<SkinHostWindow>()
+                .LogWarning(ex, "WebEmbed meter has an invalid URL: {Url}", vm.Url);
+        }
+
+        return webView;
     }
 
     /// <summary>

@@ -52,6 +52,14 @@ public enum MeterKind
     /// skins (Jarvis-style HUDs especially) are built around, and the one shape Bar/Graph/Icon
     /// couldn't cover. Same data as a Bar (a single 0–1 fill fraction); only the shape differs.</summary>
     Ring,
+
+    /// <summary>A live embedded web page (a real WebView2, not a native approximation of one)
+    /// rendered at the meter's bounds — e.g. VibeFinderAI's own compact player UI with real,
+    /// interactive controls, the same engine the site itself runs, rather than native Icon/Bar/
+    /// String meters trying to mirror it. Has no bound measure (see
+    /// <see cref="MeterDefinition.MeasureName"/>) and no click actions of its own — the embedded
+    /// page handles its own input once it's on screen. See <see cref="MeterDefinition.WebEmbedUrl"/>.</summary>
+    WebEmbed,
 }
 
 /// <summary>
@@ -144,6 +152,11 @@ public sealed class MeterDefinition
 
     /// <summary>Optional alternate URL or URI to launch when this meter is right-clicked.</summary>
     public string? SecondaryActionUrl { get; set; }
+
+    /// <summary>The URL a <see cref="MeterKind.WebEmbed"/> meter navigates to. Ignored by every
+    /// other meter kind. Fixed at creation — a WebEmbed meter navigates once, it doesn't re-read
+    /// this on every tick the way a data-bound meter re-reads its measure.</summary>
+    public string? WebEmbedUrl { get; set; }
 }
 
 /// <summary>

@@ -191,7 +191,11 @@ public sealed class VibeFinderMeasure : IMeasure
                 // to match; ToString("P0") assumes its input is a fraction and would have shown
                 // "5000%" once Value was corrected to already be 0-100.
                 Value = YouTubePlaybackState.Progress * 100;
-                Text = $"{Value:F0}%"; // same style as CpuMeasure's Text formatting
+                // "1:23 / 3:45" instead of a bare percentage — a percentage isn't what anyone
+                // reads a media player's clock as. Reads "0:00 / 0:00" before playback starts
+                // (Duration is 0 until the first successful poll after a track loads), same as
+                // most native players show before the first tick rather than blank space.
+                Text = $"{FormatClock(YouTubePlaybackState.CurrentTime)} / {FormatClock(YouTubePlaybackState.Duration)}";
             }
             else
             {
@@ -207,7 +211,21 @@ public sealed class VibeFinderMeasure : IMeasure
                 ? $"themed://vibefinder/preview?url={Uri.EscapeDataString(previewUrl)}"
                 : data.SpotifyUrl;
             SecondaryActionUrl = data.AppleUrl;
-            ImageUrl = data.CoverArtUrl;
+
+            // Only a display-type measure (Title/Artist/Mood) should carry cover art onto an
+            // Icon meter — VibePlaybackState and VibeTrackProgress are control/status measures,
+            // not display ones. IconMeterViewModel.Tick() copies ImageUrl straight through to a
+            // meter, and BuildIconVisual layers that image ON TOP of the FontIcon glyph inside
+            // the same chip (so a cover-art thumbnail can sit over a play/pause icon, or a
+            // progress readout, and fully obscure it once the image loads). This used to be set
+            // unconditionally here, which meant the "VibeState" measure — bound to the
+            // play/pause Icon meter in every preset — silently inherited the current track's
+            // cover art too: clicking play *did* flip the glyph from Play to Pause underneath,
+            // but the album art thumbnail, already loaded and visible, never let that repaint
+            // show through, so the button looked dead and just displayed the cover instead.
+            ImageUrl = _type is MeasureType.VibePlaybackState or MeasureType.VibeTrackProgress
+                ? null
+                : data.CoverArtUrl;
         }
         else if (vibeText is null)
         {
@@ -403,5 +421,17 @@ public sealed class VibeFinderMeasure : IMeasure
                 if (entry.CurrentIndex < 0) entry.CurrentIndex = entry.Tracks.Count - 1;
             }
         }
+    }
+
+    /// <summary>Formats a seconds count as a player clock face — "1:23", "12:04", "1:02:03" past
+    /// an hour. Negative/NaN input (shouldn't happen, but a mid-poll YouTube API hiccup is cheap
+    /// insurance against) clamps to "0:00" rather than showing a garbage string.</summary>
+    private static string FormatClock(double seconds)
+    {
+        if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
+        var span = TimeSpan.FromSeconds(seconds);
+        return span.TotalHours >= 1
+            ? $"{(int)span.TotalHours}:{span.Minutes:D2}:{span.Seconds:D2}"
+            : $"{span.Minutes}:{span.Seconds:D2}";
     }
 }

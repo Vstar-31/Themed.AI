@@ -389,6 +389,21 @@ public sealed class SkinManagerService : IDisposable
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 120, Y = 110, Width = 170, Height = 4 });
             changed = true;
         }
+        // "1:23 / 3:45" under the fill bar — VibeFinderMeasure.Refresh() reformats
+        // VibeTrackProgress's Text into that shape now, this just gives it somewhere to actually
+        // render (a Bar meter has no text of its own; only a String meter reads measure.Text).
+        // Gated on its own so an existing widget that already has the Bar above but predates this
+        // block still gets the label added underneath it, same reasoning as every other gate in
+        // this method. Grows the widget rather than shrinking anything already placed — the Bar
+        // above ends at Y=114 inside the original Height=120, so this starts right at that
+        // original boundary rather than overlapping it.
+        if (!primary.Meters.Any(m => m.MeasureName == "VibeProgress" && m.Kind == MeterKind.String))
+        {
+            var newRowY = primary.Height;
+            primary.Height += 20;
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeProgress", Format = "{1}", X = 120, Y = newRowY, Width = 170, Height = 16, FontSize = 11 });
+            changed = true;
+        }
 
         // ── VibeFinder Minimal ──────────────────────────────────────────────
         var minimal = _skins.FirstOrDefault(s => s.Name == "VibeFinder Minimal");
@@ -420,6 +435,16 @@ public sealed class SkinManagerService : IDisposable
             minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 50, Width = 180, Height = 4 });
             changed = true;
         }
+        // Same "1:23 / 3:45" label as Primary/Playlist below — see that block's comment. Minimal
+        // is the tightest of the three widgets already, so this uses a smaller font and a shorter
+        // grow than Primary's equivalent row.
+        if (!minimal.Meters.Any(m => m.MeasureName == "VibeProgress" && m.Kind == MeterKind.String))
+        {
+            var newRowY = minimal.Height;
+            minimal.Height += 16;
+            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeProgress", Format = "{1}", X = 10, Y = newRowY, Width = 180, Height = 14, FontSize = 10 });
+            changed = true;
+        }
 
         // ── VibeFinder Playlist ──────────────────────────────────────────────
         var playlist = _skins.FirstOrDefault(s => s.Name == "VibeFinder Playlist");
@@ -447,6 +472,18 @@ public sealed class SkinManagerService : IDisposable
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 290, Width = 230, Height = 4 });
             changed = true;
         }
+        // Same "1:23 / 3:45" label as Primary/Minimal above — see Primary's block for the full
+        // reasoning. Placed here, between the progress bar and the play/pause row below, so the
+        // play/pause block's own `newRowY = playlist.Height` (unchanged, reads whatever Height
+        // already is when it runs) naturally stacks under this instead of overlapping it — order
+        // of these blocks is what determines vertical order on screen, not just their own X/Y.
+        if (!playlist.Meters.Any(m => m.MeasureName == "VibeProgress" && m.Kind == MeterKind.String))
+        {
+            var newRowY = playlist.Height;
+            playlist.Height += 20;
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeProgress", Format = "{1}", X = 10, Y = newRowY, Width = 230, Height = 16, FontSize = 11, CenterText = true });
+            changed = true;
+        }
         // Playlist never had play/pause/next at all, in any version — a pure "now playing"
         // display by original design, which is exactly the gap flagged this session ("that right
         // panel should show...actual controls"). Its layout already packs content to the original
@@ -467,6 +504,35 @@ public sealed class SkinManagerService : IDisposable
             playlist.Height += 40;
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 10, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
             playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 50, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
+            changed = true;
+        }
+        // The actual feature request from this session: "that right panel should show actual
+        // VibeFinder controls — like an embed of the engine with all the controls from my site."
+        // Everything above is this widget's original native "Now Playing" display, kept exactly
+        // as-is (same non-destructive, additive healing discipline as every gate in this method —
+        // nothing above is moved or removed) with a real, fully interactive embed of VibeFinderAI
+        // itself added below it, rather than more native meters trying to approximate it.
+        // /embed/player is a new, chrome-free frontend route (frontend/src/EmbedPlayer.jsx) built
+        // alongside this — no site nav/hero/marketing, just the mood search box and the same
+        // MusicPlayer.jsx component the main site's player uses, so this really is the engine, not
+        // a native reimplementation of a slice of it. Uses WebView2's default environment/profile
+        // (see SkinHostWindow.BuildWebEmbedVisual's remarks) — the same one VibeFinderAIPage's own
+        // embedded browser already uses — so a session already signed in there carries over here
+        // automatically, no separate login inside this smaller panel.
+        if (!playlist.Meters.Any(m => m.Kind == MeterKind.WebEmbed))
+        {
+            var embedY = playlist.Height;
+            const double embedHeight = 230;
+            playlist.Height += embedHeight;
+            playlist.Meters.Add(new MeterDefinition
+            {
+                Kind = MeterKind.WebEmbed,
+                WebEmbedUrl = "https://vibefinderai.onrender.com/embed/player",
+                X = 0,
+                Y = embedY,
+                Width = playlist.Width,
+                Height = embedHeight,
+            });
             changed = true;
         }
 

@@ -2255,6 +2255,7 @@ async def analyze_vibe(request: VibeRequest, token: str = Depends(oauth2_scheme)
         for _ii, _res in zip(_itunes_needed, _itunes_results):
             _previews[_ii] = _res
 
+    final_tracks = []
     # YouTube video_id resolution, same asyncio.gather-over-all-tracks shape as
     # the iTunes preview lookup above (resolve_video_id checks the shared cache
     # itself, so a cache hit here costs nothing extra) — added so desktop
@@ -2264,7 +2265,6 @@ async def analyze_vibe(request: VibeRequest, token: str = Depends(oauth2_scheme)
     _youtube_tasks = [resolve_video_id(t["title"], t["artist"]) for t in best_tracks]
     _youtube_ids   = await asyncio.gather(*_youtube_tasks)
 
-    final_tracks = []
     for i, t in enumerate(best_tracks):
         q          = urllib.parse.quote(f"{t['title']} {t['artist']}")
         _spotify_id = t.get("_spotify_id")

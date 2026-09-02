@@ -144,6 +144,7 @@ public sealed partial class SkinEditorPage : Page
     private void AddGraphMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Graph);
     private void AddIconMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Icon);
     private void AddRingMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Ring);
+    private void AddWebEmbedMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.WebEmbed);
 
     private void RemoveMeterButton_Click(object sender, RoutedEventArgs e)
     {
@@ -238,6 +239,36 @@ public sealed partial class SkinEditorPage : Page
                 },
             };
             return chip;
+        }
+
+        if (meter.Kind == MeterKind.WebEmbed)
+        {
+            // No live WebView2 in the editor canvas — same "roughly this, not pixel-perfect"
+            // philosophy as the Bar/Graph static-fill preview further down. An outlined
+            // placeholder box reads as "something lives here" without pretending to render the
+            // actual page.
+            var placeholder = new Border
+            {
+                Width = meter.Width,
+                Height = meter.Height,
+                CornerRadius = new CornerRadius(6),
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
+                BorderBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"],
+                BorderThickness = new Thickness(1.5),
+                Child = new TextBlock
+                {
+                    Text = "\uE774  Web embed",
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons, Segoe UI"),
+                    FontSize = 13,
+                    Opacity = 0.6,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = meter.Width - 12,
+                },
+            };
+            return placeholder;
         }
 
         if (meter.Kind == MeterKind.Ring)
