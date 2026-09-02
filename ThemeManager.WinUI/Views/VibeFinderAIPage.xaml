@@ -6,7 +6,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    Unloaded="Page_Unloaded">
 
     <Grid>
         <Grid.ColumnDefinitions>
@@ -48,7 +49,7 @@
 
         <!-- Right Panel: Web Embed -->
         <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1,0,0,0">
-            <WebView2 x:Name="VibeFinderWebView" Source="https://vibefinderai.onrender.com/"/>
+            <WebView2 x:Name="VibeFinderWebView" Source="https://vibefinderai.netlify.app/app"/>
         </Border>
     </Grid>
 </Page>

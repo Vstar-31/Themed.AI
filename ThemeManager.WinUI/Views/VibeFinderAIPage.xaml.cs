@@ -13,6 +13,24 @@ public sealed partial class VibeFinderAIPage : Page
     public VibeFinderAIPage()
     {
         this.InitializeComponent();
+        
+        VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
+        {
+            VibeFinderWebView.CoreWebView2.WebMessageReceived += (sender, args) =>
+            {
+                var json = args.TryGetWebMessageAsString();
+                if (!string.IsNullOrEmpty(json))
+                {
+                    ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json);
+                }
+            };
+            
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = (cmd) => 
+            {
+                try { VibeFinderWebView.CoreWebView2.PostWebMessageAsJson(cmd); }
+                catch { }
+            };
+        };
 
         _skinManager.EnsureVibeFinderSkinsExist();
 
@@ -84,5 +102,10 @@ public sealed partial class VibeFinderAIPage : Page
         StatusText.Text = "Saved!";
         StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
         StatusText.Visibility = Visibility.Visible;
+    }
+
+    private void Page_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ThemeManager.Integration.Skins.VibeFinderWebState.Detach();
     }
 }

@@ -48,6 +48,15 @@ public sealed class SkinManagerService : IDisposable
         bool changed = false;
         foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
         {
+            int removed = skin.Meters.RemoveAll(m => m.Kind == MeterKind.WebEmbed);
+            if (removed > 0)
+            {
+                // Restore the original height if we just removed the 230px tall embed
+                if (skin.Name == "VibeFinder Playlist" && skin.Height > 400)
+                    skin.Height -= 230;
+                changed = true;
+            }
+
             foreach (var meter in skin.Meters.Where(m => m.Kind == MeterKind.String && 
                 (m.MeasureName == "VibeTitle" || m.MeasureName == "VibeArtist" || m.MeasureName == "VibeMood")))
             {
@@ -365,8 +374,14 @@ public sealed class SkinManagerService : IDisposable
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 100, Height = 100 });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 120, Y = 15, Width = 170, Height = 30, FontSize = 16, Bold = true });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeArtist", X = 120, Y = 45, Width = 170, Height = 25, FontSize = 14 });
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 160, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
             _skins.Add(primary);
+            changed = true;
+        }
+        if (!primary.Meters.Any(m => m.ActionUrl == "themed://media/prev"))
+        {
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
             changed = true;
         }
         if (!primary.Measures.Any(m => m.Name == "VibeState"))
@@ -502,39 +517,26 @@ public sealed class SkinManagerService : IDisposable
         {
             var newRowY = playlist.Height;
             playlist.Height += 40;
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 10, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 50, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 10, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 50, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
+            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 90, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
             changed = true;
         }
-        // The actual feature request from this session: "that right panel should show actual
-        // VibeFinder controls — like an embed of the engine with all the controls from my site."
-        // Everything above is this widget's original native "Now Playing" display, kept exactly
-        // as-is (same non-destructive, additive healing discipline as every gate in this method —
-        // nothing above is moved or removed) with a real, fully interactive embed of VibeFinderAI
-        // itself added below it, rather than more native meters trying to approximate it.
-        // /embed/player is a new, chrome-free frontend route (frontend/src/EmbedPlayer.jsx) built
-        // alongside this — no site nav/hero/marketing, just the mood search box and the same
-        // MusicPlayer.jsx component the main site's player uses, so this really is the engine, not
-        // a native reimplementation of a slice of it. Uses WebView2's default environment/profile
-        // (see SkinHostWindow.BuildWebEmbedVisual's remarks) — the same one VibeFinderAIPage's own
-        // embedded browser already uses — so a session already signed in there carries over here
-        // automatically, no separate login inside this smaller panel.
-        if (!playlist.Meters.Any(m => m.Kind == MeterKind.WebEmbed))
+        else if (!playlist.Meters.Any(m => m.ActionUrl == "themed://media/prev"))
         {
-            var embedY = playlist.Height;
-            const double embedHeight = 230;
-            playlist.Height += embedHeight;
-            playlist.Meters.Add(new MeterDefinition
+            // Add the prev button to an existing playlist control row and shift the others right
+            var playPause = playlist.Meters.FirstOrDefault(m => m.ActionUrl == "themed://media/playpause");
+            var next = playlist.Meters.FirstOrDefault(m => m.ActionUrl == "themed://media/next");
+            if (playPause != null && next != null)
             {
-                Kind = MeterKind.WebEmbed,
-                WebEmbedUrl = "https://vibefinderai.onrender.com/embed/player",
-                X = 0,
-                Y = embedY,
-                Width = playlist.Width,
-                Height = embedHeight,
-            });
-            changed = true;
+                var rowY = playPause.Y;
+                playPause.X = 50;
+                next.X = 90;
+                playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 10, Y = rowY, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
+                changed = true;
+            }
         }
+
 
         foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
         {

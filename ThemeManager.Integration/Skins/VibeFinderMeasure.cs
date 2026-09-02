@@ -90,9 +90,11 @@ public sealed class VibeFinderMeasure : IMeasure
     public string CurrentTrackTitle { get; private set; } = "—";
     public string CurrentTrackArtist { get; private set; } = "—";
     // Null when resolve_video_id couldn't find a match server-side (no API key configured,
-    // quota exceeded, or no search results) — PlayYouTubeTrack treats null as "nothing to play"
-    // rather than falling back to a text search, since that search path is what was broken.
+    // quota exceeded, or no search results)
     public string? CurrentVideoId { get; private set; }
+    
+    // The iTunes 30s preview audio URL
+    public string? CurrentPreviewUrl { get; private set; }
 
     public void UpdateMeasure()
     { }
@@ -138,6 +140,43 @@ public sealed class VibeFinderMeasure : IMeasure
 
     public void Refresh()
     {
+        if (VibeFinderWebState.IsActive)
+        {
+            CurrentTrackTitle = VibeFinderWebState.Title;
+            CurrentTrackArtist = VibeFinderWebState.Artist;
+            CurrentPreviewUrl = VibeFinderWebState.PreviewUrl;
+
+            Text = _type switch
+            {
+                MeasureType.VibeTrackTitle  => VibeFinderWebState.Title,
+                MeasureType.VibeTrackArtist => VibeFinderWebState.Artist,
+                MeasureType.VibeMood        => "—", // Web state doesn't have Mood easily available, fallback
+                MeasureType.VibePlaybackState => VibeFinderWebState.IsPlaying ? "PLAYING" : "PAUSED",
+                _                           => "—",
+            };
+
+            if (_type == MeasureType.VibeTrackProgress)
+            {
+                Value = VibeFinderWebState.Progress * 100;
+                Text = $"{FormatClock(VibeFinderWebState.CurrentTime)} / {FormatClock(VibeFinderWebState.Duration)}";
+            }
+            else
+            {
+                Value = 0;
+            }
+
+            ActionUrl = VibeFinderWebState.PreviewUrl is { Length: > 0 } previewUrl
+                ? $"themed://vibefinder/preview?url={Uri.EscapeDataString(previewUrl)}"
+                : null;
+            SecondaryActionUrl = null;
+
+            ImageUrl = _type is MeasureType.VibePlaybackState or MeasureType.VibeTrackProgress
+                ? null
+                : VibeFinderWebState.CoverArt;
+
+            return; // Skip backend polling while active
+        }
+
         var parts = _target.Split('|', 3);
         if (parts.Length < 3 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]) || string.IsNullOrWhiteSpace(parts[2]))
         {
@@ -170,32 +209,24 @@ public sealed class VibeFinderMeasure : IMeasure
             CurrentTrackTitle = data.Title;
             CurrentTrackArtist = data.Artist;
             CurrentVideoId = data.VideoId;
+            CurrentPreviewUrl = data.PreviewUrl;
 
             Text = _type switch
             {
                 MeasureType.VibeTrackTitle  => data.Title,
                 MeasureType.VibeTrackArtist => data.Artist,
                 MeasureType.VibeMood        => data.Mood,
-                MeasureType.VibePlaybackState => YouTubePlaybackState.IsPlaying ? "PLAYING" : "PAUSED",
+                MeasureType.VibePlaybackState => VibeFinderPreviewPlayer.IsPlaying ? "PLAYING" : "PAUSED",
                 _                           => "—",
             };
 
             if (_type == MeasureType.VibeTrackProgress)
             {
-                // 0-100 here, not YouTubePlaybackState.Progress's raw 0.0-1.0 fraction, to match
-                // every other measure's "Value is a percentage" convention (see IMeasure.Value's
-                // own doc comment: "For CPU/Memory/Disk measures this is a 0-100 percentage").
-                // BarMeterViewModel/RingMeterViewModel both normalize as measure.Value / BarMax,
-                // and BarMax defaults to 100 — so a 0.0-1.0 Value here was rendering a
-                // half-played track as a 0.5%-full bar, not a 50%-full one. Text is reformatted
-                // to match; ToString("P0") assumes its input is a fraction and would have shown
-                // "5000%" once Value was corrected to already be 0-100.
-                Value = YouTubePlaybackState.Progress * 100;
-                // "1:23 / 3:45" instead of a bare percentage — a percentage isn't what anyone
-                // reads a media player's clock as. Reads "0:00 / 0:00" before playback starts
-                // (Duration is 0 until the first successful poll after a track loads), same as
-                // most native players show before the first tick rather than blank space.
-                Text = $"{FormatClock(YouTubePlaybackState.CurrentTime)} / {FormatClock(YouTubePlaybackState.Duration)}";
+                // 0-100 here, not VibeFinderPreviewPlayer.Progress's raw 0.0-1.0 fraction, to match
+                // every other measure's "Value is a percentage" convention.
+                Value = VibeFinderPreviewPlayer.Progress * 100;
+                // "1:23 / 3:45" instead of a bare percentage.
+                Text = $"{FormatClock(VibeFinderPreviewPlayer.CurrentTime)} / {FormatClock(VibeFinderPreviewPlayer.Duration)}";
             }
             else
             {
@@ -408,6 +439,7 @@ public sealed class VibeFinderMeasure : IMeasure
             if (entry.Tracks.Count > 0)
                 entry.CurrentIndex = (entry.CurrentIndex + 1) % entry.Tracks.Count;
         }
+        Refresh();
     }
 
     public void SkipPrevious()
@@ -421,6 +453,7 @@ public sealed class VibeFinderMeasure : IMeasure
                 if (entry.CurrentIndex < 0) entry.CurrentIndex = entry.Tracks.Count - 1;
             }
         }
+        Refresh();
     }
 
     /// <summary>Formats a seconds count as a player clock face — "1:23", "12:04", "1:02:03" past

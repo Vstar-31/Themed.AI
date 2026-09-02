@@ -288,13 +288,12 @@ public sealed partial class SkinHostWindow : Window
                     const string vibeFinderPreviewPrefix = "themed://vibefinder/preview?url=";
                     if (url.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase))
                     {
-                        // VibeFinderMeasure's own-preview playback action (Phase 6 "actual
-                        // playback"): command the hidden YouTube player in the main window
-                        // instead of launching anything externally.
+                        // VibeFinderMeasure's own-preview playback action: use the native media player
+                        // to play the iTunes preview clip.
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                         if (vibeMeasure != null)
                         {
-                            App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
+                            VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
                         }
                     }
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
@@ -306,19 +305,32 @@ public sealed partial class SkinHostWindow : Window
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             if (vibeMeasure != null)
                             {
-                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
+                                if (ThemeManager.Integration.Skins.VibeFinderWebState.IsActive && ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
+                                {
+                                    ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand("{\"command\":\"playpause\"}");
+                                }
+                                else
+                                {
+                                    VibeFinderPreviewPlayer.TogglePause(vibeMeasure.CurrentPreviewUrl);
+                                }
                                 e.Handled = true;
                                 return;
                             }
                         }
-
                         else if (command.Equals("next", StringComparison.OrdinalIgnoreCase))
                         {
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             if (vibeMeasure != null)
                             {
-                                vibeMeasure.SkipNext();
-                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
+                                if (ThemeManager.Integration.Skins.VibeFinderWebState.IsActive && ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
+                                {
+                                    ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand("{\"command\":\"next\"}");
+                                }
+                                else
+                                {
+                                    vibeMeasure.SkipNext();
+                                    VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
+                                }
                                 e.Handled = true;
                                 return;
                             }
@@ -328,8 +340,15 @@ public sealed partial class SkinHostWindow : Window
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             if (vibeMeasure != null)
                             {
-                                vibeMeasure.SkipPrevious();
-                                App.MainWindow.PlayYouTubeTrack(vibeMeasure.CurrentVideoId);
+                                if (ThemeManager.Integration.Skins.VibeFinderWebState.IsActive && ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
+                                {
+                                    ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand("{\"command\":\"prev\"}");
+                                }
+                                else
+                                {
+                                    vibeMeasure.SkipPrevious();
+                                    VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
+                                }
                                 e.Handled = true;
                                 return;
                             }
