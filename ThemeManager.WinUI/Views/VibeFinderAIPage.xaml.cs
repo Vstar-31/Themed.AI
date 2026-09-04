@@ -124,7 +124,7 @@ public sealed partial class VibeFinderAIPage : Page
         fd.append('username', '{safeUser}');
         fd.append('password', '{safePass}');
 
-        const res = await fetch('/auth/token', {{
+        const res = await fetch('https://vibefinderai.onrender.com/auth/token', {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
             body: fd,
@@ -204,7 +204,7 @@ public sealed partial class VibeFinderAIPage : Page
         const fd = new URLSearchParams();
         fd.append('username', '{safeUser}');
         fd.append('password', '{safePass}');
-        const res = await fetch('/auth/token', {{
+        const res = await fetch('https://vibefinderai.onrender.com/auth/token', {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
             body: fd,
