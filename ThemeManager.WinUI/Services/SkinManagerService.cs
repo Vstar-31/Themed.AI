@@ -374,14 +374,14 @@ public sealed class SkinManagerService : IDisposable
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 100, Height = 100 });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 120, Y = 15, Width = 170, Height = 30, FontSize = 16, Bold = true });
             primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeArtist", X = 120, Y = 45, Width = 170, Height = 25, FontSize = 14 });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 160, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 155, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
             _skins.Add(primary);
             changed = true;
         }
         if (!primary.Meters.Any(m => m.ActionUrl == "themed://media/prev"))
         {
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
             changed = true;
         }
         if (!primary.Measures.Any(m => m.Name == "VibeState"))
@@ -391,7 +391,7 @@ public sealed class SkinManagerService : IDisposable
         }
         if (!primary.Meters.Any(m => m.MeasureName == "VibeState"))
         {
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 120, Y = 75, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
+            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 117, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
             changed = true;
         }
         if (!primary.Measures.Any(m => m.Name == "VibeProgress"))
