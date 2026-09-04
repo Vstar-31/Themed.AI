@@ -35,6 +35,17 @@
     <ProjectReference Include="..\ThemeManager.Integration\ThemeManager.Integration.csproj" />
   </ItemGroup>
 
+  <!-- Phase 8 Local Gallery: bundled community pack(s), read by GalleryService at
+       AppContext.BaseDirectory/Assets/CommunityPacks (see App.xaml.cs). Narrowly scoped to this
+       one subfolder and one extension deliberately — see the "Reverted implicit item settings"
+       note below; a broader glob here risks the same MSBuild "duplicate item" collision with the
+       SDK's own default XAML/resource globs that note describes. -->
+  <ItemGroup>
+    <Content Include="Assets\CommunityPacks\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- Reverted implicit item settings to use defaults and removed explicit duplications -->
 
 </Project>

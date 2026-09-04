@@ -107,6 +107,12 @@ public sealed partial class MainWindow : Window
         SetActiveNav(NavWidgetVibe);
     }
 
+    private void NavGallery_Click(object sender, RoutedEventArgs e)
+    {
+        ContentFrame.Navigate(typeof(GalleryPage));
+        SetActiveNav(NavGallery);
+    }
+
     private void NavVibeFinderAI_Click(object sender, RoutedEventArgs e)
     {
         ContentFrame.Navigate(typeof(VibeFinderAIPage));
@@ -127,7 +133,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Swaps the visual state of sidebar buttons.</summary>
     private void SetActiveNav(Button active)
     {
-        Button[] all = [NavThemes, NavVibe, NavPreview, NavSystem, NavWidgets, NavWidgetVibe, NavVibeFinderAI, NavSettings];
+        Button[] all = [NavThemes, NavVibe, NavPreview, NavSystem, NavWidgets, NavWidgetVibe, NavGallery, NavVibeFinderAI, NavSettings];
         foreach (var btn in all)
         {
             btn.Style = btn == active

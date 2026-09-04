@@ -62,3 +62,17 @@ public sealed class DoubleToStringConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => double.TryParse(value?.ToString(), out var d) ? d : 1.0;
 }
+
+// ── CountToVisibilityConverter ───────────────────────────────────────────────
+/// <summary>0 → Collapsed, anything else → Visible. For binding an ItemsRepeater/section's own
+/// Visibility straight to its source collection's Count (e.g. GalleryPage hiding a pack's Widgets
+/// section entirely when a pack has no widgets) — BoolToVisibilityConverter above only accepts an
+/// actual bool, an int Count always falls through its `value is true` check to Collapsed.</summary>
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+        => value is int count && count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotSupportedException();
+}

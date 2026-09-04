@@ -1,0 +1,188 @@
+{
+  "Name": "Starter Pack",
+  "Description": "Four palettes and two ready-made widgets to get a fresh install past the default Cozy Café look on day one.",
+  "Author": "Themed.AI Team",
+  "Themes": [
+    {
+      "Id": "pack-starter-midnight-study",
+      "Name": "Midnight Study",
+      "Description": "Deep navy and charcoal with warm gold accents — a late-night reading lamp, not a black terminal.",
+      "IsBuiltIn": false,
+      "LastModified": "2026-01-01T00:00:00+00:00",
+      "BackgroundBase": "#1B1B2F",
+      "BackgroundAlt": "#262640",
+      "Surface": "#34345C",
+      "AccentPrimary": "#C9A15A",
+      "AccentStrong": "#E8C374",
+      "TextPrimary": "#ECE6D6",
+      "TextMuted": "#A6A0B8",
+      "BorderSubtle": "#3D3D5C",
+      "CornerRadiusScale": 0.8,
+      "DensityScale": 1.0,
+      "ApplyToSystemAccent": false,
+      "ApplyToWallpaper": false,
+      "CustomTokens": {}
+    },
+    {
+      "Id": "pack-starter-sage-garden",
+      "Name": "Sage Garden",
+      "Description": "Soft sage green and terracotta — calm, botanical, rounded.",
+      "IsBuiltIn": false,
+      "LastModified": "2026-01-01T00:00:00+00:00",
+      "BackgroundBase": "#EFF2EA",
+      "BackgroundAlt": "#DCE3D2",
+      "Surface": "#B7C4A8",
+      "AccentPrimary": "#7A8B5E",
+      "AccentStrong": "#56613F",
+      "TextPrimary": "#2F3823",
+      "TextMuted": "#6C7660",
+      "BorderSubtle": "#CBD4BE",
+      "CornerRadiusScale": 1.3,
+      "DensityScale": 1.05,
+      "ApplyToSystemAccent": false,
+      "ApplyToWallpaper": false,
+      "CustomTokens": {}
+    },
+    {
+      "Id": "pack-starter-blush-sunset",
+      "Name": "Blush Sunset",
+      "Description": "Warm coral and peach — the playful, high-energy end of the palette range.",
+      "IsBuiltIn": false,
+      "LastModified": "2026-01-01T00:00:00+00:00",
+      "BackgroundBase": "#FFF3EE",
+      "BackgroundAlt": "#FBDCCF",
+      "Surface": "#F3B8A0",
+      "AccentPrimary": "#E8785A",
+      "AccentStrong": "#C24E34",
+      "TextPrimary": "#4A2A20",
+      "TextMuted": "#9C7267",
+      "BorderSubtle": "#F0CBBB",
+      "CornerRadiusScale": 1.4,
+      "DensityScale": 1.0,
+      "ApplyToSystemAccent": false,
+      "ApplyToWallpaper": false,
+      "CustomTokens": {}
+    },
+    {
+      "Id": "pack-starter-slate-terminal",
+      "Name": "Slate Terminal",
+      "Description": "Cool grey-blue with a teal accent — sharp corners, tight spacing, the one built for a widget-dense desktop.",
+      "IsBuiltIn": false,
+      "LastModified": "2026-01-01T00:00:00+00:00",
+      "BackgroundBase": "#1E2228",
+      "BackgroundAlt": "#262B33",
+      "Surface": "#333A44",
+      "AccentPrimary": "#5FB3B3",
+      "AccentStrong": "#8FD6D6",
+      "TextPrimary": "#E4E8EC",
+      "TextMuted": "#838D99",
+      "BorderSubtle": "#3A414C",
+      "CornerRadiusScale": 0.5,
+      "DensityScale": 0.9,
+      "ApplyToSystemAccent": false,
+      "ApplyToWallpaper": false,
+      "CustomTokens": {}
+    }
+  ],
+  "Widgets": [
+    {
+      "Id": "pack-starter-cozy-clock",
+      "Name": "Cozy Clock",
+      "Enabled": false,
+      "X": 500,
+      "Y": 300,
+      "Width": 220,
+      "Height": 100,
+      "Opacity": 0.92,
+      "ClickThrough": false,
+      "Locked": false,
+      "DesktopLayer": false,
+      "UpdateIntervalMs": 1000,
+      "Measures": [
+        { "Name": "ClockTime", "Type": "Time" },
+        { "Name": "ClockDate", "Type": "Date" }
+      ],
+      "Meters": [
+        {
+          "Kind": "String",
+          "MeasureName": "ClockTime",
+          "Format": "{1}",
+          "X": 16, "Y": 12, "Width": 190, "Height": 46,
+          "FontSize": 32,
+          "Bold": true
+        },
+        {
+          "Kind": "String",
+          "MeasureName": "ClockDate",
+          "Format": "{1}",
+          "X": 16, "Y": 62, "Width": 190, "Height": 22,
+          "FontSize": 13
+        }
+      ]
+    },
+    {
+      "Id": "pack-starter-system-vitals",
+      "Name": "System Vitals",
+      "Enabled": false,
+      "X": 500,
+      "Y": 420,
+      "Width": 240,
+      "Height": 130,
+      "Opacity": 0.92,
+      "ClickThrough": false,
+      "Locked": false,
+      "DesktopLayer": false,
+      "UpdateIntervalMs": 1000,
+      "Measures": [
+        { "Name": "VitalsCpu", "Type": "Cpu" },
+        { "Name": "VitalsMem", "Type": "Memory" }
+      ],
+      "Meters": [
+        {
+          "Kind": "Ring",
+          "MeasureName": "VitalsCpu",
+          "X": 15, "Y": 15, "Width": 90, "Height": 90,
+          "BarMax": 100
+        },
+        {
+          "Kind": "String",
+          "MeasureName": "VitalsCpu",
+          "Format": "{0:F0}%",
+          "X": 15, "Y": 15, "Width": 90, "Height": 90,
+          "FontSize": 18,
+          "Bold": true,
+          "CenterText": true
+        },
+        {
+          "Kind": "String",
+          "StaticText": "CPU",
+          "X": 15, "Y": 100, "Width": 90, "Height": 18,
+          "FontSize": 11,
+          "CenterText": true
+        },
+        {
+          "Kind": "Ring",
+          "MeasureName": "VitalsMem",
+          "X": 135, "Y": 15, "Width": 90, "Height": 90,
+          "BarMax": 100
+        },
+        {
+          "Kind": "String",
+          "MeasureName": "VitalsMem",
+          "Format": "{0:F0}%",
+          "X": 135, "Y": 15, "Width": 90, "Height": 90,
+          "FontSize": 18,
+          "Bold": true,
+          "CenterText": true
+        },
+        {
+          "Kind": "String",
+          "StaticText": "RAM",
+          "X": 135, "Y": 100, "Width": 90, "Height": 18,
+          "FontSize": 11,
+          "CenterText": true
+        }
+      ]
+    }
+  ]
+}

@@ -44,10 +44,13 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
 - [x] Weather-reactive themes — pull conditions and auto-select a matching theme. Built this session: `IWeatherConditionProvider`/`WeatherCondition` (`ThemeManager.Core`) is a new, independent abstraction — deliberately not sharing `WeatherMeasure`'s cache, just its OpenWeatherMap endpoint pattern — implemented by `OpenWeatherMapConditionProvider` (`ThemeManager.Integration`), which maps OpenWeatherMap's ~15 condition codes onto 6 buckets (Clear/Clouds/Rain/Thunderstorm/Snow/Fog). Wired into `ThemeAutomationService` at priority #2, after Battery Saver but before Light/Dark and time-of-day — a judgment call about relative priority, not a spec requirement, worth revisiting if it doesn't feel right in practice. Settings → Theme Automation → "Weather-reactive". Plus dynamic ("use my current location") geolocation via `Windows.Devices.Geolocation.Geolocator`, added in the widget-generator commit. Not build-verified — written on Linux with no `dotnet`/NuGet access in-session; needs a real build on Windows before it's trusted. *(Note: the most recent commit before this session — "WidgetGenerator NLP pipeline..." — contains changes that look like fixes for real Windows build errors: `PlatformTarget` added to every `.csproj`, an `x:Bind Mode=OneWay` compile error fixed in `SkinsPage.xaml` (x:Bind's default is OneTime; OneWay/TwoWay requires the bound type to support change notification, which the list-item wrapper apparently doesn't for `Name`/`Enabled`/`Opacity`/`ClickThrough`/`Locked` — those bindings now read once and rely on the existing `Toggled`/`ValueChanged` handlers to persist edits instead of live-updating), `MainWindow` min-size enforcement. That's inferred from the diff, not confirmed — if it really was a green Windows build, this line is stale and Phase 7 is more trustworthy than it says.)*
 
 
-## 🚀 Upcoming Phases (To Do)
-
 ### Phase 6 — Richer Widget Meters & External Data
 *Goal: Make widgets vastly more capable and dynamic*
+
+*Moved here from Upcoming — every listed item below is checked off, VibeFinderAI integration
+included. The one caveat every single entry in this phase repeats and none has ever resolved:
+nothing in it has been built on an actual Windows machine. That gap is bigger than anything in
+Phase 8 below and worth closing before trusting any of this in front of a person other than Vijay.*
 - **Richer meters:**
   - [x] Conditional/threshold coloring (e.g. CPU bar turns red past 90%) — applies to Bar, Graph, and now Icon meters; String meters get it too via "apply to text" toggle.
   - [x] Per-core CPU (`CpuCoreMeasure`, targets a core index), multi-drive disk (`DiskFree`/`DiskUsed` target a drive path).
@@ -265,14 +268,123 @@ Full in-house NLP pipeline: Porter stemmer, VADER-lite sentiment, 280-word color
           The C# side isn't — still no dotnet/NuGet access in this environment, same standing
           caveat as every other session in this integration; needs a real build on Windows before
           any of this is trusted, same as everything above it.
+      - **Everything from "Follow-up session" onward above is now stale too** — landed in
+        `7711fb3` ("add VibeFinderAI integration with dedicated UI page, WebView2 state management,
+        and thematic polling support"), a commit that once again never updated this file, so this
+        went undiscovered until the next session's audit. Same recurring pattern as the "still
+        genuinely open" correction earlier in this thread. What actually shipped is a real
+        architectural pivot away from both the hidden-YouTube-WebView2 player *and* the `WebEmbed`
+        floating-panel approach above, not an extension of either:
+        - **The hidden YouTube player is gone.** `MainWindow.InitializeYouTubePlayer`,
+          `PlayYouTubeTrack`, `YoutubePollTimer_Tick`, and the `HiddenYoutubePlayer` XAML control
+          itself were all removed outright — not deprecated, deleted. `YouTubePlaybackState.cs`
+          (the `CurrentTime`/`Duration` static class two sessions above added) is now orphaned:
+          nothing constructs or reads it except one stale doc-comment line in
+          `VibeFinderMeasure.cs`.
+        - **In its place: a real bidirectional bridge to VibeFinderAI's own frontend**, not a
+          server-resolved-video-id workaround. New `ThemeManager.Integration.Skins.
+          VibeFinderWebState` (a static class, same shared-state pattern `YouTubePlaybackState` used)
+          holds `IsActive`/`IsPlaying`/`Title`/`Artist`/`CoverArt`/`PreviewUrl`/`CurrentTime`/
+          `Duration`, parsed by its own `HandleMessage(json)` from a `VIBEFINDER_STATE` payload the
+          frontend now pushes via `window.chrome.webview.postMessage` on every play state / track /
+          elapsed-time change (added to `MusicPlayer.jsx` itself, so it fires for *any* page that
+          mounts that component — see the matching vibefinderai-repo entry below), plus a settable
+          `SendCommand` (`Action<string>?`) for the reverse direction. `VibeFinderAIPage` — a new
+          dedicated page (`NavVibeFinderAI` in `MainWindow`'s nav rail) hosting the existing
+          `VibeFinderWebView` (full site, not a compact route) — wires both directions on
+          `CoreWebView2Initialized`: `WebMessageReceived` → `VibeFinderWebState.HandleMessage`, and
+          `SendCommand` → `VibeFinderWebView.CoreWebView2.PostWebMessageAsJson`, detaching both on
+          `Page_Unloaded` so a closed page can't leave stale state active. `VibeFinderMeasure.
+          Refresh()` now reads live state from `VibeFinderWebState` whenever `IsActive`, falling
+          back to `VibeFinderPreviewPlayer` (the original 30s-iTunes-preview player, `Progress`/
+          `CurrentTime`/`Duration` properties added to it to match the shape this needed) when it
+          isn't. `SkinHostWindow`'s native play/pause/next/prev click dispatch now checks
+          `VibeFinderWebState.IsActive` first and routes through `SendCommand` (`{"command":
+          "playpause"|"next"|"prev"}`, matching the frontend's expected shape exactly) before
+          falling back to the old `VibeFinderPreviewPlayer` calls. The `ImageUrl`-gating and
+          `FormatClock` timestamp-text fixes two sessions above carried forward correctly into both
+          the `VibeFinderWebState` and `VibeFinderPreviewPlayer` branches of `Refresh()` — neither
+          got lost in the rework.
+        - **The `WebEmbed` floating-panel addition from the immediately preceding entry above was
+          deliberately reverted, not forgotten.** New code at the top of `EnsureVibeFinderSkinsExist`
+          strips any `MeterKind.WebEmbed` meter from every skin on each load
+          (`skin.Meters.RemoveAll(m => m.Kind == MeterKind.WebEmbed)`, restoring the 230px of height
+          that panel had claimed) — a one-time migration for anyone who'd already picked up that
+          version, not a bug. The reasoning holds up: a second, independent embedded `MusicPlayer`
+          instance inside a floating widget would run its own playback, disconnected from whatever
+          `VibeFinderAIPage`'s embed is already doing — two players is worse than the single shared
+          bridge above, which every native meter and every widget now mirrors and controls
+          identically regardless of which floating widget it lives on. The `MeterKind.WebEmbed`
+          *infrastructure* itself (the enum value, `WebEmbedMeterViewModel`, `SkinHostWindow.
+          BuildWebEmbedVisual`, the matching `SkinEditorPage`/`SkinEditorViewModel` editor support)
+          was left in place, unused but harmless — nothing currently creates a meter of that kind,
+          but hand-adding one via the skin editor would still work. `frontend/src/EmbedPlayer.jsx`
+          and its `/embed/player` route (vibefinderai repo) are correspondingly orphaned too —
+          nothing points a `WebView2` at that route anymore.
+        - **A "prev" (⏪) button was added** to `VibeFinder Primary` and `VibeFinder Playlist` (only
+          `VibeFinder Minimal` doesn't have room) — both had play/pause + next only, no way to go
+          back. Existing widgets get careful non-destructive migration: `Playlist`'s prev/play-pause/
+          next row shifts the existing two buttons right and inserts prev at the freed-up X rather
+          than overlapping anything.
+        - **vibefinderai repo, `frontend/src/MusicPlayer.jsx`:** the `THEMED.AI BRIDGE` block above
+          is new here too (`postMessage` out, a `window.chrome.webview` `"message"` listener in,
+          dispatching to memoized `togglePlay`/`handleNext`/`handlePrev`). Separately, a genuine
+          race condition fix, unrelated to the bridge: the queueIdx-changed effect that loads a new
+          track now guards its async `fetchVideoId(...).then(...)` continuation behind an `active`
+          flag set `false` in the effect's own cleanup — before this, skipping tracks rapidly could
+          let a stale resolution from an *earlier* track land after a *later* one had already
+          started loading, pointing `iframeRef.current.src` at the wrong video. `handlePrev`/
+          `togglePlay` are now `useCallback`-memoized (needed so the bridge's inbound-message
+          listener effect has stable dependencies rather than re-subscribing every render).
+        - Net effect on the original bug report (album cover covering the play button, no audio,
+          no progress/timestamps, "that right panel should show real controls"): all four are fixed
+          on `main` right now, confirmed by re-cloning both repos fresh and diffing against every
+          file touched above — not through the `WebEmbed`-panel route the immediately preceding
+          entry built, through the bridge instead. Still not build-verified on a real Windows
+          machine — no session in this entire integration has been, and that's the one standing gap
+          bigger than anything Phase 8 below would add.
     - **Session hygiene note:** auditing the commit that added the Ring/Icon NLP trigger words (`705f9ead`) surfaced a pattern worth naming — verifying what `PorterStemmer.Stem()` does to a handful of words had been re-implemented from scratch *seven times* across this repo's history (root `Program.cs`/`StemTest.cs`/`test.cs`, `StemTest/`, `TestStem/`, `TestStem2/`, and a `StemmingTests.PrintStems` xUnit test that printed but never asserted), including one (`TestStem2`) that doesn't compile — invalid escape sequences in a non-verbatim string literal writing to a hardcoded `G:\my projects\...` path — and one (`TestStem`) targeting `net10.0`, inconsistent with the rest of the repo's `net8.0`. All six scratch variants deleted; `StemmingTests.cs` rewritten as real `[Theory]`/`[Fact]` assertions (values checked against a faithful Python port of `PorterStemmer.cs`, not hand-traced) covering the VibeFinder and Ring/Icon trigger words. One genuinely interesting, verified-not-assumed finding from that exercise: `WidgetLexicon["play"]` (→ style boost, comment says `// "playful"`) is *not* a fixed point of its own stemmer — `Stem("play")` alone gives `"plai"` (step 1c's trailing-y rule fires on the bare word), but `Stem("playful")` correctly gives `"play"` (step 3's `-ful` rule fires first and consumes the suffix before step 1c would ever see the shortened word again). The entry is correct and reachable exactly as commented; a blanket "every lexicon key should equal `Stem(key)`" test — the first version written this session — would have flagged it as a false regression, so that blanket assertion was replaced with the narrower, empirically-checked one now in `StemmingTests.cs`. `TestVibe/` and `StressTestPrompts/` were left alone — both compile correctly (proper `ProjectReference` to `ThemeManager.Core`) and do something the new xUnit tests don't (ad-hoc single-prompt output inspection and bulk NLP accuracy sweeps, respectively).
 - **External data:**
   - [x] Generic Web/JSON measure (`WebJsonMeasure`) — URL + JSON path, polled on an interval.
   - [x] 2–3 shipped presets on top of it — `WebJsonPresets` (`ThemeManager.Core`) plus a presets `ComboBox` in the skin editor, shown only for WebJson measures. Three presets, each URL/path checked against current API docs rather than guessed: this repo's own GitHub star count, Bitcoin price (CoinGecko's key-free demo tier), and a random-advice API. All plain unauthenticated GETs, so `WebJsonMeasure` itself needed no changes.
 
+## 🚀 Upcoming Phases (To Do)
+
 ### Phase 8 — Ecosystem & Sharing
 *Goal: make themes and widgets shareable and discoverable*
 - **Local Gallery:** Browse community-submitted themes/widgets bundled as a local JSON pack.
+  - [x] Built (chat session). `CommunityPack` (Core/Models) is a plain data bag over the existing
+    `CozyTheme`/`SkinDefinition` types — no new format to design or version, matching how
+    "local" was scoped: a pack is just a JSON file, no server or moderation queue. `GalleryService`
+    (Core/Services) loads every `*.json` under a folder, skipping (and recording, not silently
+    swallowing) any that fail to parse so one bad file can't take the whole gallery down; also
+    holds `PrepareThemeForImport`/`PrepareWidgetForImport` — a JSON-round-trip deep clone with a
+    fresh Id, so an added item is genuinely independent of what's still sitting in the loaded pack
+    (no shared-reference mutation risk if the person edits it afterward), and widgets are forced
+    `Enabled = false` on add regardless of what the pack file says, matching every other
+    widget-creation path in this app. `GalleryPage` (new nav item, "🖼️ Gallery", between Widget
+    Generator and VibeFinder AI) renders pack sections as nested `ItemsRepeater`s — modeled
+    directly on `ThemesPage`, with one real difference: `ThemesPage` colors its palette strip from
+    code-behind (`ElementPrepared` + `VisualTreeHelper`) because it only has one top-level
+    repeater with a stable name; a pack section's inner repeater has no such stable name once
+    nested inside an outer one, so the swatches bind color straight through the existing
+    `HexToBrushConverter` in XAML instead — simpler, and it turned out to generalize better.
+    One real bug caught before it shipped: the first draft bound `Themes.Count`/`Widgets.Count`
+    (and a plain `Author` string) through the existing `BoolToVisibilityConverter`, which only
+    matches an actual C# `bool` (`value is true`) — an `int` or `string` never satisfies that, so
+    every section would have silently rendered as permanently `Collapsed`. Added
+    `CountToVisibilityConverter` for the two Count cases and just always show `Author` unbound
+    for the string case, rather than stretching the existing converter to do something its own
+    doc comment says it doesn't. Ships with one starter pack (`Assets/CommunityPacks/
+    starter-pack.json`, bundled as Content via the `.csproj` — narrowly scoped to that one folder
+    and extension given this file's own earlier note about a broad glob colliding with the SDK's
+    default XAML item globs): four hand-authored themes (Midnight Study, Sage Garden, Blush
+    Sunset, Slate Terminal) spanning dark/light and sharp/rounded, plus two widgets (Cozy Clock;
+    System Vitals — CPU/RAM as a `Ring`-meter pair, the first pack content to actually exercise
+    that meter kind end-to-end). `App.Gallery` loads from `AppContext.BaseDirectory/Assets/
+    CommunityPacks` — not `ApplicationData.Current`, same reasoning as everywhere else in this
+    unpackaged app already loads bundled content from disk rather than packaged app storage.
+    Not build-verified, same standing caveat as this entire integration.
 - **Remixing:** "Remix this theme" or "Remix this widget" button opens it in the editor pre-seeded.
 - **Import/export v2:**
   - Export themes as `.cozy` and widgets as `.aiwidget` with file associations.

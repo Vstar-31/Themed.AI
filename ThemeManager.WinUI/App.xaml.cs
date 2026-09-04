@@ -51,6 +51,10 @@ public partial class App : Application
     /// theme automatically per <see cref="AppSettings.Schedule"/> — see ThemeAutomationService.</summary>
     public static ThemeAutomationService Automation { get; private set; } = null!;
 
+    /// <summary>Phase 8 Local Gallery — bundled community pack(s) of themes/widgets to browse and
+    /// add to the person's own library. See ThemeManager.Core.Services.GalleryService.</summary>
+    public static GalleryService Gallery { get; private set; } = null!;
+
     /// <summary>
     /// Set right before we deliberately let the main window actually close (from the tray's
     /// Exit command). While false, the AppWindow.Closing handler below intercepts every close
@@ -137,6 +141,16 @@ public partial class App : Application
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
             "ThemedAI", "profile.json"));
         await SkinManager.InitializeAsync();
+
+        // ── Phase 8 Local Gallery: bundled starter pack(s), read-only, no network involved ──
+        // AppContext.BaseDirectory rather than ApplicationData.Current — this app is unpackaged
+        // (WindowsPackageType=None; see SettingsPage's startup-toggle comments for the full
+        // history of why ApplicationData throws without an MSIX identity), so bundled content
+        // ships as plain Content files copied next to the exe, not packaged app assets. A missing
+        // or empty folder just means an empty gallery (GalleryService.LoadAsync handles that),
+        // not a startup failure — nothing downstream depends on a pack existing.
+        Gallery = new GalleryService(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets", "CommunityPacks"));
+        await Gallery.LoadAsync();
 
         // ── Theme automation: time-of-day schedule, Windows light/dark following, battery saver,
         // weather-reactive ──
