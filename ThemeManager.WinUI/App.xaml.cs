@@ -142,6 +142,15 @@ public partial class App : Application
             "ThemedAI", "profile.json"));
         await SkinManager.InitializeAsync();
 
+        // VibeFinderAI pre-warm: log the hidden embed in ahead of time if a VibeFinder widget
+        // is already active (covers "a few seconds after launch"), and again whenever one gets
+        // activated afterward (SkinsChanged now actually fires on enable/disable — see
+        // SkinManagerService.SetEnabledAsync) — so by the time the user opens the VibeFinderAI
+        // tab, or a widget needs a fresh playlist, the session already exists instead of
+        // starting cold. See MainWindow.EnsureVibeFinderPrewarm for the actual logic/caveats.
+        MainWindow.EnsureVibeFinderPrewarm();
+        SkinManager.SkinsChanged += (_, _) => MainWindow.EnsureVibeFinderPrewarm();
+
         // ── Phase 8 Local Gallery: bundled starter pack(s), read-only, no network involved ──
         // AppContext.BaseDirectory rather than ApplicationData.Current — this app is unpackaged
         // (WindowsPackageType=None; see SettingsPage's startup-toggle comments for the full

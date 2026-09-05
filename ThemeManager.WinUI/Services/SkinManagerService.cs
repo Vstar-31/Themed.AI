@@ -110,7 +110,11 @@ public sealed class SkinManagerService : IDisposable
         if (enabled) OpenWindowFor(skin);
         else await CloseWindowFor(skin);
 
-        await PersistAsync(false);
+        // notifyListChanged: true — SkinsChanged's own doc comment says it fires on "a setting
+        // changed" too, not just add/remove, but this call was passing false, so nothing outside
+        // this class could ever observe a widget being toggled on/off (see MainWindow.
+        // EnsureVibeFinderPrewarm, which needs exactly that to pre-warm on widget activation).
+        await PersistAsync(true);
     }
 
     public async Task SetOpacityAsync(SkinDefinition skin, double opacity)

@@ -122,5 +122,18 @@
                Grid.Column="2"
                Background="{StaticResource AppBackgroundBrush}" />
 
+        <!-- ════════════════════════════════════════════════════════════
+             HIDDEN VIBEFINDER PRE-WARM BROWSER
+             Never shown — logs into vibefinderai.netlify.app ahead of time (see
+             MainWindow.EnsureVibeFinderPrewarm) so VibeFinderAIPage's own visible browser, and
+             any WebEmbed widget meters, find a session already in this WebView2 profile's
+             localStorage instead of starting cold. Zero-size + Collapsed so it never
+             participates in layout regardless of which column it sits under.
+        ════════════════════════════════════════════════════════════ -->
+        <WebView2 x:Name="VibeFinderPrewarmWebView"
+                  Grid.ColumnSpan="3"
+                  Width="0" Height="0"
+                  Visibility="Collapsed" />
+
     </Grid>
 </Window>
