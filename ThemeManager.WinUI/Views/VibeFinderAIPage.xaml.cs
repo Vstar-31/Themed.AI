@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using ThemeManager.WinUI.Services;
 using System.Linq;
+using System.Text.Json;
 
 namespace ThemeManager.WinUI.Views;
 
@@ -10,6 +11,21 @@ public sealed partial class VibeFinderAIPage : Page
 {
     private readonly SkinManagerService _skinManager = App.SkinManager;
     private bool _isInitializing = true;
+
+    /// <summary>Held so <see cref="Page_Unloaded"/> can detach it — App.ThemeService outlives
+    /// this page, so an anonymous lambda subscribed without keeping a reference would leak a
+    /// new handler every time this page is navigated to.</summary>
+    private System.EventHandler<ThemeManager.Core.Models.CozyTheme>? _themeChangedHandler;
+
+    /// <summary>Same sentinel VibeFinderMeasure.ResolveVibeText matches on the Target's third
+    /// segment — kept in sync here so a Vibe Prompt of "$theme" (the PromptBox default) resolves
+    /// the same way for the embed as it does for the native widgets.</summary>
+    private const string ActiveThemeSentinel = "$theme";
+
+    /// <summary>Track count pushed into the embed's own Tracks selector whenever the prompt is
+    /// (re)synced — fixed at the top tier so the embed's own "Run Analysis" produces a full
+    /// playlist rather than whatever the web app's default (5) happens to be.</summary>
+    private const int AutoFillTrackLimit = 50;
 
     public VibeFinderAIPage()
     {
@@ -20,10 +36,23 @@ public sealed partial class VibeFinderAIPage : Page
             VibeFinderWebView.CoreWebView2.WebMessageReceived += (sender, args) =>
             {
                 var json = args.TryGetWebMessageAsString();
-                if (!string.IsNullOrEmpty(json))
+                if (string.IsNullOrEmpty(json)) return;
+
+                // The embedded React app posts this once it has mounted and registered its own
+                // "message" listener (see the THEMED.AI BRIDGE block in the frontend's App.jsx).
+                // It's a handshake rather than a blind push on our side because a command posted
+                // before that listener exists is simply dropped by WebView2 — and
+                // NavigationCompleted (below) firing isn't a reliable proxy for "React has
+                // mounted," especially across the extra reload the auto-login script below can
+                // trigger. Every mount (including that reload's remount) re-announces, so this
+                // fires again automatically whenever the embed reloads.
+                if (IsAppReadySignal(json))
                 {
-                    ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json);
+                    PushVibePromptAndTrackLimit();
+                    return;
                 }
+
+                ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json);
             };
             
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = (cmd) => 
@@ -73,6 +102,20 @@ public sealed partial class VibeFinderAIPage : Page
         }
 
         _isInitializing = false;
+
+        // Closes Phase 6's "follow active theme automatically" gap for the embed too — that
+        // work (IActiveThemeProvider, ThemeVibeText, the "$theme" sentinel) already made the
+        // native widgets react live to a theme switch; without this, a Vibe Prompt of "$theme"
+        // would only pick up the new theme's text the next time the embed happens to reload or
+        // the user hits Save & Apply, not the moment the theme actually changes.
+        _themeChangedHandler = (_, _) =>
+        {
+            if (string.Equals(PromptBox.Text?.Trim(), ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase))
+            {
+                PushVibePromptAndTrackLimit();
+            }
+        };
+        App.ThemeService.ThemeChanged += _themeChangedHandler;
     }
 
     // ── Auto-login injection ─────────────────────────────────────────────────
@@ -182,6 +225,12 @@ public sealed partial class VibeFinderAIPage : Page
         // doesn't have to navigate away and back for them to take effect.
         _ = TryInjectLoginAsync(user, pass);
 
+        // And push the (possibly just-changed) Vibe Prompt + track count straight into the
+        // embed's own input/selector, independent of whether the login refresh above reloads
+        // the page — if it does reload, the embed's remount re-announces itself and this gets
+        // sent again anyway (see WebMessageReceived), so there's no risk of the two racing.
+        PushVibePromptAndTrackLimit();
+
         StatusText.Text = "Saved!";
         StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
         StatusText.Visibility = Visibility.Visible;
@@ -224,8 +273,65 @@ public sealed partial class VibeFinderAIPage : Page
         catch { }
     }
 
+    /// <summary>True if the embed's React app just posted its "mounted and listening" ping
+    /// (<c>{"type":"VIBEFINDER_APP_READY"}</c>), as opposed to a player-state update destined
+    /// for <see cref="ThemeManager.Integration.Skins.VibeFinderWebState"/>.</summary>
+    private static bool IsAppReadySignal(string messageJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(messageJson);
+            return doc.RootElement.TryGetProperty("type", out var typeEl)
+                && typeEl.GetString() == "VIBEFINDER_APP_READY";
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Pushes the saved Vibe Prompt — resolved through the same "$theme" sentinel
+    /// <c>VibeFinderMeasure.ResolveVibeText</c> honors for the native widgets — plus the fixed
+    /// <see cref="AutoFillTrackLimit"/> into the embedded web app's own prompt textarea and
+    /// Tracks selector, then triggers the actual search, via the THEMED.AI BRIDGE the frontend
+    /// registers on mount (<c>window.chrome.webview</c> "message" listener in <c>App.jsx</c>).
+    /// The run command carries its own text/trackLimit rather than relying on the two field-sync
+    /// commands above it having already been applied — those land as two separate React state
+    /// updates, and the frontend's own guard (<c>analyzeVibe</c>'s <c>overrideText</c>/
+    /// <c>overrideTrackLimit</c>) exists precisely so the run doesn't have to wait on that.
+    /// No-ops quietly if the embed isn't in a state to receive it (SendCommand not wired up, or
+    /// an empty/blank resolved prompt) rather than sending commands the web app would just
+    /// reject anyway.</summary>
+    private void PushVibePromptAndTrackLimit()
+    {
+        if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is null) return;
+
+        string rawPrompt = PromptBox.Text?.Trim() ?? "";
+        string vibeText = string.Equals(rawPrompt, ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase)
+            ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
+            : rawPrompt;
+
+        if (string.IsNullOrWhiteSpace(vibeText)) return;
+
+        try
+        {
+            string promptCmd = JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText });
+            string trackLimitCmd = JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit });
+            string runCmd = JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit });
+
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(promptCmd);
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(trackLimitCmd);
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(runCmd);
+        }
+        catch { /* WebView2 may have been torn down */ }
+    }
+
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
+        if (_themeChangedHandler is not null)
+        {
+            App.ThemeService.ThemeChanged -= _themeChangedHandler;
+        }
         ThemeManager.Integration.Skins.VibeFinderWebState.Detach();
     }
 }
