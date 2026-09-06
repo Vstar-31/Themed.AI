@@ -27,16 +27,26 @@ public sealed partial class VibeFinderAIPage : Page
     /// playlist rather than whatever the web app's default (5) happens to be.</summary>
     private const int AutoFillTrackLimit = 50;
 
+    /// <summary>ContentDialog allows only one open per XamlRoot at a time — guards against a
+    /// second issue arriving while one's already showing, which would otherwise throw.</summary>
+    private bool _dialogOpen;
+
     public VibeFinderAIPage()
     {
         this.InitializeComponent();
         
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
-            VibeFinderWebView.CoreWebView2.WebMessageReceived += (sender, args) =>
+            VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
                 var json = args.TryGetWebMessageAsString();
                 if (string.IsNullOrEmpty(json)) return;
+
+                if (VibeFinderAuth.TryParseLoginResult(json, out bool loginSuccess, out string? loginReason))
+                {
+                    await HandleLoginResultAsync(loginSuccess, loginReason);
+                    return;
+                }
 
                 // The embedded React app posts this once it has mounted and registered its own
                 // "message" listener (see the THEMED.AI BRIDGE block in the frontend's App.jsx).
@@ -46,9 +56,15 @@ public sealed partial class VibeFinderAIPage : Page
                 // mounted," especially across the extra reload the auto-login script below can
                 // trigger. Every mount (including that reload's remount) re-announces, so this
                 // fires again automatically whenever the embed reloads.
-                if (IsAppReadySignal(json))
+                //
+                // hasToken tells us whether the embed's React state already has a JWT. On the
+                // very first mount (before auto-login has run), hasToken is false — we push the
+                // prompt/trackLimit fields but skip runAnalysis (it would bail at `if (!token)`
+                // anyway). The auto-login script stores the JWT and reloads, so the second mount
+                // sends VIBEFINDER_APP_READY with hasToken:true, and this time we trigger the run.
+                if (TryParseAppReady(json, out bool hasToken))
                 {
-                    PushVibePromptAndTrackLimit();
+                    PushVibePromptAndTrackLimit(triggerRun: hasToken);
                     return;
                 }
 
@@ -140,52 +156,16 @@ public sealed partial class VibeFinderAIPage : Page
         // Always skip the tutorial
         try
         {
-            await sender.ExecuteScriptAsync("try { localStorage.setItem('vf_tutorial_seen', '1'); } catch(e) {}");
+            await sender.ExecuteScriptAsync(VibeFinderAuth.SkipTutorialScript);
         }
         catch { /* WebView2 may have been torn down */ }
 
         // Auto-login only if we have saved credentials and there's no existing token
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass)) return;
 
-        // Escape the credentials for safe JS string embedding (handle quotes/backslashes)
-        string safeUser = user.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", "").Replace("\r", "");
-        string safePass = pass.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", "").Replace("\r", "");
-
-        // The injected script:
-        // - Checks localStorage for an existing token — if found, the user is already logged in
-        // - If no token, calls the same /auth/token endpoint the web app's own submitAuth uses
-        // - Stores the result and reloads so React picks it up on useState init
-        // - Uses a sessionStorage flag to prevent infinite reload loops if auth fails
-        string autoLoginScript = $@"
-(async function() {{
-    try {{
-        if (localStorage.getItem('vf_token')) return;          // already logged in
-        if (sessionStorage.getItem('_themed_auto_login')) return; // already tried this session
-        sessionStorage.setItem('_themed_auto_login', '1');
-
-        const fd = new URLSearchParams();
-        fd.append('username', '{safeUser}');
-        fd.append('password', '{safePass}');
-
-        const res = await fetch('https://vibefinderai.onrender.com/auth/token', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
-            body: fd,
-        }});
-
-        if (res.ok) {{
-            const data = await res.json();
-            if (data.access_token) {{
-                localStorage.setItem('vf_token', data.access_token);
-                location.reload();
-            }}
-        }}
-    }} catch(e) {{}}
-}})();";
-
         try
         {
-            await sender.ExecuteScriptAsync(autoLoginScript);
+            await sender.ExecuteScriptAsync(VibeFinderAuth.BuildAutoLoginScript(user, pass));
         }
         catch { /* WebView2 may have been torn down during navigation */ }
     }
@@ -225,6 +205,11 @@ public sealed partial class VibeFinderAIPage : Page
         // doesn't have to navigate away and back for them to take effect.
         _ = TryInjectLoginAsync(user, pass);
 
+        // The hidden prewarm browser (MainWindow) may have already given up on an earlier,
+        // now-stale set of credentials — let it try again with these ones rather than staying
+        // stuck until the app restarts.
+        App.MainWindow?.ResetVibeFinderPrewarm();
+
         // And push the (possibly just-changed) Vibe Prompt + track count straight into the
         // embed's own input/selector, independent of whether the login refresh above reloads
         // the page — if it does reload, the embed's remount re-announces itself and this gets
@@ -244,45 +229,86 @@ public sealed partial class VibeFinderAIPage : Page
         {
             if (VibeFinderWebView.CoreWebView2 is null) return;
 
-            string safeUser = user.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", "").Replace("\r", "");
-            string safePass = pass.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", "").Replace("\r", "");
-
-            string script = $@"
-(async function() {{
-    try {{
-        const fd = new URLSearchParams();
-        fd.append('username', '{safeUser}');
-        fd.append('password', '{safePass}');
-        const res = await fetch('https://vibefinderai.onrender.com/auth/token', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
-            body: fd,
-        }});
-        if (res.ok) {{
-            const data = await res.json();
-            if (data.access_token) {{
-                localStorage.setItem('vf_token', data.access_token);
-                location.reload();
-            }}
-        }}
-    }} catch(e) {{}}
-}})();";
-
-            await VibeFinderWebView.CoreWebView2.ExecuteScriptAsync(script);
+            await VibeFinderWebView.CoreWebView2.ExecuteScriptAsync(VibeFinderAuth.BuildForceLoginScript(user, pass));
         }
         catch { }
     }
 
-    /// <summary>True if the embed's React app just posted its "mounted and listening" ping
-    /// (<c>{"type":"VIBEFINDER_APP_READY"}</c>), as opposed to a player-state update destined
-    /// for <see cref="ThemeManager.Integration.Skins.VibeFinderWebState"/>.</summary>
-    private static bool IsAppReadySignal(string messageJson)
+    /// <summary>Handles a VIBEFINDER_LOGIN_RESULT message from this page's own embedded browser
+    /// (see <see cref="VibeFinderAuth.TryParseLoginResult"/>). A "network" reason just gets
+    /// reflected in the existing StatusText — it's self-healing (MainWindow's hidden prewarm
+    /// browser, sharing this same WebView2 profile, will supply a token the moment it succeeds
+    /// there too) and not disruptive enough to warrant a modal. Anything else means retrying
+    /// won't help on its own, so it gets an actual dialog instead.</summary>
+    private async System.Threading.Tasks.Task HandleLoginResultAsync(bool success, string? reason)
     {
+        if (success) return;
+
+        if (reason == "network")
+        {
+            StatusText.Text = "Couldn't reach VibeFinder AI — check your connection.";
+            StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Orange);
+            StatusText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (reason == "invalid_credentials")
+        {
+            await ShowIssueDialogAsync(
+                "VibeFinder AI sign-in failed",
+                "That username/password were rejected. Double-check them and hit Save & Apply again.");
+        }
+        else
+        {
+            await ShowIssueDialogAsync(
+                "VibeFinder AI is unreachable",
+                "VibeFinder AI's servers returned an error rather than signing in. This is usually temporary — try Save & Apply again in a bit.");
+        }
+    }
+
+    private async System.Threading.Tasks.Task ShowIssueDialogAsync(string title, string message)
+    {
+        if (_dialogOpen) return;
+        if (this.XamlRoot is null) return;
+
+        _dialogOpen = true;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+        catch { /* e.g. page navigated away mid-dialog */ }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    /// <summary>Checks whether <paramref name="messageJson"/> is the embed's "mounted and listening"
+    /// handshake (<c>{"type":"VIBEFINDER_APP_READY", "hasToken": bool}</c>). Returns false for
+    /// any other message type. <paramref name="hasToken"/> indicates whether the React app already
+    /// has a JWT in its state — false on the first mount before auto-login, true after.</summary>
+    private static bool TryParseAppReady(string messageJson, out bool hasToken)
+    {
+        hasToken = false;
         try
         {
             using var doc = JsonDocument.Parse(messageJson);
-            return doc.RootElement.TryGetProperty("type", out var typeEl)
-                && typeEl.GetString() == "VIBEFINDER_APP_READY";
+            if (!doc.RootElement.TryGetProperty("type", out var typeEl)
+                || typeEl.GetString() != "VIBEFINDER_APP_READY")
+                return false;
+
+            if (doc.RootElement.TryGetProperty("hasToken", out var tokenEl)
+                && tokenEl.ValueKind == JsonValueKind.True)
+                hasToken = true;
+
+            return true;
         }
         catch
         {
@@ -302,7 +328,11 @@ public sealed partial class VibeFinderAIPage : Page
     /// No-ops quietly if the embed isn't in a state to receive it (SendCommand not wired up, or
     /// an empty/blank resolved prompt) rather than sending commands the web app would just
     /// reject anyway.</summary>
-    private void PushVibePromptAndTrackLimit()
+    /// <summary>Pushes the saved Vibe Prompt and track limit into the embed. When
+    /// <paramref name="triggerRun"/> is true, also sends a runAnalysis command to kick off
+    /// the search. When false (first mount, before auto-login), only the field values are
+    /// synced — the reload after login will call this again with triggerRun:true.</summary>
+    private void PushVibePromptAndTrackLimit(bool triggerRun = true)
     {
         if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is null) return;
 
@@ -317,11 +347,15 @@ public sealed partial class VibeFinderAIPage : Page
         {
             string promptCmd = JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText });
             string trackLimitCmd = JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit });
-            string runCmd = JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit });
 
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(promptCmd);
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(trackLimitCmd);
-            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(runCmd);
+
+            if (triggerRun)
+            {
+                string runCmd = JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit });
+                ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(runCmd);
+            }
         }
         catch { /* WebView2 may have been torn down */ }
     }

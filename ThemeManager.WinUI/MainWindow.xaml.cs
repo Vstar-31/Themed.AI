@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using ThemeManager.Integration.Skins;
 using Microsoft.UI.Dispatching;
 using Microsoft.Web.WebView2.Core;
+using Windows.Networking.Connectivity;
 
 namespace ThemeManager.WinUI;
 
@@ -19,6 +20,16 @@ public sealed partial class MainWindow : Window
     /// <summary>Guards against re-navigating an already-(attempted-)warm browser — see
     /// <see cref="EnsureVibeFinderPrewarm"/>.</summary>
     private bool _vibeFinderPrewarmStarted;
+
+    /// <summary>True while waiting on <see cref="NetworkInformation.NetworkStatusChanged"/> to
+    /// retry a prewarm that was skipped (or failed) for lack of connectivity — prevents piling up
+    /// duplicate subscriptions if <see cref="EnsureVibeFinderPrewarm"/> is invoked again (e.g. a
+    /// second widget activation) while still waiting on the first one.</summary>
+    private bool _vibeFinderAwaitingNetwork;
+
+    /// <summary>ContentDialog allows only one open per XamlRoot at a time — guards against a
+    /// second issue arriving while one's already showing, which would otherwise throw.</summary>
+    private bool _vibeFinderDialogOpen;
 
     public MainWindow()
     {
@@ -39,10 +50,11 @@ public sealed partial class MainWindow : Window
     /// (covers "a widget just got activated") — safe to call from either as often as needed,
     /// since it no-ops immediately once a warm-up is already underway or nothing needs warming.
     ///
-    /// Known simplification: once a warm-up is kicked off, this won't retry even if that
-    /// particular attempt's login never actually succeeds (e.g. no internet at that instant) —
-    /// VibeFinderAIPage's own visible browser still logs in normally when opened either way, so
-    /// this only ever affects how *warm* that first open is, never whether it works at all.
+    /// Checks connectivity before attempting rather than after: there's no point spinning up the
+    /// WebView2 for a login POST that can't succeed, and a clean "not online yet" skip is exactly
+    /// what lets this retry itself the moment <see cref="NetworkInformation.NetworkStatusChanged"/>
+    /// says otherwise (see <see cref="SubscribeVibeFinderNetworkRetry"/>) instead of needing to
+    /// distinguish "haven't tried" from "tried and failed" after the fact.
     /// </summary>
     public async void EnsureVibeFinderPrewarm()
     {
@@ -52,6 +64,12 @@ public sealed partial class MainWindow : Window
 
         var (user, pass) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass)) return;
+
+        if (!NetworkStatus.IsInternetAvailable())
+        {
+            SubscribeVibeFinderNetworkRetry();
+            return;
+        }
 
         _vibeFinderPrewarmStarted = true;
 
@@ -64,8 +82,20 @@ public sealed partial class MainWindow : Window
             _vibeFinderPrewarmStarted = false; // WebView2 Runtime hiccup — let a later trigger retry
             App.LoggerFactory?.CreateLogger<MainWindow>()
                 .LogWarning(ex, "VibeFinderAI pre-warm failed to initialize CoreWebView2");
+            await ShowVibeFinderIssueDialogAsync(
+                "VibeFinder AI widgets need the WebView2 Runtime",
+                "Themed.AI couldn't start the embedded browser used to sign in and fetch playlists. Installing (or repairing) the Microsoft Edge WebView2 Runtime should fix this.");
             return;
         }
+
+        VibeFinderPrewarmWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
+        {
+            var json = args.TryGetWebMessageAsString();
+            if (!string.IsNullOrEmpty(json))
+            {
+                await HandleVibeFinderLoginResultAsync(json);
+            }
+        };
 
         VibeFinderPrewarmWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
         {
@@ -85,6 +115,97 @@ public sealed partial class MainWindow : Window
         };
 
         VibeFinderPrewarmWebView.Source = new Uri("https://vibefinderai.netlify.app/app");
+    }
+
+    /// <summary>Lets a fresh Save & Apply (new credentials) override a permanently-stuck failure
+    /// state — e.g. the prewarm gave up after an invalid-credentials result, and simply won't
+    /// retry on its own since retrying with the same bad password would just fail again. Called
+    /// from VibeFinderAIPage.SaveCredentials_Click after credentials change.</summary>
+    public void ResetVibeFinderPrewarm()
+    {
+        _vibeFinderPrewarmStarted = false;
+        EnsureVibeFinderPrewarm();
+    }
+
+    /// <summary>Subscribes (at most once — re-entrant calls while already waiting are no-ops) to
+    /// <see cref="NetworkInformation.NetworkStatusChanged"/>, unsubscribing itself and retrying
+    /// <see cref="EnsureVibeFinderPrewarm"/> the moment that fires with connectivity restored.
+    /// The event fires on a background thread, so the retry is marshalled back via
+    /// <c>DispatcherQueue</c> before touching any UI-thread-affine WebView2/XAML state.</summary>
+    private void SubscribeVibeFinderNetworkRetry()
+    {
+        if (_vibeFinderAwaitingNetwork) return;
+        _vibeFinderAwaitingNetwork = true;
+
+        NetworkInformation.NetworkStatusChanged += OnNetworkStatusChangedForVibeFinderRetry;
+    }
+
+    private void OnNetworkStatusChangedForVibeFinderRetry(object sender)
+    {
+        if (!NetworkStatus.IsInternetAvailable()) return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChangedForVibeFinderRetry;
+            _vibeFinderAwaitingNetwork = false;
+            EnsureVibeFinderPrewarm();
+        });
+    }
+
+    /// <summary>Handles a <c>VIBEFINDER_LOGIN_RESULT</c> message from the hidden prewarm browser
+    /// (see <see cref="VibeFinderAuth.TryParseLoginResult"/> for the message shape). A "network"
+    /// reason is self-healing — no dialog, just fold back into the same reconnect-and-retry path
+    /// a pre-check failure would have taken. Anything else means retrying blindly won't help, so
+    /// it surfaces as a dialog instead and is left alone until the user does something about it
+    /// (new credentials via Save & Apply, or toggling the widget off and back on).</summary>
+    private async System.Threading.Tasks.Task HandleVibeFinderLoginResultAsync(string json)
+    {
+        if (!VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason)) return;
+        if (success) return;
+
+        if (reason == "network")
+        {
+            _vibeFinderPrewarmStarted = false;
+            SubscribeVibeFinderNetworkRetry();
+            return;
+        }
+
+        if (reason == "invalid_credentials")
+        {
+            await ShowVibeFinderIssueDialogAsync(
+                "VibeFinder AI sign-in failed",
+                "The saved VibeFinder AI username/password were rejected. Update them from Widgets → VibeFinder AI, then hit Save & Apply.");
+        }
+        else
+        {
+            await ShowVibeFinderIssueDialogAsync(
+                "VibeFinder AI is unreachable",
+                "VibeFinder AI's servers returned an error rather than signing in. This is usually temporary — it'll be retried the next time a widget is toggled or the app restarts.");
+        }
+    }
+
+    private async System.Threading.Tasks.Task ShowVibeFinderIssueDialogAsync(string title, string message)
+    {
+        if (_vibeFinderDialogOpen) return;
+        if (Content?.XamlRoot is null) return;
+
+        _vibeFinderDialogOpen = true;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = Content.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+        catch { /* e.g. window closing mid-dialog */ }
+        finally
+        {
+            _vibeFinderDialogOpen = false;
+        }
     }
 
     // ── Title bar – extend content into title bar for a macOS-like look ──────

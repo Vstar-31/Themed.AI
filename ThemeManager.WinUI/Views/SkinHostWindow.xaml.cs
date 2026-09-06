@@ -305,7 +305,7 @@ public sealed partial class SkinHostWindow : Window
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             if (vibeMeasure != null)
                             {
-                                if (ThemeManager.Integration.Skins.VibeFinderWebState.IsActive && ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
+                                if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
                                 {
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand("{\"command\":\"playpause\"}");
                                 }
@@ -322,7 +322,7 @@ public sealed partial class SkinHostWindow : Window
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             if (vibeMeasure != null)
                             {
-                                if (ThemeManager.Integration.Skins.VibeFinderWebState.IsActive && ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
+                                if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
                                 {
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand("{\"command\":\"next\"}");
                                 }
@@ -340,7 +340,7 @@ public sealed partial class SkinHostWindow : Window
                             var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                             if (vibeMeasure != null)
                             {
-                                if (ThemeManager.Integration.Skins.VibeFinderWebState.IsActive && ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
+                                if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null)
                                 {
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand("{\"command\":\"prev\"}");
                                 }

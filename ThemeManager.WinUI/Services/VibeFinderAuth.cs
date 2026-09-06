@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json;
 using ThemeManager.Core.Skins;
 
 namespace ThemeManager.WinUI.Services;
@@ -22,24 +23,58 @@ public static class VibeFinderAuth
     public const string SkipTutorialScript =
         "try { localStorage.setItem('vf_tutorial_seen', '1'); } catch(e) {}";
 
-    /// <summary>Idempotent and safe to call on every navigation: no-ops immediately if a token
-    /// already exists in localStorage, and guards itself against retry-looping on a failed
-    /// attempt within the same browser session via sessionStorage. Reloads the page on success
-    /// so the React app's own <c>useState</c> init (which reads localStorage once, on mount)
-    /// picks the fresh token up.</summary>
-    public static string BuildAutoLoginScript(string user, string pass)
-    {
-        string safeUser = Escape(user);
-        string safePass = Escape(pass);
-
-        return $@"
+    /// <summary>Idempotent and safe to call on every navigation: no-ops immediately (without
+    /// reporting anything back — there's nothing to report, nothing was attempted) if a token
+    /// already exists in localStorage, or if this session already tried and is mid-flight/failed
+    /// once already (the sessionStorage flag guards against retry-looping on NavigationCompleted).
+    /// Reports its outcome back to the host via <c>window.chrome.webview.postMessage</c> as
+    /// <c>{"type":"VIBEFINDER_LOGIN_RESULT","success":bool,"reason":string|null}</c> — see
+    /// <see cref="TryParseLoginResult"/>. Reloads the page on success so the React app's own
+    /// <c>useState</c> init (which reads localStorage once, on mount) picks the fresh token up.
+    /// </summary>
+    public static string BuildAutoLoginScript(string user, string pass) => $@"
 (async function() {{
+    const postResult = (success, reason) => {{
+        try {{ window.chrome.webview.postMessage(JSON.stringify({{ type: 'VIBEFINDER_LOGIN_RESULT', success: success, reason: reason || null }})); }} catch(e) {{}}
+    }};
     try {{
         if (localStorage.getItem('vf_token')) return;
         if (sessionStorage.getItem('_themed_auto_login')) return;
         sessionStorage.setItem('_themed_auto_login', '1');
+{BuildLoginAttemptBody(user, pass)}
+    }} catch(e) {{
+        postResult(false, 'network');
+    }}
+}})();";
 
-        const fd = new URLSearchParams();
+    /// <summary>Always attempts, ignoring any existing token and the auto-login script's
+    /// same-session guard — used right after the user saves new credentials (SaveCredentials_
+    /// Click), when a stale token or a previously-failed auto-login attempt this session must
+    /// not stand in the way of testing the fresh ones. Same result-reporting contract as
+    /// <see cref="BuildAutoLoginScript"/>.</summary>
+    public static string BuildForceLoginScript(string user, string pass) => $@"
+(async function() {{
+    const postResult = (success, reason) => {{
+        try {{ window.chrome.webview.postMessage(JSON.stringify({{ type: 'VIBEFINDER_LOGIN_RESULT', success: success, reason: reason || null }})); }} catch(e) {{}}
+    }};
+    try {{
+{BuildLoginAttemptBody(user, pass)}
+    }} catch(e) {{
+        postResult(false, 'network');
+    }}
+}})();";
+
+    /// <summary>The actual fetch-and-store-token logic shared by both scripts above — assumes a
+    /// <c>postResult(success, reason)</c> function is already in scope (both callers define one
+    /// identically) and that it's running inside a try/catch that reports <c>'network'</c> on any
+    /// thrown exception, so this only needs to cover the fetch *completing* one way or another.
+    /// </summary>
+    private static string BuildLoginAttemptBody(string user, string pass)
+    {
+        string safeUser = Escape(user);
+        string safePass = Escape(pass);
+
+        return $@"        const fd = new URLSearchParams();
         fd.append('username', '{safeUser}');
         fd.append('password', '{safePass}');
 
@@ -53,11 +88,45 @@ public static class VibeFinderAuth
             const data = await res.json();
             if (data.access_token) {{
                 localStorage.setItem('vf_token', data.access_token);
+                postResult(true);
                 location.reload();
+                return;
             }}
+            postResult(false, 'server_error');
+            return;
         }}
-    }} catch(e) {{}}
-}})();";
+
+        postResult(false, (res.status === 401 || res.status === 400) ? 'invalid_credentials' : 'server_error');";
+    }
+
+    /// <summary>Parses a <c>{"type":"VIBEFINDER_LOGIN_RESULT",...}</c> message posted by either
+    /// script above. Returns false (leaving <paramref name="success"/>/<paramref name="reason"/>
+    /// at their defaults) for any other message shape entirely — including malformed JSON — so
+    /// callers can tell "not a login result" apart from "a login result that failed" and keep
+    /// looking elsewhere (e.g. VIBEFINDER_APP_READY) rather than misreading one as the other.
+    /// <paramref name="reason"/> is one of "invalid_credentials", "server_error", "network", or
+    /// null (only meaningful when <paramref name="success"/> is false).</summary>
+    public static bool TryParseLoginResult(string messageJson, out bool success, out string? reason)
+    {
+        success = false;
+        reason = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(messageJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var typeEl) || typeEl.GetString() != "VIBEFINDER_LOGIN_RESULT")
+                return false;
+
+            success = root.TryGetProperty("success", out var successEl) && successEl.ValueKind == JsonValueKind.True;
+            reason = root.TryGetProperty("reason", out var reasonEl) && reasonEl.ValueKind == JsonValueKind.String
+                ? reasonEl.GetString()
+                : null;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>Reads the saved username/password off the first VibeFinder-named skin's Target

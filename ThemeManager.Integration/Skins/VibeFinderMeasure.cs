@@ -433,6 +433,13 @@ public sealed class VibeFinderMeasure : IMeasure
 
     public void SkipNext()
     {
+        if (VibeFinderWebState.IsActive)
+        {
+            VibeFinderWebState.SkipNext();
+            Refresh();
+            return;
+        }
+
         var entry = _cache.GetOrAdd(_target, _ => new ResultEntry());
         lock (entry.Lock)
         {
@@ -444,6 +451,13 @@ public sealed class VibeFinderMeasure : IMeasure
 
     public void SkipPrevious()
     {
+        if (VibeFinderWebState.IsActive)
+        {
+            VibeFinderWebState.SkipPrevious();
+            Refresh();
+            return;
+        }
+
         var entry = _cache.GetOrAdd(_target, _ => new ResultEntry());
         lock (entry.Lock)
         {
