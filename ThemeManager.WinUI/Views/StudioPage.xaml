@@ -41,7 +41,10 @@
                                         <StackPanel Spacing="6">
                                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource TextPrimaryBrush}"/>
                                             <TextBlock Text="{Binding Description}" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{Binding Tags[0]}" FontSize="11" Foreground="{StaticResource PrimaryAccentBrush}"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Border CornerRadius="9" Background="{StaticResource SidebarBackgroundBrush}" Padding="8,4"><TextBlock Text="WORLD" FontSize="10" Foreground="{StaticResource TextMutedBrush}"/></Border>
+                                                <Border CornerRadius="9" Background="{StaticResource SidebarBackgroundBrush}" Padding="8,4"><TextBlock Text="Vibe" FontSize="10" Foreground="{StaticResource TextMutedBrush}"/></Border>
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </Button>
