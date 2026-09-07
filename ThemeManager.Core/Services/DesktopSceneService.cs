@@ -7,6 +7,7 @@ public sealed class DesktopSceneService
     private readonly DesktopSceneRepository _repository;
     private List<DesktopScene> _scenes = new();
     private bool _initialized;
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     public IReadOnlyList<DesktopScene> Scenes => _scenes;
     public DesktopScene? ActiveScene { get; private set; }
@@ -25,24 +26,35 @@ public sealed class DesktopSceneService
 
     public async Task UpsertAsync(DesktopScene scene, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scene);
+        await InitializeAsync(cancellationToken);
         scene.LastModified = DateTime.UtcNow;
         var index = _scenes.FindIndex(s => s.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase));
         if (index >= 0) _scenes[index] = scene; else _scenes.Add(scene);
-        await _repository.SaveAllAsync(_scenes, cancellationToken);
+        await PersistAsync(cancellationToken);
         ScenesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
+        await InitializeAsync(cancellationToken);
         _scenes.RemoveAll(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
         if (ActiveScene?.Id.Equals(id, StringComparison.OrdinalIgnoreCase) == true) SetActiveScene(null);
-        await _repository.SaveAllAsync(_scenes, cancellationToken);
+        await PersistAsync(cancellationToken);
         ScenesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetActiveScene(DesktopScene? scene)
     {
+        if (ReferenceEquals(ActiveScene, scene)) return;
         ActiveScene = scene;
         ActiveSceneChanged?.Invoke(this, scene);
+    }
+
+    private async Task PersistAsync(CancellationToken cancellationToken)
+    {
+        await _writeGate.WaitAsync(cancellationToken);
+        try { await _repository.SaveAllAsync(_scenes, cancellationToken); }
+        finally { _writeGate.Release(); }
     }
 }
