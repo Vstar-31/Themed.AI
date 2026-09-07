@@ -19,31 +19,26 @@ public sealed partial class StudioPage : Page
     public StudioPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) =>
-        {
-            await App.SceneService.InitializeAsync();
-            Refresh();
-        };
+        Loaded += async (_, _) => { await App.SceneService.InitializeAsync(); Refresh(); };
         App.SceneService.ScenesChanged += OnScenesChanged;
     }
 
     private void OnScenesChanged(object? sender, EventArgs e)
     {
-        if (!DispatcherQueue.HasThreadAccess) DispatcherQueue.TryEnqueue(Refresh);
-        else Refresh();
+        if (!DispatcherQueue.HasThreadAccess) DispatcherQueue.TryEnqueue(Refresh); else Refresh();
     }
 
     private void Refresh()
     {
         WorldList.ItemsSource = App.SceneService.Scenes.ToList();
         var scene = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
-        if (scene is not null) Select(scene, persistSelection: false);
+        if (scene is not null) Select(scene, false);
     }
 
-    private void Select(DesktopScene scene, bool persistSelection = true)
+    private void Select(DesktopScene scene, bool activate = true)
     {
         _selected = scene;
-        if (persistSelection) App.SceneService.SetActiveScene(scene);
+        if (activate) App.SceneService.SetActiveScene(scene);
         HeroTitle.Text = scene.Name;
         HeroDescription.Text = scene.Description;
         HeroMood.Text = scene.Tags.FirstOrDefault() ?? "aesthetic";
@@ -51,19 +46,14 @@ public sealed partial class StudioPage : Page
         HeroAdaptive.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive" : "Static world";
     }
 
-    private Task CreateWorldAsync()
+    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await CreateWorldAsync();
+
+    private async Task CreateWorldAsync()
     {
         var pick = Worlds[Random.Shared.Next(Worlds.Length)];
-        return CreateWorldAsync(pick);
-    }
-
-    private async Task CreateWorldAsync((string Name, string Description, string Tag) pick)
-    {
         var scene = new DesktopScene
         {
-            Name = pick.Name,
-            Description = pick.Description,
-            ThemeId = App.ThemeService.ActiveTheme.Id,
+            Name = pick.Name, Description = pick.Description, ThemeId = App.ThemeService.ActiveTheme.Id,
             Tags = new List<string> { pick.Tag, "vibe" },
             Effects = new List<SceneEffect>
             {
@@ -76,11 +66,9 @@ public sealed partial class StudioPage : Page
         Select(scene);
     }
 
-    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await CreateWorldAsync();
-
     private async void SurpriseMe_Click(object sender, RoutedEventArgs e)
     {
-        await CreateWorldAsync(Worlds[Random.Shared.Next(Worlds.Length)]);
+        await CreateWorldAsync();
         await ApplySelectedThemeAsync();
     }
 
@@ -92,8 +80,7 @@ public sealed partial class StudioPage : Page
     private async Task ApplySelectedThemeAsync()
     {
         if (_selected is null) return;
-        var target = (await App.ThemeRepository.LoadAllAsync())
-            .FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
+        var target = (await App.ThemeRepository.LoadAllAsync()).FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
         if (target is not null) App.ThemeService.SetActiveTheme(target);
     }
 }

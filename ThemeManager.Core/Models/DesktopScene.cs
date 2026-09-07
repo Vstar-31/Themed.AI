@@ -1,8 +1,7 @@
 namespace ThemeManager.Core.Models;
 
 /// <summary>
-/// A complete visual desktop state. Scenes sit above themes and widgets and become the future unit
-/// for generation, sharing, scheduling and VibeFinder adaptation.
+/// A complete visual desktop state. Scenes are the orchestration unit above themes and widgets.
 /// </summary>
 public sealed class DesktopScene
 {

@@ -1,5 +1,5 @@
-using ThemeManager.WinUI.Views;
 using Microsoft.UI.Xaml;
+using ThemeManager.WinUI.Views;
 
 namespace ThemeManager.WinUI;
 
