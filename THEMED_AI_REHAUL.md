@@ -13,10 +13,6 @@ Implemented:
 - New visual Studio surface with world generation and selection.
 - Studio entry point in the main shell.
 
-## Why this exists
+## Next
 
-The old architecture exposed individual capabilities (themes, widgets, automation, VibeFinder) but did not have a first-class object tying them together. A scene is that missing orchestration layer.
-
-## Next milestone
-
-Build the scene compositor and apply pipeline so `Apply world` visibly changes the desktop: wallpaper, theme, widget layout and supported Windows presentation state should transition together. After that, VibeFinder/media context becomes a live input to scenes rather than a separate destination.
+The scene compositor will make Apply World a real desktop-wide operation. After that, VibeFinder/media context becomes a continuous signal that can morph a scene instead of a separate destination.
