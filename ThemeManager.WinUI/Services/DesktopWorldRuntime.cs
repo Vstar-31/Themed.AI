@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using ThemeManager.Core.Models;
+using ThemeManager.Core.Services;
 
 namespace ThemeManager.WinUI.Services;
 

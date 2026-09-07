@@ -11,6 +11,7 @@ using ThemeManager.Core.Services;
 using ThemeManager.Integration.Skins;
 using Windows.Graphics;
 using Windows.UI;
+using WinRT;
 
 namespace ThemeManager.WinUI.Services;
 
@@ -98,7 +99,7 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
         {
             var compositor = new Windows.UI.Composition.Compositor();
             var transparentBrush = compositor.CreateColorBrush(Color.FromArgb(0, 0, 0, 0));
-            this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = transparentBrush;
+            ((object)this).As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = transparentBrush;
         }
         catch (Exception ex)
         {
@@ -268,7 +269,7 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
         {
             if (_attached) DesktopLayerInterop.Detach(_hwnd, _logger);
             AppWindow.Hide();
-            this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = null;
+            ((object)this).As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = null;
         }
         catch (Exception ex)
         {
