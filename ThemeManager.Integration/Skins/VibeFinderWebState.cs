@@ -3,18 +3,16 @@ using System.Collections.Generic;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ThemeManager.Core.NLP;
+using ThemeManager.Core.Services;
+using ThemeManager.WinUI.Services;
 
 namespace ThemeManager.Integration.Skins;
 
-/// <summary>
-/// Holds the synchronized state from an active VibeFinder AI WebView2 embed.
-/// The React app pushes its playback state via window.chrome.webview.postMessage,
-/// which this class parses. When the web embed is active, VibeFinderMeasure reads from this state.
-/// </summary>
+/// <summary>Holds VibeFinder playback state and publishes desktop vibe snapshots.</summary>
 public static class VibeFinderWebState
 {
     private static ILogger _logger = NullLogger.Instance;
-
     public static bool IsActive { get; private set; }
     public static bool IsPlaying { get; private set; }
     public static string Title { get; private set; } = "—";
@@ -25,12 +23,8 @@ public static class VibeFinderWebState
     public static double Duration { get; private set; }
     public static double Progress => Duration > 0 ? CurrentTime / Duration : 0;
     public static bool IsPlayerActive { get; private set; }
-
-    /// <summary>Raised whenever the VibeFinder embed produces new result or playback state.</summary>
     public static event EventHandler? StateChanged;
-
     public static Action<string>? SendCommand { get; set; }
-
     public static IReadOnlyList<TrackInfo> Tracks => _tracks;
     private static List<TrackInfo> _tracks = new();
     public static int CurrentIndex { get; private set; }
@@ -51,26 +45,12 @@ public static class VibeFinderWebState
         {
             using var doc = JsonDocument.Parse(messageJson);
             var root = doc.RootElement;
-            if (!root.TryGetProperty("type", out var typeEl))
+            if (!root.TryGetProperty("type", out var typeEl)) return;
+            switch (typeEl.GetString())
             {
-                _logger.LogDebug("VibeFinderWebState: message with no type field ignored: {Json}", Truncate(messageJson));
-                return;
+                case "VIBEFINDER_RESULTS": HandleResults(root); break;
+                case "VIBEFINDER_STATE": HandlePlayerState(root); break;
             }
-
-            var messageType = typeEl.GetString();
-            if (messageType == "VIBEFINDER_RESULTS")
-            {
-                HandleResults(root);
-                return;
-            }
-
-            if (messageType == "VIBEFINDER_STATE")
-            {
-                HandlePlayerState(root);
-                return;
-            }
-
-            _logger.LogTrace("VibeFinderWebState: unhandled message type {MessageType}", messageType);
         }
         catch (JsonException ex)
         {
@@ -82,26 +62,24 @@ public static class VibeFinderWebState
 
     private static void HandleResults(JsonElement root)
     {
-        if (!root.TryGetProperty("tracks", out var tracksEl) || tracksEl.ValueKind != JsonValueKind.Array)
-            return;
-
+        if (!root.TryGetProperty("tracks", out var tracksEl) || tracksEl.ValueKind != JsonValueKind.Array) return;
         var newTracks = new List<TrackInfo>();
         foreach (var t in tracksEl.EnumerateArray())
         {
             newTracks.Add(new TrackInfo
             {
-                Title = t.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "—" : "—",
-                Artist = t.TryGetProperty("artist", out var aEl) ? aEl.GetString() ?? "—" : "—",
-                CoverArt = t.TryGetProperty("cover_art", out var cEl) ? cEl.GetString() : null,
-                PreviewUrl = t.TryGetProperty("preview_url", out var pEl) ? pEl.GetString() : null,
+                Title = t.TryGetProperty("title", out var title) ? title.GetString() ?? "—" : "—",
+                Artist = t.TryGetProperty("artist", out var artist) ? artist.GetString() ?? "—" : "—",
+                CoverArt = t.TryGetProperty("cover_art", out var cover) ? cover.GetString() : null,
+                PreviewUrl = t.TryGetProperty("preview_url", out var preview) ? preview.GetString() : null
             });
         }
-
         if (newTracks.Count == 0) return;
         _tracks = newTracks;
         CurrentIndex = 0;
         IsActive = true;
         ApplyCurrentTrack();
+        PublishDesktopVibe();
         StateChanged?.Invoke(null, EventArgs.Empty);
     }
 
@@ -109,66 +87,53 @@ public static class VibeFinderWebState
     {
         IsActive = true;
         IsPlayerActive = true;
-
-        if (root.TryGetProperty("isPlaying", out var playEl)) IsPlaying = playEl.GetBoolean();
-        if (root.TryGetProperty("title", out var titleEl)) Title = titleEl.GetString() ?? "—";
-        if (root.TryGetProperty("artist", out var artistEl)) Artist = artistEl.GetString() ?? "—";
-        if (root.TryGetProperty("coverArt", out var coverEl)) CoverArt = coverEl.GetString();
-        if (root.TryGetProperty("previewUrl", out var previewEl)) PreviewUrl = previewEl.GetString();
-        if (root.TryGetProperty("currentTime", out var curEl) && curEl.TryGetDouble(out var cTime)) CurrentTime = cTime;
-        if (root.TryGetProperty("duration", out var durEl) && durEl.TryGetDouble(out var dur)) Duration = dur;
-
+        if (root.TryGetProperty("isPlaying", out var play)) IsPlaying = play.GetBoolean();
+        if (root.TryGetProperty("title", out var title)) Title = title.GetString() ?? "—";
+        if (root.TryGetProperty("artist", out var artist)) Artist = artist.GetString() ?? "—";
+        if (root.TryGetProperty("coverArt", out var cover)) CoverArt = cover.GetString();
+        if (root.TryGetProperty("previewUrl", out var preview)) PreviewUrl = preview.GetString();
+        if (root.TryGetProperty("currentTime", out var cur) && cur.TryGetDouble(out var c)) CurrentTime = c;
+        if (root.TryGetProperty("duration", out var dur) && dur.TryGetDouble(out var d)) Duration = d;
+        PublishDesktopVibe();
         StateChanged?.Invoke(null, EventArgs.Empty);
+    }
+
+    private static void PublishDesktopVibe()
+    {
+        var signal = VibeAnalyzer.Analyze($"{Title} {Artist}");
+        var atmosphere = DesktopVibeAdapter.From(signal);
+        var energy = IsPlaying ? atmosphere.Energy : atmosphere.Energy * 0.22;
+        var mood = signal.HasSignal ? atmosphere.Mood : (IsPlaying ? "Atmospheric" : "Neutral");
+        var warmth = signal.HasSignal ? atmosphere.Warmth : 0.5;
+        VibeSnapshotHub.Publish(new VibeSnapshot(mood, Math.Clamp(energy, 0, 1), Math.Clamp(warmth, 0, 1), "VibeFinder", Title == "—" ? null : Title, Artist == "—" ? null : Artist));
     }
 
     private static void ApplyCurrentTrack()
     {
         if (_tracks.Count == 0) return;
         var track = _tracks[CurrentIndex];
-        Title = track.Title;
-        Artist = track.Artist;
-        CoverArt = track.CoverArt;
-        PreviewUrl = track.PreviewUrl;
-        IsPlaying = false;
-        IsPlayerActive = false;
-        CurrentTime = 0;
-        Duration = 0;
+        Title = track.Title; Artist = track.Artist; CoverArt = track.CoverArt; PreviewUrl = track.PreviewUrl;
+        IsPlaying = false; IsPlayerActive = false; CurrentTime = 0; Duration = 0;
     }
 
     public static void SkipNext()
     {
-        if (IsPlayerActive && SendCommand != null)
-        {
-            SendCommand("{\"command\":\"next\"}");
-            return;
-        }
+        if (IsPlayerActive && SendCommand != null) { SendCommand("{\"command\":\"next\"}"); return; }
         if (_tracks.Count == 0) return;
-        CurrentIndex = (CurrentIndex + 1) % _tracks.Count;
-        ApplyCurrentTrack();
-        StateChanged?.Invoke(null, EventArgs.Empty);
+        CurrentIndex = (CurrentIndex + 1) % _tracks.Count; ApplyCurrentTrack(); PublishDesktopVibe(); StateChanged?.Invoke(null, EventArgs.Empty);
     }
 
     public static void SkipPrevious()
     {
-        if (IsPlayerActive && SendCommand != null)
-        {
-            SendCommand("{\"command\":\"prev\"}");
-            return;
-        }
+        if (IsPlayerActive && SendCommand != null) { SendCommand("{\"command\":\"prev\"}"); return; }
         if (_tracks.Count == 0) return;
-        CurrentIndex--;
-        if (CurrentIndex < 0) CurrentIndex = _tracks.Count - 1;
-        ApplyCurrentTrack();
-        StateChanged?.Invoke(null, EventArgs.Empty);
+        CurrentIndex = (CurrentIndex - 1 + _tracks.Count) % _tracks.Count; ApplyCurrentTrack(); PublishDesktopVibe(); StateChanged?.Invoke(null, EventArgs.Empty);
     }
 
     public static void Detach()
     {
-        IsActive = false;
-        IsPlayerActive = false;
-        SendCommand = null;
-        _tracks = new List<TrackInfo>();
-        CurrentIndex = 0;
+        IsActive = false; IsPlayerActive = false; SendCommand = null; _tracks = new List<TrackInfo>(); CurrentIndex = 0;
+        VibeSnapshotHub.Publish(VibeSnapshot.Neutral);
         StateChanged?.Invoke(null, EventArgs.Empty);
     }
 }
