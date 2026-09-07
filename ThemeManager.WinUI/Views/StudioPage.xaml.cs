@@ -139,7 +139,7 @@ public sealed partial class StudioPage : Page
 
     private async void ApplyScene_Click(object sender, RoutedEventArgs e) => await ApplySelectedWorldAsync();
 
-    private async void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ScenesList.SelectedItem is DesktopScene scene) Select(scene);
     }
