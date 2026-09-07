@@ -223,12 +223,14 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
         var audio = Math.Clamp(_atmosphere.AudioReactivity, 0, 1);
         var ambientEnabled = _scene?.Effects.Any(e => e.Enabled && e.Type.Equals("AmbientMotion", StringComparison.OrdinalIgnoreCase)) ?? true;
         var intensity = ambientEnabled ? motion : 0;
+        var width = Math.Max(1, _root.ActualWidth);
+        var height = Math.Max(1, _root.ActualHeight);
 
         for (var i = 0; i < _orbs.Count; i++)
         {
             var orb = _orbs[i];
-            var x = (0.08 + i * 0.25) * Math.Max(1, ActualWidth) + Math.Sin(_time * (0.25 + i * 0.07)) * (50 + 90 * intensity);
-            var y = (0.15 + (i % 3) * 0.32) * Math.Max(1, ActualHeight) + Math.Cos(_time * (0.21 + i * 0.05)) * (35 + 80 * intensity);
+            var x = (0.08 + i * 0.25) * width + Math.Sin(_time * (0.25 + i * 0.07)) * (50 + 90 * intensity);
+            var y = (0.15 + (i % 3) * 0.32) * height + Math.Cos(_time * (0.21 + i * 0.05)) * (35 + 80 * intensity);
             Canvas.SetLeft(orb, x - orb.Width / 2);
             Canvas.SetTop(orb, y - orb.Height / 2);
             var scale = 0.98 + Math.Sin(_time * 0.9 + i) * 0.025 + audio * Math.Sin(_time * 5 + i) * 0.025;
@@ -239,8 +241,8 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
         {
             var x = (p.X + Math.Sin(_time * 0.22 + p.Phase) * 0.025 * intensity + 1) % 1;
             var y = (p.Y - _time * p.Speed * (0.4 + intensity) + 10) % 1;
-            Canvas.SetLeft(p.Element, x * Math.Max(1, ActualWidth));
-            Canvas.SetTop(p.Element, y * Math.Max(1, ActualHeight));
+            Canvas.SetLeft(p.Element, x * width);
+            Canvas.SetTop(p.Element, y * height);
             p.Element.Opacity = Math.Clamp((0.08 + Math.Sin(_time * 1.6 + p.Phase) * 0.08) * (0.6 + intensity), 0, 0.5);
         }
     }
