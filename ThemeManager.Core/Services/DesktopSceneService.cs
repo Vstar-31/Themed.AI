@@ -6,6 +6,7 @@ public sealed class DesktopSceneService
 {
     private readonly DesktopSceneRepository _repository;
     private List<DesktopScene> _scenes = new();
+    private bool _initialized;
 
     public IReadOnlyList<DesktopScene> Scenes => _scenes;
     public DesktopScene? ActiveScene { get; private set; }
@@ -16,7 +17,9 @@ public sealed class DesktopSceneService
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        if (_initialized) return;
         _scenes = await _repository.LoadAllAsync(cancellationToken);
+        _initialized = true;
         ScenesChanged?.Invoke(this, EventArgs.Empty);
     }
 
