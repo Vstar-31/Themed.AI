@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ThemeManager.Core.Models;
+using ThemeManager.Core.Skins;
 
 namespace ThemeManager.WinUI.Views;
 
@@ -46,15 +47,21 @@ public sealed partial class StudioPage : Page
         _selected = scene;
         if (activate) App.SceneService.SetActiveScene(scene);
         ActiveSceneName.Text = scene.Name;
-        HeroTitle.Text = scene.Name;
-        HeroDescription.Text = scene.Description;
-        HeroMood.Text = scene.Tags.FirstOrDefault() ?? "aesthetic";
-        HeroWidgets.Text = $"{scene.Widgets.Count} widgets";
-        HeroAdaptive.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive" : "Static world";
         var vibe = Services.VibeSnapshotHub.Current;
         var track = string.IsNullOrWhiteSpace(vibe.TrackTitle) ? "No track" : $"{vibe.TrackTitle} · {vibe.Artist}";
-        ActiveSceneMeta.Text = $"{scene.Widgets.Count} widgets · {scene.Effects.Count} effects · {vibe.Mood} · {track}";
-        ApplyStatus.Text = "Ready to apply";
+        ActiveSceneMeta.Text = $"{scene.Description} · {scene.Widgets.Count} widgets · {scene.Effects.Count} effects · {vibe.Mood} · {track}";
+        ApplyStatus.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive · Ready to apply" : "Static world · Ready to apply";
+        SceneDetails.Children.Clear();
+        AddDetail("Mood", scene.Tags.FirstOrDefault() ?? "aesthetic");
+        AddDetail("Widgets", scene.Widgets.Count.ToString());
+        AddDetail("Effects", scene.Effects.Count.ToString());
+        AddDetail("Adaptation", scene.Behavior.ReactToVibeFinder ? "VibeFinder + media" : "Static");
+        AddDetail("Transition", $"{scene.Behavior.TransitionSeconds:0.0}s");
+    }
+
+    private void AddDetail(string label, string value)
+    {
+        SceneDetails.Children.Add(new TextBlock { Text = $"{label}  ·  {value}", FontSize = 13, Opacity = 0.72 });
     }
 
     private async Task SeedStarterWorldsAsync()
@@ -70,7 +77,15 @@ public sealed partial class StudioPage : Page
                 Description = pick.Description,
                 ThemeId = App.ThemeService.ActiveTheme.Id,
                 Tags = new List<string> { pick.Tag, "starter", "vibe" },
-                Widgets = widgets.Select((w, index) => new SceneWidgetPlacement { WidgetId = w.Id, X = 40 + ((index + i) % 3) * 240, Y = 80 + ((index + i) % 3) * 150, Opacity = w.Opacity, ZIndex = index, Visible = true }).ToList(),
+                Widgets = widgets.Select((w, index) => new SceneWidgetPlacement
+                {
+                    WidgetId = w.Id,
+                    X = 40 + ((index + i) % 3) * 240,
+                    Y = 80 + ((index + i) % 3) * 150,
+                    Opacity = w.Opacity,
+                    ZIndex = index,
+                    Visible = true
+                }).ToList(),
                 Effects = new List<SceneEffect>
                 {
                     new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = pick.Tag is "neon" or "hud" ? 0.8 : 0.35 },
@@ -106,11 +121,15 @@ public sealed partial class StudioPage : Page
     }
 
     private List<SceneWidgetPlacement> BuildCurrentWidgetLayout() =>
-        (App.SkinManager?.Skins ?? Array.Empty<SkinDefinition>()).Where(s => s.Enabled).Select((w, index) => new SceneWidgetPlacement
+        App.SkinManager?.Skins.Where(s => s.Enabled).Select((w, index) => new SceneWidgetPlacement
         {
-            WidgetId = w.Id, X = 40 + (index % 4) * 220, Y = 80 + (index / 4) * 140,
-            Opacity = w.Opacity, ZIndex = index, Visible = true
-        }).ToList();
+            WidgetId = w.Id,
+            X = 40 + (index % 4) * 220,
+            Y = 80 + (index / 4) * 140,
+            Opacity = w.Opacity,
+            ZIndex = index,
+            Visible = true
+        }).ToList() ?? new List<SceneWidgetPlacement>();
 
     private async void SurpriseMe_Click(object sender, RoutedEventArgs e)
     {
@@ -119,6 +138,11 @@ public sealed partial class StudioPage : Page
     }
 
     private async void ApplyScene_Click(object sender, RoutedEventArgs e) => await ApplySelectedWorldAsync();
+
+    private async void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ScenesList.SelectedItem is DesktopScene scene) Select(scene);
+    }
 
     private async Task ApplySelectedWorldAsync()
     {
@@ -135,7 +159,9 @@ public sealed partial class StudioPage : Page
             foreach (var placement in _selected.Widgets)
             {
                 if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
-                skin.X = placement.X; skin.Y = placement.Y; skin.Opacity = Math.Clamp(placement.Opacity, 0, 1); skin.ZIndex = placement.ZIndex;
+                skin.X = placement.X;
+                skin.Y = placement.Y;
+                skin.Opacity = Math.Clamp(placement.Opacity, 0, 1);
                 await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
                 await App.SkinManager.SaveSkinAsync(skin);
                 await App.SkinManager.SetEnabledAsync(skin, placement.Visible);
