@@ -56,7 +56,7 @@ public abstract class MeterViewModelBase : ViewModelBase
         protected set => SetProperty(ref _imageUrl, value);
     }
 
-    protected readonly MeterDefinition Definition;
+    public MeterDefinition Definition { get; }
 
     /// <summary>Identifies this meter in logs — the measure it reads from when it has one
     /// (e.g. "VibeTitle"), otherwise its definition Id. Not shown in the UI.</summary>

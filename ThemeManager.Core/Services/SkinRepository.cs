@@ -47,6 +47,13 @@ public sealed class SkinRepository
             await using var stream = File.OpenRead(SkinsFilePath);
             var skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions)
                         ?? new List<SkinDefinition>();
+
+            // Schema migrations are intentionally performed at the repository boundary. The UI and
+            // runtime therefore only ever see the newest in-memory shape, while users can keep old
+            // skins indefinitely and still import/edit them safely.
+            if (Migrate(skins))
+                await SaveAllAsync(skins);
+
             return skins;
         }
         catch (Exception ex) when (ex is JsonException or IOException)
@@ -100,6 +107,58 @@ public sealed class SkinRepository
 
     private static void EnsureStorageFolderExists() =>
         Directory.CreateDirectory(StorageFolder);
+
+    private static bool Migrate(List<SkinDefinition> skins)
+    {
+        bool changed = false;
+        foreach (var skin in skins)
+        {
+            if (skin.SchemaVersion < 2)
+            {
+                skin.SchemaVersion = 2;
+                changed = true;
+            }
+
+            if (skin.Tags is null)
+            {
+                skin.Tags = new List<string>();
+                changed = true;
+            }
+
+            if (skin.Variables is null)
+            {
+                skin.Variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                changed = true;
+            }
+
+            foreach (var measure in skin.Measures)
+            {
+                if (string.IsNullOrWhiteSpace(measure.Id))
+                {
+                    measure.Id = Guid.NewGuid().ToString();
+                    changed = true;
+                }
+            }
+
+            foreach (var meter in skin.Meters)
+            {
+                if (string.IsNullOrWhiteSpace(meter.Id))
+                {
+                    meter.Id = Guid.NewGuid().ToString();
+                    changed = true;
+                }
+                if (meter.Opacity <= 0)
+                {
+                    // Old files did not have per-meter opacity; zero means "missing" rather than
+                    // "invisible" for the migration. Explicitly invisible meters can still be
+                    // authored as a value below 0.001 after migration.
+                    meter.Opacity = 1.0;
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
 
     private async Task<List<SkinDefinition>> SeedDefaultsAsync()
     {

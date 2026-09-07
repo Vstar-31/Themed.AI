@@ -404,3 +404,29 @@ Phase 8 below and worth closing before trusting any of this in front of a person
 - **Auto-updater:** Check a GitHub releases JSON on launch.
 - **Crash reporting:** Unhandled exception logging with a "Send report" button.
 - **Installer wizard:** Simple WiX Toolset installer as an alternative to MSIX.
+## 🚀 Phase 10 — Widget Runtime 2.0 / Rainmeter-Class Foundation
+
+This phase turns the existing widget feature from a collection of meter visuals into a reusable
+runtime platform. The first implementation slice is now in the codebase:
+
+- [x] Per-widget refresh scheduling (50 ms–60 s) behind one lightweight scheduler quantum.
+- [x] Catch-up protection so a slow measure cannot create a burst of queued refreshes.
+- [x] UI-independent `WidgetTickScheduler` and `WidgetDefinitionValidator` in Core.
+- [x] Versioned widget schema (`SchemaVersion = 2`) with migration at the repository boundary.
+- [x] Stable measure IDs in addition to meter IDs for editor/import workflows.
+- [x] Widget metadata: description, author, tags, variables.
+- [x] Per-meter z-order, rotation, and opacity, applied by the native host renderer.
+- [x] Configurable per-widget always-on-top behavior.
+- [x] Portable `.themedwidget` ZIP package format with safe import identity regeneration.
+- [x] Automated tests for scheduler behavior, validation, and package round-tripping.
+
+### Next slices
+
+- [ ] Visual containers/groups with shared transforms, clipping, and inherited variables.
+- [ ] Expression/formula measures and a safe variable/function evaluator.
+- [ ] Plugin contracts for third-party measures, meters, and actions.
+- [ ] Skin package asset extraction and sandboxed asset paths.
+- [ ] State machines: hover/pressed/active/threshold states with transitions.
+- [ ] Anchoring to monitor/work-area edges and responsive layouts.
+- [ ] Editor timeline/layer panel and property inspector for all new runtime fields.
+- [ ] Import/export UI and a local package gallery.

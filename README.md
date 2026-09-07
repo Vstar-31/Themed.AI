@@ -190,6 +190,27 @@ That's it. No other files need changing.
 
 ---
 
+## Widget Runtime 2.0
+
+The widget system is now being evolved as a real desktop-widget runtime rather than a fixed set of
+prebuilt cards. The current runtime foundation includes:
+
+- **Per-widget scheduling** — each widget can refresh independently from 50 ms to 60 seconds,
+  while one lightweight scheduler drives the whole desktop.
+- **Runtime validation** — malformed imported/hand-authored widgets are diagnosed before they hit
+  the native window layer.
+- **Versioned persistence** — `SchemaVersion` and repository migrations keep old widget files
+  forward-compatible.
+- **Layer controls** — meters support z-order, rotation, and individual opacity.
+- **Portable packages** — `.themedwidget` packages contain a versioned `skin.json` and are ready
+  for bundled assets and community sharing. Imported packages are disabled and receive a fresh widget
+  identity for safety.
+- **Extensible metadata** — descriptions, authors, tags, and variables are part of the widget model.
+
+The architectural target is intentionally Rainmeter-like—measures, meters, actions, variables,
+layouts, states and plugins—but with a strongly typed JSON model, WinUI-native rendering, safer
+imports, and a first-class visual editor. See `phases.md`, Phase 10, for the implementation sequence.
+
 ## System Integration — Safety Boundaries
 
 | Feature                  | API Used                                  | Risk    |

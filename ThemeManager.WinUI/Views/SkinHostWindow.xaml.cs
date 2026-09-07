@@ -123,7 +123,7 @@ public sealed partial class SkinHostWindow : Window
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.IsAlwaysOnTop = true;
+            presenter.IsAlwaysOnTop = _viewModel.Definition.AlwaysOnTop;
             presenter.IsResizable = false;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
@@ -267,7 +267,7 @@ public sealed partial class SkinHostWindow : Window
 
     private void BuildMeterVisuals()
     {
-        foreach (var meter in _viewModel.Meters)
+        foreach (var meter in _viewModel.Meters.OrderBy(m => m.Definition.ZIndex).ThenBy(m => m.Definition.Id))
         {
             FrameworkElement element = meter switch
             {
@@ -404,6 +404,10 @@ public sealed partial class SkinHostWindow : Window
 
             Canvas.SetLeft(element, meter.X);
             Canvas.SetTop(element, meter.Y);
+            if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
+                element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
+            element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
+            Canvas.SetZIndex(element, meter.Definition.ZIndex);
             RootCanvas.Children.Add(element);
         }
     }

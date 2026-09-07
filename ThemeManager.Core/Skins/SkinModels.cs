@@ -68,6 +68,9 @@ public enum MeterKind
 /// </summary>
 public sealed class MeasureDefinition
 {
+    /// <summary>Stable id used by editors/importers when a measure is renamed.</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+
     /// <summary>Unique (within the skin) name other meters reference via <see cref="MeterDefinition.MeasureName"/>.</summary>
     public string Name { get; set; } = "";
 
@@ -94,6 +97,15 @@ public sealed class MeterDefinition
     public double Y { get; set; }
     public double Width { get; set; } = 140;
     public double Height { get; set; } = 22;
+
+    /// <summary>Draw order inside the widget. Higher values render above lower values.</summary>
+    public int ZIndex { get; set; }
+
+    /// <summary>Visual rotation in degrees, applied by the host renderer.</summary>
+    public double Rotation { get; set; }
+
+    /// <summary>Per-meter opacity, independent from the widget's background opacity.</summary>
+    public double Opacity { get; set; } = 1.0;
 
     /// <summary>
     /// Name of the <see cref="MeasureDefinition"/> this meter reads from.
@@ -166,8 +178,14 @@ public sealed class MeterDefinition
 /// </summary>
 public sealed class SkinDefinition
 {
+    /// <summary>Schema version for forward-compatible imports and migrations.</summary>
+    public int SchemaVersion { get; set; } = 2;
+
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
+    public string Description { get; set; } = "";
+    public string Author { get; set; } = "";
+    public List<string> Tags { get; set; } = new();
     public bool Enabled { get; set; } = true;
 
     // ── Position & size (screen pixels, top-left origin) ────────────────────
@@ -182,6 +200,9 @@ public sealed class SkinDefinition
 
     /// <summary>When true, mouse clicks pass through the widget to whatever is beneath it.</summary>
     public bool ClickThrough { get; set; }
+
+    /// <summary>Whether the native widget window stays above normal application windows.</summary>
+    public bool AlwaysOnTop { get; set; } = true;
 
     /// <summary>When true, the widget can't be dragged (safety net once you like where it sits).</summary>
     public bool Locked { get; set; }
@@ -202,4 +223,7 @@ public sealed class SkinDefinition
 
     public List<MeasureDefinition> Measures { get; set; } = new();
     public List<MeterDefinition> Meters { get; set; } = new();
+
+    /// <summary>Named values available to future expression-capable meters and imported skins.</summary>
+    public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

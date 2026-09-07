@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using ThemeManager.Core.Skins;
 using ThemeManager.Core.Services;
@@ -14,8 +15,8 @@ namespace ThemeManager.WinUI.Services;
 ///
 /// - Holds the in-memory skin list and delegates persistence to <see cref="SkinRepository"/>.
 /// - Owns one <see cref="SkinHostWindow"/> per *enabled* skin.
-/// - Runs a single shared 1-second timer that ticks every open widget (see the class remarks
-///   on <see cref="SkinDefinition.UpdateIntervalMs"/> for why this is intentionally simple for now).
+/// - Runs one lightweight scheduler tick and gives every widget its own refresh cadence.
+///   Fast widgets can update at 50–100 ms while expensive web/weather widgets can stay at 5–60 s.
 /// </summary>
 public sealed class SkinManagerService : IDisposable
 {
@@ -31,7 +32,14 @@ public sealed class SkinManagerService : IDisposable
 
     private readonly Dictionary<string, (SkinHostWindow Window, SkinHostViewModel ViewModel)> _open = new();
     private DispatcherQueueTimer? _timer;
+    private readonly Stopwatch _schedulerClock = Stopwatch.StartNew();
+    private readonly WidgetTickScheduler _scheduler = new();
     private bool _widgetsHidden;
+
+    /// <summary>Minimum scheduler quantum. Individual widgets keep their own cadence, while a
+    /// single lightweight UI timer wakes the scheduler so hundreds of widgets do not require
+    /// hundreds of WinUI timers.</summary>
+    private const int SchedulerQuantumMs = 50;
 
     public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
     {
@@ -73,34 +81,52 @@ public sealed class SkinManagerService : IDisposable
             OpenWindowFor(skin);
 
         _timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _timer.Interval = TimeSpan.FromMilliseconds(1000);
-        _timer.Tick += (_, _) => TickAll();
+        _timer.Interval = TimeSpan.FromMilliseconds(SchedulerQuantumMs);
+        _timer.Tick += (_, _) => TickDueWidgets();
         _timer.Start();
     }
 
-    private void TickAll()
+    private void TickDueWidgets()
     {
+        var now = _schedulerClock.ElapsedMilliseconds;
         var dispatcher = DispatcherQueue.GetForCurrentThread();
-        var snapshot = _open.Values.ToList();
-        foreach (var (_, viewModel) in snapshot)
+
+        var snapshot = _open.ToList();
+        var dueIds = _scheduler.GetDue(
+            snapshot.Select(x => x.Value.ViewModel.Definition), now)
+            .Select(s => s.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (skinId, entry) in snapshot)
         {
-            if (viewModel.IsClosed) continue;
+            var viewModel = entry.ViewModel;
+            if (viewModel.IsClosed || !dueIds.Contains(skinId)) continue;
+
             Task.Run(() =>
             {
                 if (viewModel.IsClosed) return;
-                // RefreshMeasures()/UpdateMeters() now isolate exceptions per-measure/per-meter
-                // internally (see SkinHostViewModel) and log those with the specific measure/meter
-                // name, so these two catches are defense-in-depth for something outside that loop
-                // (e.g. the dictionary/collection iteration itself) — kept, but now identify the
-                // skin so a hit here is still actionable instead of "some widget, somewhere, once".
-                try { viewModel.RefreshMeasures(); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to refresh its measures this tick", viewModel.Definition.Id, viewModel.Definition.Name); }
+                try
+                {
+                    viewModel.RefreshMeasures();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to refresh its measures",
+                        viewModel.Definition.Id, viewModel.Definition.Name);
+                }
 
                 dispatcher.TryEnqueue(() =>
                 {
                     if (viewModel.IsClosed) return;
-                    try { viewModel.UpdateMeters(); }
-                    catch (Exception ex) { _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to update its meters this tick", viewModel.Definition.Id, viewModel.Definition.Name); }
+                    try
+                    {
+                        viewModel.UpdateMeters();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to update its meters",
+                            viewModel.Definition.Id, viewModel.Definition.Name);
+                    }
                 });
             });
         }
@@ -143,6 +169,14 @@ public sealed class SkinManagerService : IDisposable
         skin.Locked = locked;
         if (_open.TryGetValue(skin.Id, out var entry))
             entry.Window.ApplyLocked(skin.Locked);
+        await PersistAsync(false);
+    }
+
+    /// <summary>Changes a widget's refresh cadence without rebuilding its native window.</summary>
+    public async Task SetUpdateIntervalAsync(SkinDefinition skin, int intervalMs)
+    {
+        skin.UpdateIntervalMs = Math.Clamp(intervalMs, 50, 60_000);
+        _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
         await PersistAsync(false);
     }
 
@@ -290,6 +324,7 @@ public sealed class SkinManagerService : IDisposable
         };
 
         _open[skin.Id] = (window, viewModel);
+        _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
         window.Activate();
         if (_widgetsHidden) window.AppWindow.Hide(); // stay consistent with a global hide from the hotkey
         viewModel.RefreshMeasures(); // safe to call synchronously on first open since there's no data yet
@@ -305,6 +340,7 @@ public sealed class SkinManagerService : IDisposable
         }
         _logger.LogInformation("Skin {SkinId} ({SkinName}): closing widget window", skin.Id, skin.Name);
         _open.Remove(skin.Id);
+        _scheduler.Remove(skin.Id);
         entry.ViewModel.IsClosed = true;
 
         // Hide the window immediately so it visually disappears without delay
@@ -368,6 +404,7 @@ public sealed class SkinManagerService : IDisposable
             }
         }
         _open.Clear();
+        _scheduler.Clear();
     }
 
     public void EnsureVibeFinderSkinsExist()
