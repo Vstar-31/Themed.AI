@@ -47,7 +47,9 @@ public sealed partial class StudioPage : Page
         HeroAdaptive.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive" : "Static world";
     }
 
-    private async void GenerateWorld_Click(object sender, RoutedEventArgs e)
+    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await GenerateWorldAsync();
+
+    private async Task GenerateWorldAsync()
     {
         var pick = Worlds[Random.Shared.Next(Worlds.Length)];
         var scene = new DesktopScene
@@ -71,22 +73,6 @@ public sealed partial class StudioPage : Page
     {
         await GenerateWorldAsync();
         await ApplySelectedThemeAsync();
-    }
-
-    private async Task GenerateWorldAsync()
-    {
-        var pick = Worlds[Random.Shared.Next(Worlds.Length)];
-        var scene = new DesktopScene
-        {
-            Name = pick.Name,
-            Description = pick.Description,
-            ThemeId = App.ThemeService.ActiveTheme.Id,
-            Tags = new List<string> { pick.Tag, "vibe" },
-            Effects = new List<SceneEffect> { new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = 0.5 } },
-            Behavior = new SceneBehavior { ReactToVibeFinder = true, ReactToMedia = true }
-        };
-        await App.SceneService.UpsertAsync(scene);
-        Select(scene);
     }
 
     private void World_Click(object sender, RoutedEventArgs e)

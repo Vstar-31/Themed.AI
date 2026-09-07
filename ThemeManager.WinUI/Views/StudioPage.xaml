@@ -17,20 +17,18 @@
         <Grid Grid.Row="1" ColumnSpacing="18">
             <Grid.ColumnDefinitions><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Border Grid.Column="0" CornerRadius="24" Background="{StaticResource StrongAccentBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Padding="20">
-                <Grid>
-                    <Border CornerRadius="18" Background="#25000000" BorderBrush="#44FFFFFF" BorderThickness="1" Padding="28">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
-                            <TextBlock Text="DESKTOP WORLD" FontSize="11" FontWeight="SemiBold" Foreground="#AAFFFFFF" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="HeroTitle" Text="Your desktop, reimagined." FontSize="34" FontWeight="SemiBold" Foreground="White" TextAlignment="Center"/>
-                            <TextBlock x:Name="HeroDescription" Text="Scenes unify themes, widgets, wallpaper, effects and VibeFinder context." TextWrapping="Wrap" MaxWidth="620" Foreground="#CCFFFFFF" TextAlignment="Center"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,8,0,0">
-                                <Border CornerRadius="12" Padding="12,7" Background="#22FFFFFF"><TextBlock x:Name="HeroMood" Text="aesthetic" Foreground="White"/></Border>
-                                <Border CornerRadius="12" Padding="12,7" Background="#22FFFFFF"><TextBlock x:Name="HeroWidgets" Text="0 widgets" Foreground="White"/></Border>
-                                <Border CornerRadius="12" Padding="12,7" Background="#22FFFFFF"><TextBlock x:Name="HeroAdaptive" Text="Vibe adaptive" Foreground="White"/></Border>
-                            </StackPanel>
+                <Border CornerRadius="18" Background="#25000000" BorderBrush="#44FFFFFF" BorderThickness="1" Padding="28">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
+                        <TextBlock Text="DESKTOP WORLD" FontSize="11" FontWeight="SemiBold" Foreground="#AAFFFFFF" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="HeroTitle" Text="Your desktop, reimagined." FontSize="34" FontWeight="SemiBold" Foreground="White" TextAlignment="Center"/>
+                        <TextBlock x:Name="HeroDescription" Text="Scenes unify themes, widgets, wallpaper, effects and VibeFinder context." TextWrapping="Wrap" MaxWidth="620" Foreground="#CCFFFFFF" TextAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,8,0,0">
+                            <Border CornerRadius="12" Padding="12,7" Background="#22FFFFFF"><TextBlock x:Name="HeroMood" Text="aesthetic" Foreground="White"/></Border>
+                            <Border CornerRadius="12" Padding="12,7" Background="#22FFFFFF"><TextBlock x:Name="HeroWidgets" Text="0 widgets" Foreground="White"/></Border>
+                            <Border CornerRadius="12" Padding="12,7" Background="#22FFFFFF"><TextBlock x:Name="HeroAdaptive" Text="Vibe adaptive" Foreground="White"/></Border>
                         </StackPanel>
-                    </Border>
-                </Grid>
+                    </StackPanel>
+                </Border>
             </Border>
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="12">
