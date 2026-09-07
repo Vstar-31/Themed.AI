@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -120,15 +121,16 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
 
         _vignette.HorizontalAlignment = HorizontalAlignment.Stretch;
         _vignette.VerticalAlignment = VerticalAlignment.Stretch;
-        _vignette.Background = new RadialGradientBrush
+        var vignette = new RadialGradientBrush
         {
             GradientOrigin = new Windows.Foundation.Point(0.5, 0.5),
             Center = new Windows.Foundation.Point(0.5, 0.5),
             RadiusX = 0.82,
             RadiusY = 0.82
         };
-        _vignette.Background.As<RadialGradientBrush>().GradientStops.Add(new GradientStop { Color = Color.FromArgb(0, 0, 0, 0), Offset = 0.42 });
-        _vignette.Background.As<RadialGradientBrush>().GradientStops.Add(new GradientStop { Color = Color.FromArgb(72, 0, 0, 0), Offset = 1.0 });
+        vignette.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0, 0, 0, 0), Offset = 0.42 });
+        vignette.GradientStops.Add(new GradientStop { Color = Color.FromArgb(72, 0, 0, 0), Offset = 1.0 });
+        _vignette.Background = vignette;
 
         for (var i = 0; i < 4; i++)
         {
@@ -192,15 +194,15 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
         var warmth = Math.Clamp(_atmosphere.Warmth, 0, 1);
         var glow = Math.Clamp(_atmosphere.Glow, 0, 1);
 
-        _wash.Background = new LinearGradientBrush
+        var wash = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(1, 1)
         };
-        var wash = (LinearGradientBrush)_wash.Background;
         wash.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(18 + energy * 34), a.R, a.G, a.B), Offset = 0 });
         wash.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(10 + warmth * 28), b.R, b.G, b.B), Offset = 0.55 });
         wash.GradientStops.Add(new GradientStop { Color = Color.FromArgb((byte)(12 + glow * 26), accent.R, accent.G, accent.B), Offset = 1 });
+        _wash.Background = wash;
 
         for (var i = 0; i < _orbs.Count; i++)
         {
