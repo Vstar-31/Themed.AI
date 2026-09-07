@@ -149,9 +149,17 @@ public sealed partial class StudioPage : Page
         if (_selected is null) return;
         var themes = await App.ThemeRepository.LoadAllAsync();
         var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
-        if (targetTheme is not null) App.ThemeService.SetActiveTheme(targetTheme);
-        if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
+        if (targetTheme is not null)
+        {
+            App.ThemeService.SetActiveTheme(targetTheme);
+            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
+            if (targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
+                await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
+        }
+        else if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
+        {
             await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
+        }
 
         if (App.SkinManager is not null)
         {
