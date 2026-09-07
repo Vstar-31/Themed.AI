@@ -6,21 +6,16 @@ using ThemeManager.Integration.Skins;
 
 namespace ThemeManager.WinUI.Services;
 
-/// <summary>Live bridge between scene behavior, VibeFinder playback and desktop widgets.</summary>
 public sealed class DesktopWorldRuntime : IDisposable
 {
     private readonly DesktopSceneService _scenes;
     private readonly DispatcherQueue _dispatcher;
+    private readonly Dictionary<string, double> _baseOpacity = new(StringComparer.OrdinalIgnoreCase);
     private DispatcherQueueTimer? _timer;
     private bool _started;
     private bool _transitioning;
 
-    public DesktopWorldRuntime(DesktopSceneService scenes, DispatcherQueue dispatcher)
-    {
-        _scenes = scenes;
-        _dispatcher = dispatcher;
-    }
-
+    public DesktopWorldRuntime(DesktopSceneService scenes, DispatcherQueue dispatcher) { _scenes = scenes; _dispatcher = dispatcher; }
     public Atmosphere CurrentAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
     public Atmosphere TargetAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
 
@@ -39,12 +34,7 @@ public sealed class DesktopWorldRuntime : IDisposable
         PullVibeFinderState();
     }
 
-    private void OnVibeFinderStateChanged(object? sender, EventArgs e)
-    {
-        if (_dispatcher.HasThreadAccess) PullVibeFinderState();
-        else _dispatcher.TryEnqueue(PullVibeFinderState);
-    }
-
+    private void OnVibeFinderStateChanged(object? sender, EventArgs e) { if (_dispatcher.HasThreadAccess) PullVibeFinderState(); else _dispatcher.TryEnqueue(PullVibeFinderState); }
     private static void PullVibeFinderState()
     {
         if (!VibeFinderWebState.IsActive) return;
@@ -55,24 +45,9 @@ public sealed class DesktopWorldRuntime : IDisposable
         var warmth = signal.HasSignal ? atmosphere.Warmth : 0.5;
         VibeSnapshotHub.Publish(new VibeSnapshot(mood, Math.Clamp(energy, 0, 1), Math.Clamp(warmth, 0, 1), "VibeFinder", VibeFinderWebState.Title == "—" ? null : VibeFinderWebState.Title, VibeFinderWebState.Artist == "—" ? null : VibeFinderWebState.Artist));
     }
-
-    private void OnVibeChanged(object? sender, VibeSnapshot snapshot)
-    {
-        if (_dispatcher.HasThreadAccess) ApplySnapshot(snapshot);
-        else _dispatcher.TryEnqueue(() => ApplySnapshot(snapshot));
-    }
-
-    private void OnSceneChanged(object? sender, DesktopScene? scene)
-    {
-        if (_dispatcher.HasThreadAccess) RecalculateTarget(VibeSnapshotHub.Current);
-        else _dispatcher.TryEnqueue(() => RecalculateTarget(VibeSnapshotHub.Current));
-    }
-
-    private void ApplySnapshot(VibeSnapshot snapshot)
-    {
-        RecalculateTarget(snapshot);
-        TryAutoSwitch(snapshot);
-    }
+    private void OnVibeChanged(object? sender, VibeSnapshot snapshot) { if (_dispatcher.HasThreadAccess) ApplySnapshot(snapshot); else _dispatcher.TryEnqueue(() => ApplySnapshot(snapshot)); }
+    private void OnSceneChanged(object? sender, DesktopScene? scene) { if (_dispatcher.HasThreadAccess) RecalculateTarget(VibeSnapshotHub.Current); else _dispatcher.TryEnqueue(() => RecalculateTarget(VibeSnapshotHub.Current)); }
+    private void ApplySnapshot(VibeSnapshot snapshot) { RecalculateTarget(snapshot); TryAutoSwitch(snapshot); }
 
     private void RecalculateTarget(VibeSnapshot snapshot)
     {
@@ -92,12 +67,12 @@ public sealed class DesktopWorldRuntime : IDisposable
         var amount = _transitioning ? Math.Clamp(0.25 / Math.Max(0.15, scene.Behavior.TransitionSeconds), 0.04, 0.35) : 0.08;
         CurrentAtmosphere = DesktopVibeAdapter.Blend(CurrentAtmosphere, TargetAtmosphere, amount);
         if (Math.Abs(CurrentAtmosphere.Energy - TargetAtmosphere.Energy) < 0.01 && Math.Abs(CurrentAtmosphere.Warmth - TargetAtmosphere.Warmth) < 0.01) _transitioning = false;
-
         var motion = Math.Clamp(CurrentAtmosphere.Motion * Math.Max(0, scene.Behavior.MotionIntensity), 0, 1);
         foreach (var widget in App.SkinManager.Skins)
         {
             if (!widget.Enabled) continue;
-            var targetOpacity = Math.Clamp(widget.Opacity * (0.92 + motion * 0.08), 0.05, 1.0);
+            if (!_baseOpacity.ContainsKey(widget.Id)) _baseOpacity[widget.Id] = Math.Clamp(widget.Opacity, 0.05, 1.0);
+            var targetOpacity = Math.Clamp(_baseOpacity[widget.Id] * (0.92 + motion * 0.08), 0.05, 1.0);
             if (Math.Abs(widget.Opacity - targetOpacity) > 0.015) { widget.Opacity = targetOpacity; _ = App.SkinManager.SetOpacityAsync(widget, targetOpacity); }
         }
     }
@@ -106,10 +81,7 @@ public sealed class DesktopWorldRuntime : IDisposable
     {
         var active = _scenes.ActiveScene;
         if (active is null || !active.Behavior.AutoSwitch || !active.Behavior.ReactToVibeFinder) return;
-        var desiredTag = snapshot.Mood.ToLowerInvariant() switch
-        {
-            "nocturnal" => "nocturnal", "cozy" => "cozy", "euphoric" or "intense" => "neon", "bright" => "minimal", "melancholic" => "nocturnal", _ => null
-        };
+        var desiredTag = snapshot.Mood.ToLowerInvariant() switch { "nocturnal" => "nocturnal", "cozy" => "cozy", "euphoric" or "intense" => "neon", "bright" => "minimal", "melancholic" => "nocturnal", _ => null };
         if (desiredTag is null || active.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase))) return;
         var candidate = _scenes.Scenes.FirstOrDefault(s => s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
         if (candidate is not null) _scenes.SetActiveScene(candidate);
@@ -122,7 +94,6 @@ public sealed class DesktopWorldRuntime : IDisposable
         VibeSnapshotHub.SnapshotChanged -= OnVibeChanged;
         VibeFinderWebState.StateChanged -= OnVibeFinderStateChanged;
         _scenes.ActiveSceneChanged -= OnSceneChanged;
-        _timer?.Stop();
-        _timer = null;
+        _timer?.Stop(); _timer = null; _baseOpacity.Clear();
     }
 }
