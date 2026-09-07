@@ -1,0 +1,54 @@
+<Page
+    x:Class="ThemeManager.WinUI.Views.DesktopWorldPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{StaticResource AppBackgroundBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Padding="36,32,36,48" RowSpacing="22">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Desktop World" FontSize="32" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="Turn Windows into a living canvas. Scenes coordinate widgets, atmosphere, motion and VibeFinder AI." Style="{StaticResource CaptionStyle}" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Border Grid.Column="1" Padding="14,9" CornerRadius="18" Background="{StaticResource SidebarBackgroundBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><Ellipse Width="8" Height="8" Fill="{StaticResource PrimaryAccentBrush}"/><TextBlock x:Name="RuntimeStatus" Text="WORLD ONLINE" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/></StackPanel>
+                </Border>
+            </Grid>
+            <Grid Grid.Row="1" ColumnSpacing="16">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="22">
+                    <Grid RowSpacing="12">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Text="LIVE ATMOSPHERE" Style="{StaticResource CaptionStyle}" FontWeight="SemiBold"/>
+                        <Grid Grid.Row="1" ColumnSpacing="24">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <StackPanel><TextBlock x:Name="MoodText" Text="Neutral" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/><TextBlock Text="Mood" Style="{StaticResource CaptionStyle}"/></StackPanel>
+                            <StackPanel Grid.Column="1"><TextBlock x:Name="EnergyText" Text="8%" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/><TextBlock Text="Energy" Style="{StaticResource CaptionStyle}"/></StackPanel>
+                            <StackPanel Grid.Column="2"><TextBlock x:Name="WarmthText" Text="50%" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/><TextBlock Text="Warmth" Style="{StaticResource CaptionStyle}"/></StackPanel>
+                        </Grid>
+                        <ProgressBar Grid.Row="2" x:Name="EnergyBar" Minimum="0" Maximum="1" Value="0.08" Height="5"/>
+                        <TextBlock Grid.Row="3" x:Name="SourceText" Text="Listening for VibeFinder / media signals…" Style="{StaticResource CaptionStyle}"/>
+                    </Grid>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource CardStyle}" Padding="22">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="QUICK BUILD" Style="{StaticResource CaptionStyle}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Start with a mood. The World runtime handles the atmosphere." TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="✦ Neon" Tag="neon" Click="Preset_Click"/><Button Content="☾ Nocturnal" Tag="nocturnal" Click="Preset_Click"/><Button Content="☁ Cozy" Tag="cozy" Click="Preset_Click"/></StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Spacing="3"><TextBlock Text="Your scenes" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/><TextBlock Text="One click swaps the whole desktop personality." Style="{StaticResource CaptionStyle}"/></StackPanel>
+                <Button Grid.Column="1" Content="＋ New scene" Click="NewScene_Click"/>
+            </Grid>
+            <StackPanel Grid.Row="3" x:Name="SceneList" Spacing="10"/>
+        </Grid>
+    </ScrollViewer>
+</Page>
