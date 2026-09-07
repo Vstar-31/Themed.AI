@@ -4,23 +4,10 @@ using ThemeManager.Core.Skins;
 
 namespace ThemeManager.Core.Services;
 
-/// <summary>
-/// Loads and saves <see cref="SkinDefinition"/> objects to/from a JSON file in LocalApplicationData.
-/// Deliberately mirrors <see cref="ThemeRepository"/>'s storage pattern (same folder, same
-/// atomic write-then-rename technique, same JSON options) so the two persistence stores behave
-/// identically and are easy to reason about together.
-/// </summary>
 public sealed class SkinRepository
 {
-    // ── Storage path (same folder ThemeRepository uses, sibling file) ──────
-    private static readonly string StorageFolder =
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ThemedAI");
-
-    private static readonly string SkinsFilePath =
-        Path.Combine(StorageFolder, "skins.json");
-
+    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
+    private static readonly string SkinsFilePath = Path.Combine(StorageFolder, "skins.json");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -29,93 +16,92 @@ public sealed class SkinRepository
         Converters = { new JsonStringEnumConverter() },
     };
 
-    // ── Public API ──────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Loads all skins from disk. If no file exists yet, seeds the three built-in
-    /// starter widgets (Clock, System Monitor, Uptime) and persists them.
-    /// </summary>
     public async Task<List<SkinDefinition>> LoadAllAsync()
     {
         EnsureStorageFolderExists();
-
-        if (!File.Exists(SkinsFilePath))
-            return await SeedDefaultsAsync();
-
+        if (!File.Exists(SkinsFilePath)) return await SeedDefaultsAsync();
         try
         {
             await using var stream = File.OpenRead(SkinsFilePath);
-            var skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions)
-                        ?? new List<SkinDefinition>();
-
-            // Schema migrations are intentionally performed at the repository boundary. The UI and
-            // runtime therefore only ever see the newest in-memory shape, while users can keep old
-            // skins indefinitely and still import/edit them safely.
-            if (Migrate(skins))
-                await SaveAllAsync(skins);
-
+            var skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions) ?? new();
+            if (Migrate(skins)) await SaveAllAsync(skins);
             return skins;
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            // Corrupt or locked file – back it up (best-effort) and re-seed.
-            try { File.Move(SkinsFilePath, SkinsFilePath + ".bak", overwrite: true); }
-            catch (IOException) { /* backup failed – still safe to re-seed */ }
+            try { File.Move(SkinsFilePath, SkinsFilePath + ".bak", overwrite: true); } catch (IOException) { }
             return await SeedDefaultsAsync();
         }
     }
 
     private readonly SemaphoreSlim _saveLock = new(1, 1);
 
-    /// <summary>Persists the full list of skins to disk atomically (write-then-rename).</summary>
-    /// <exception cref="IOException">Thrown after one retry if the file is locked or disk is full.</exception>
     public async Task SaveAllAsync(IEnumerable<SkinDefinition> skins)
     {
         EnsureStorageFolderExists();
-
         await _saveLock.WaitAsync();
         try
         {
             var list = skins.ToList();
             var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
-
-            try
-            {
-                await WriteAndMoveAsync(list, tempPath);
-            }
+            try { await WriteAndMoveAsync(list, tempPath); }
             catch (IOException)
             {
                 await Task.Delay(200);
                 await WriteAndMoveAsync(list, tempPath);
             }
         }
-        finally
-        {
-            _saveLock.Release();
-        }
+        finally { _saveLock.Release(); }
     }
 
     private async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
     {
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, list, JsonOptions);
-
         File.Move(tempPath, SkinsFilePath, overwrite: true);
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────
-
-    private static void EnsureStorageFolderExists() =>
-        Directory.CreateDirectory(StorageFolder);
+    private static void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
 
     private static bool Migrate(List<SkinDefinition> skins)
     {
         bool changed = false;
+        var defaults = SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+
         foreach (var skin in skins)
         {
-            if (skin.SchemaVersion < 2)
+            // Version 3 is the visual refresh: existing shipped widgets get the same repaired
+            // typography/layout as a fresh install. Position and enabled state remain personal.
+            if (skin.Id.StartsWith("builtin-", StringComparison.OrdinalIgnoreCase) && skin.SchemaVersion < 3 && defaults.TryGetValue(skin.Id, out var canonical))
             {
-                skin.SchemaVersion = 2;
+                var enabled = skin.Enabled;
+                var x = skin.X;
+                var y = skin.Y;
+                var opacity = skin.Opacity;
+                skin.Name = canonical.Name;
+                skin.Description = canonical.Description;
+                skin.Author = canonical.Author;
+                skin.Tags = canonical.Tags.ToList();
+                skin.Width = canonical.Width;
+                skin.Height = canonical.Height;
+                skin.Opacity = opacity <= 0 ? canonical.Opacity : opacity;
+                skin.ClickThrough = canonical.ClickThrough;
+                skin.AlwaysOnTop = canonical.AlwaysOnTop;
+                skin.Locked = skin.Locked;
+                skin.DesktopLayer = canonical.DesktopLayer;
+                skin.UpdateIntervalMs = canonical.UpdateIntervalMs;
+                skin.Measures = canonical.Measures;
+                skin.Meters = canonical.Meters;
+                skin.Variables = canonical.Variables;
+                skin.SchemaVersion = 3;
+                skin.Enabled = enabled;
+                skin.X = x;
+                skin.Y = y;
+                changed = true;
+            }
+            else if (skin.SchemaVersion < 3)
+            {
+                skin.SchemaVersion = 3;
                 changed = true;
             }
 
@@ -124,13 +110,11 @@ public sealed class SkinRepository
                 skin.Tags = new List<string>();
                 changed = true;
             }
-
             if (skin.Variables is null)
             {
                 skin.Variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 changed = true;
             }
-
             foreach (var measure in skin.Measures)
             {
                 if (string.IsNullOrWhiteSpace(measure.Id))
@@ -139,7 +123,6 @@ public sealed class SkinRepository
                     changed = true;
                 }
             }
-
             foreach (var meter in skin.Meters)
             {
                 if (string.IsNullOrWhiteSpace(meter.Id))
@@ -149,11 +132,24 @@ public sealed class SkinRepository
                 }
                 if (meter.Opacity <= 0)
                 {
-                    // Old files did not have per-meter opacity; zero means "missing" rather than
-                    // "invisible" for the migration. Explicitly invisible meters can still be
-                    // authored as a value below 0.001 after migration.
                     meter.Opacity = 1.0;
                     changed = true;
+                }
+                // Prevent clipped glyphs/text from older presets. String meters get a predictable
+                // line box instead of relying on a too-small legacy Height value.
+                if (meter.Kind == MeterKind.String)
+                {
+                    var minimumHeight = Math.Ceiling(meter.FontSize * 1.45);
+                    if (meter.Height < minimumHeight)
+                    {
+                        meter.Height = minimumHeight;
+                        changed = true;
+                    }
+                    if (meter.Width < 32)
+                    {
+                        meter.Width = 32;
+                        changed = true;
+                    }
                 }
             }
         }
