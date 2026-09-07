@@ -1,153 +1,84 @@
 namespace ThemeManager.Core.Skins;
 
-/// <summary>Built-in starter widgets, seeded the first time <see cref="Services.SkinRepository"/> runs.</summary>
+/// <summary>Curated built-in widgets. Layouts favor generous typography, consistent spacing and readable data.</summary>
 public static class SkinDefaults
 {
-    /// <summary>Digital clock + date.</summary>
-    public static SkinDefinition CreateClock() => new()
+    private const int CurrentDesignVersion = 3;
+
+    private static SkinDefinition Base(string id, string name, double x, double y, double width, double height) => new()
     {
-        Id = "builtin-clock",
-        Name = "Cozy Clock",
-        X = 40,
-        Y = 40,
-        Width = 200,
-        Height = 92,
-        Measures =
-        {
-            new MeasureDefinition { Name = "Now", Type = MeasureType.Time },
-            new MeasureDefinition { Name = "Today", Type = MeasureType.Date },
-        },
-        Meters =
-        {
-            new MeterDefinition
-            {
-                Kind = MeterKind.String, MeasureName = "Now", Format = "{1}",
-                X = 16, Y = 14, Width = 168, Height = 36, FontSize = 28, Bold = true,
-            },
-            new MeterDefinition
-            {
-                Kind = MeterKind.String, MeasureName = "Today", Format = "{1}",
-                X = 16, Y = 56, Width = 168, Height = 20, FontSize = 13,
-            },
-        }
+        Id = id, Name = name, X = x, Y = y, Width = width, Height = height, SchemaVersion = CurrentDesignVersion,
+        Opacity = 0.86, AlwaysOnTop = true, Tags = new() { "built-in", "desktop" }
     };
 
-    /// <summary>CPU / memory / disk usage, each as a label + fill bar.</summary>
-    public static SkinDefinition CreateSystemMonitor() => new()
+    public static SkinDefinition CreateClock()
     {
-        Id = "builtin-system-monitor",
-        Name = "System Monitor",
-        X = 40,
-        Y = 160,
-        Width = 220,
-        Height = 148,
-        Measures =
-        {
-            new MeasureDefinition { Name = "CpuUsage",  Type = MeasureType.Cpu },
-            new MeasureDefinition { Name = "MemUsage",  Type = MeasureType.Memory },
-            new MeasureDefinition { Name = "DiskFree",  Type = MeasureType.DiskFree, Target = @"C:\" },
-        },
-        Meters =
-        {
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "CpuUsage", Format = "CPU  {0:F0}%",  X = 16, Y = 12, Width = 188, Height = 18, FontSize = 13 },
-            new MeterDefinition { Kind = MeterKind.Bar,    MeasureName = "CpuUsage", X = 16, Y = 32, Width = 188, Height = 10 },
+        var skin = Base("builtin-clock", "Cozy Clock", 40, 40, 244, 112);
+        skin.Measures.Add(new MeasureDefinition { Name = "Now", Type = MeasureType.Time });
+        skin.Measures.Add(new MeasureDefinition { Name = "Today", Type = MeasureType.Date });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "Now", Format = "{1}", X = 18, Y = 14, Width = 208, Height = 48, FontSize = 34, Bold = true });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "Today", Format = "{1}", X = 18, Y = 66, Width = 208, Height = 26, FontSize = 14 });
+        return skin;
+    }
 
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "MemUsage", Format = "RAM  {0:F0}%",  X = 16, Y = 54, Width = 188, Height = 18, FontSize = 13 },
-            new MeterDefinition { Kind = MeterKind.Bar,    MeasureName = "MemUsage", X = 16, Y = 74, Width = 188, Height = 10 },
-
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "DiskFree", Format = "C:\\  {0:F0}% free", X = 16, Y = 96, Width = 188, Height = 18, FontSize = 13 },
-            new MeterDefinition { Kind = MeterKind.Bar,    MeasureName = "DiskFree", X = 16, Y = 116, Width = 188, Height = 10 },
-        }
-    };
-
-    /// <summary>Small "how long has this PC been running" widget with a bit of Cozy branding.</summary>
-    public static SkinDefinition CreateUptime() => new()
+    public static SkinDefinition CreateSystemMonitor()
     {
-        Id = "builtin-uptime",
-        Name = "Uptime",
-        X = 280,
-        Y = 40,
-        Width = 180,
-        Height = 76,
-        Measures =
-        {
-            new MeasureDefinition { Name = "Up", Type = MeasureType.Uptime },
-        },
-        Meters =
-        {
-            new MeterDefinition { Kind = MeterKind.String, StaticText = "☕  humming along for", X = 14, Y = 12, Width = 152, Height = 18, FontSize = 12 },
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "Up", Format = "{1}", X = 14, Y = 34, Width = 152, Height = 28, FontSize = 20, Bold = true },
-        }
-    };
+        var skin = Base("builtin-system-monitor", "System Monitor", 40, 176, 268, 182);
+        skin.Measures.Add(new MeasureDefinition { Name = "CpuUsage", Type = MeasureType.Cpu });
+        skin.Measures.Add(new MeasureDefinition { Name = "MemUsage", Type = MeasureType.Memory });
+        skin.Measures.Add(new MeasureDefinition { Name = "DiskFree", Type = MeasureType.DiskFree, Target = @"C:\" });
+        AddMetric(skin, "CpuUsage", "CPU", 16, 14);
+        AddMetric(skin, "MemUsage", "RAM", 16, 66);
+        AddMetric(skin, "DiskFree", "C:\\ FREE", 16, 118, true);
+        return skin;
+    }
 
-    /// <summary>Download speed as a live graph, plus current down/up speed as text.</summary>
-    public static SkinDefinition CreateNetworkMonitor() => new()
+    private static void AddMetric(SkinDefinition skin, string measure, string label, double x, double y, bool free = false)
     {
-        Id = "builtin-network",
-        Name = "Network",
-        X = 280,
-        Y = 160,
-        Width = 220,
-        Height = 128,
-        Measures =
-        {
-            new MeasureDefinition { Name = "Down", Type = MeasureType.NetworkDown },
-            new MeasureDefinition { Name = "Up",   Type = MeasureType.NetworkUp },
-        },
-        Meters =
-        {
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "Down", Format = "↓ {1}", X = 16,  Y = 12, Width = 96, Height = 18, FontSize = 13 },
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "Up",   Format = "↑ {1}", X = 114, Y = 12, Width = 96, Height = 18, FontSize = 13 },
-            // BarMax = 2048 KB/s (2 MB/s) is a reasonable ceiling for everyday browsing — a bigger
-            // download just clips the graph at full height rather than doing anything wrong; the
-            // editor lets you raise it if your connection regularly blows past that.
-            new MeterDefinition { Kind = MeterKind.Graph, MeasureName = "Down", BarMax = 2048, HistoryLength = 60, X = 16, Y = 36, Width = 188, Height = 74 },
-        }
-    };
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, StaticText = label, X = x, Y = y, Width = 72, Height = 22, FontSize = 11, Bold = true });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = measure, Format = free ? "{0:F0}% free" : "{0:F0}%", X = x + 70, Y = y, Width = 166, Height = 24, FontSize = 13, Bold = true, CenterText = false });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = measure, X = x, Y = y + 28, Width = 220, Height = 8, BarMax = 100 });
+    }
 
-    /// <summary>Three circular gauges (CPU / RAM / Disk), each with a centered percentage over it
-    /// and a small caption below — Rainmeter's most-imitated widget pattern (the glowing ring
-    /// gauges "Jarvis"/HUD-style skins are built around), and the natural showcase for
-    /// <see cref="MeterKind.Ring"/>. Composed the same way every other preset here is —
-    /// independent String meters layered on top of the gauge, not a special "ring with a
-    /// built-in label" kind. <see cref="MeterDefinition.CenterText"/> (added alongside Ring) is
-    /// what makes the percentage actually sit centered over the gauge instead of stuck to its
-    /// left edge like every other String meter in this file.</summary>
-    public static SkinDefinition CreateSystemRings() => new()
+    public static SkinDefinition CreateUptime()
     {
-        Id = "builtin-system-rings",
-        Name = "System Rings",
-        X = 520,
-        Y = 40,
-        Width = 272,
-        Height = 128,
-        Measures =
-        {
-            new MeasureDefinition { Name = "CpuUsage",  Type = MeasureType.Cpu },
-            new MeasureDefinition { Name = "MemUsage",  Type = MeasureType.Memory },
-            // DiskUsed, not DiskFree (CreateSystemMonitor above uses DiskFree) — DiskFree's value
-            // is *free* space, so a high number there is good news. A ring gauge reads as "how
-            // full is this", so DiskUsed is the one that makes "full ring = getting concerning"
-            // true, and lets all three gauges below share the same 85%-threshold meaning.
-            new MeasureDefinition { Name = "DiskUsage", Type = MeasureType.DiskUsed, Target = @"C:\" },
-        },
-        Meters =
-        {
-            new MeterDefinition { Kind = MeterKind.Ring,   MeasureName = "CpuUsage", X = 16,  Y = 20, Width = 64, Height = 64, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" },
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "CpuUsage", Format = "{0:F0}%", X = 16,  Y = 41, Width = 64, Height = 22, FontSize = 15, Bold = true, CenterText = true },
-            new MeterDefinition { Kind = MeterKind.String, StaticText = "CPU", X = 16,  Y = 92, Width = 64, Height = 16, FontSize = 11, CenterText = true },
+        var skin = Base("builtin-uptime", "Uptime", 320, 40, 220, 104);
+        skin.Measures.Add(new MeasureDefinition { Name = "Up", Type = MeasureType.Uptime });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, StaticText = "UPTIME", X = 16, Y = 14, Width = 188, Height = 20, FontSize = 11, Bold = true });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "Up", Format = "{1}", X = 16, Y = 42, Width = 188, Height = 32, FontSize = 21, Bold = true });
+        return skin;
+    }
 
-            new MeterDefinition { Kind = MeterKind.Ring,   MeasureName = "MemUsage", X = 104, Y = 20, Width = 64, Height = 64, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" },
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "MemUsage", Format = "{0:F0}%", X = 104, Y = 41, Width = 64, Height = 22, FontSize = 15, Bold = true, CenterText = true },
-            new MeterDefinition { Kind = MeterKind.String, StaticText = "RAM", X = 104, Y = 92, Width = 64, Height = 16, FontSize = 11, CenterText = true },
+    public static SkinDefinition CreateNetworkMonitor()
+    {
+        var skin = Base("builtin-network", "Network", 320, 176, 268, 154);
+        skin.Measures.Add(new MeasureDefinition { Name = "Down", Type = MeasureType.NetworkDown });
+        skin.Measures.Add(new MeasureDefinition { Name = "Up", Type = MeasureType.NetworkUp });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "Down", Format = "↓  {1}", X = 16, Y = 14, Width = 112, Height = 24, FontSize = 13, Bold = true });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "Up", Format = "↑  {1}", X = 140, Y = 14, Width = 112, Height = 24, FontSize = 13, Bold = true });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.Graph, MeasureName = "Down", BarMax = 2048, HistoryLength = 60, X = 16, Y = 50, Width = 236, Height = 82 });
+        return skin;
+    }
 
-            new MeterDefinition { Kind = MeterKind.Ring,   MeasureName = "DiskUsage", X = 192, Y = 20, Width = 64, Height = 64, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" },
-            new MeterDefinition { Kind = MeterKind.String, MeasureName = "DiskUsage", Format = "{0:F0}%", X = 192, Y = 41, Width = 64, Height = 22, FontSize = 15, Bold = true, CenterText = true },
-            new MeterDefinition { Kind = MeterKind.String, StaticText = "DISK", X = 192, Y = 92, Width = 64, Height = 16, FontSize = 11, CenterText = true },
-        }
-    };
+    public static SkinDefinition CreateSystemRings()
+    {
+        var skin = Base("builtin-system-rings", "System Rings", 612, 40, 300, 150);
+        skin.Measures.Add(new MeasureDefinition { Name = "CpuUsage", Type = MeasureType.Cpu });
+        skin.Measures.Add(new MeasureDefinition { Name = "MemUsage", Type = MeasureType.Memory });
+        skin.Measures.Add(new MeasureDefinition { Name = "DiskUsage", Type = MeasureType.DiskUsed, Target = @"C:\" });
+        AddRing(skin, "CpuUsage", "CPU", 16);
+        AddRing(skin, "MemUsage", "RAM", 112);
+        AddRing(skin, "DiskUsage", "DISK", 208);
+        return skin;
+    }
 
-    /// <summary>All built-in widgets, in the order they should appear on first run.</summary>
+    private static void AddRing(SkinDefinition skin, string measure, string label, double x)
+    {
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.Ring, MeasureName = measure, X = x, Y = 18, Width = 76, Height = 76, BarMax = 100, ThresholdPercent = 85, ThresholdColorHex = "#E05252" });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = measure, Format = "{0:F0}%", X = x, Y = 43, Width = 76, Height = 28, FontSize = 15, Bold = true, CenterText = true });
+        skin.Meters.Add(new MeterDefinition { Kind = MeterKind.String, StaticText = label, X = x, Y = 104, Width = 76, Height = 20, FontSize = 11, Bold = true, CenterText = true });
+    }
+
     public static List<SkinDefinition> CreateAllDefaults() =>
         [CreateClock(), CreateSystemMonitor(), CreateUptime(), CreateNetworkMonitor(), CreateSystemRings()];
 }
