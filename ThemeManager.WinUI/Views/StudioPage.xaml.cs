@@ -22,6 +22,7 @@ public sealed partial class StudioPage : Page
         Loaded += async (_, _) =>
         {
             await App.SceneService.InitializeAsync();
+            await App.StartWorldRuntimeAsync();
             await SeedStarterWorldsAsync();
             Refresh();
         };
