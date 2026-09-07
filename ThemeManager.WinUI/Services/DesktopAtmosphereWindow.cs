@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
-using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -10,6 +9,8 @@ using Microsoft.UI.Xaml.Shapes;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Services;
 using ThemeManager.Integration.Skins;
+using Windows.Graphics;
+using Windows.UI;
 
 namespace ThemeManager.WinUI.Services;
 
