@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    Loaded="Page_Loaded"
     Unloaded="Page_Unloaded">
 
     <Grid>
@@ -15,31 +16,26 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Left Panel: Settings and Widgets -->
         <ScrollViewer Grid.Column="0" Padding="20">
             <StackPanel Spacing="20">
                 <TextBlock Text="VibeFinder AI" Style="{StaticResource TitleTextBlockStyle}"/>
+                <TextBlock Text="Make the desktop react to what you are listening to." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
 
-                <!-- Credentials Section -->
                 <StackPanel Spacing="10">
-                    <TextBlock Text="Widget Credentials" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <TextBlock Text="Enter your VibeFinder account details to sync the widgets with your vibe." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
-                    
+                    <TextBlock Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock Text="Your credentials stay local. The widgets use the same VibeFinder session as this panel." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
                     <TextBox x:Name="UsernameBox" Header="Username" PlaceholderText="listener"/>
                     <PasswordBox x:Name="PasswordBox" Header="Password" PlaceholderText="hunter2"/>
                     <TextBox x:Name="PromptBox" Header="Vibe Prompt" Text="$theme" PlaceholderText="e.g. cozy rainy afternoon, or $theme"/>
-                    
                     <Button Content="Save &amp; Apply" Click="SaveCredentials_Click" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" Margin="0,10,0,0"/>
-                    <TextBlock x:Name="StatusText" Text="Saved!" Foreground="Green" Visibility="Collapsed"/>
+                    <TextBlock x:Name="StatusText" Text="Saved!" Foreground="{StaticResource TextMutedBrush}" Visibility="Collapsed"/>
                 </StackPanel>
 
-                <MenuFlyoutSeparator Margin="0,10,0,10"/>
+                <MenuFlyoutSeparator Margin="0,2,0,2"/>
 
-                <!-- Widgets Section -->
                 <StackPanel Spacing="10">
-                    <TextBlock Text="Dope Widgets" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <TextBlock Text="Toggle predefined widgets for your desktop." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
-
+                    <TextBlock Text="Desktop Widgets" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock Text="Three curated layouts — choose the amount of music UI you want floating over Windows." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
                     <ToggleSwitch x:Name="TogglePrimary" Header="VibeFinder Primary" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Primary"/>
                     <ToggleSwitch x:Name="ToggleMinimal" Header="VibeFinder Minimal" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Minimal"/>
                     <ToggleSwitch x:Name="TogglePlaylist" Header="VibeFinder Playlist" Toggled="WidgetToggle_Toggled" Tag="VibeFinder Playlist"/>
@@ -47,7 +43,6 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Right Panel: Web Embed -->
         <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1,0,0,0">
             <WebView2 x:Name="VibeFinderWebView" Source="https://vibefinderai.netlify.app/app"/>
         </Border>
