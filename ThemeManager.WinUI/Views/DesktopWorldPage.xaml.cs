@@ -38,8 +38,8 @@ public sealed partial class DesktopWorldPage : Page
         EnergyText.Text = $"{atmosphere.Energy:P0}";
         WarmthText.Text = $"{atmosphere.Warmth:P0}";
         EnergyBar.Value = atmosphere.Energy;
-        SourceText.Text = snapshot.Source == "VibeFinder" && snapshot.TrackTitle is not null
-            ? $"Live from VibeFinder AI · {snapshot.TrackTitle} — {snapshot.TrackArtist}"
+        SourceText.Text = snapshot.Source == "VibeFinder" && !string.IsNullOrWhiteSpace(snapshot.TrackTitle)
+            ? $"Live from VibeFinder AI · {snapshot.TrackTitle}"
             : $"Signal source · {snapshot.Source}";
         RuntimeStatus.Text = App.WorldRuntime is null ? "WORLD STARTING" : "WORLD ONLINE";
     }
