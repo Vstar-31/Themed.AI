@@ -20,7 +20,12 @@ public sealed partial class MainWindow : Window
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<MainWindow>();
     private bool _vibeFinderPrewarmStarted;
     private bool _vibeFinderAwaitingNetwork;
-    private bool _vibeFinderDialogOpen;
+
+    // ContentDialog is process-wide in WinUI 3: only one may be open at a time. Login failures
+    // can arrive from both the hidden prewarm WebView and the visible VibeFinder page almost
+    // simultaneously, so an instance-local bool is not enough protection. Interlocked makes the
+    // admission test atomic and also protects against future multiple-window scenarios.
+    private static int _vibeFinderDialogOpen;
 
     public MainWindow()
     {
@@ -79,15 +84,39 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowVibeFinderIssueDialogAsync(string title, string message)
     {
-        if (_vibeFinderDialogOpen || Content?.XamlRoot is null) return;
-        _vibeFinderDialogOpen = true;
+        // WinUI enforces one ContentDialog per process. Atomically claim the slot before doing
+        // anything asynchronous; a second login-result callback simply drops its duplicate UI.
+        if (Interlocked.CompareExchange(ref _vibeFinderDialogOpen, 1, 0) != 0) return;
+
         try
         {
-            var dialog = new ContentDialog { Title = title, Content = message, CloseButtonText = "OK", XamlRoot = Content.XamlRoot };
-            await dialog.ShowAsync();
+            var root = Content?.XamlRoot;
+            if (root is null) return;
+
+            // Always create/show the dialog on the window's dispatcher. This also makes the
+            // lifetime of the XamlRoot deterministic if the auth callback originated elsewhere.
+            await DispatcherQueue.EnqueueAsync(() =>
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = title,
+                    Content = message,
+                    CloseButtonText = "OK",
+                    XamlRoot = root
+                };
+                return dialog.ShowAsync().AsTask();
+            });
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "VibeFinder issue dialog failed"); }
-        finally { _vibeFinderDialogOpen = false; }
+        catch (Exception ex)
+        {
+            // A dialog can still be rejected if another component owns a ContentDialog. Never let
+            // an auth notification take down the desktop customizer; the failure is informational.
+            _logger.LogDebug(ex, "VibeFinder issue dialog failed");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _vibeFinderDialogOpen, 0);
+        }
     }
 
     private void ConfigureTitleBar()
