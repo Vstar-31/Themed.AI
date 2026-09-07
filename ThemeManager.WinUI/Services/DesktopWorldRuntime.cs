@@ -16,8 +16,8 @@ public sealed class DesktopWorldRuntime : IDisposable
     private bool _transitioning;
 
     public DesktopWorldRuntime(DesktopSceneService scenes, DispatcherQueue dispatcher) { _scenes = scenes; _dispatcher = dispatcher; }
-    public Atmosphere CurrentAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
-    public Atmosphere TargetAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
+    public DesktopVibeAdapter.Atmosphere CurrentAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
+    public DesktopVibeAdapter.Atmosphere TargetAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
 
     public void Start()
     {
