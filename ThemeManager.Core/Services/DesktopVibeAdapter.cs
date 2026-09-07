@@ -1,11 +1,10 @@
-using ThemeManager.Core.Models;
+using ThemeManager.Core.NLP;
 
 namespace ThemeManager.Core.Services;
 
 /// <summary>
-/// Converts a live vibe into deterministic desktop-atmosphere parameters.
-/// The adapter is intentionally UI-agnostic so WinUI, widgets and future desktop
-/// compositor surfaces can all consume the same smooth signal.
+/// Converts a live vibe signal into deterministic desktop-atmosphere parameters.
+/// UI and widget layers consume the same signal, avoiding per-surface interpretation drift.
 /// </summary>
 public static class DesktopVibeAdapter
 {
@@ -21,7 +20,10 @@ public static class DesktopVibeAdapter
     public static Atmosphere From(VibeSignal signal, double transitionSeconds = 0.9)
     {
         ArgumentNullException.ThrowIfNull(signal);
-        return From(signal.Mood, signal.Energy, signal.Warmth, transitionSeconds);
+        var energy = Math.Clamp((signal.Saturation + Math.Abs(signal.SentimentValence)) * 0.5f, 0, 1);
+        var warmth = Math.Clamp(signal.Warmth, 0, 1);
+        var mood = InferMood(signal, energy);
+        return From(mood, energy, warmth, transitionSeconds);
     }
 
     public static Atmosphere From(string? mood, double energy, double warmth, double transitionSeconds = 0.9)
@@ -49,6 +51,17 @@ public static class DesktopVibeAdapter
             Lerp(current.Motion, target.Motion, t),
             Lerp(current.AudioReactivity, target.AudioReactivity, t),
             Lerp(current.TransitionSeconds, target.TransitionSeconds, t));
+    }
+
+    private static string InferMood(VibeSignal signal, double energy)
+    {
+        if (!signal.HasSignal) return "Neutral";
+        if (energy > 0.72) return signal.SentimentValence >= 0 ? "Euphoric" : "Intense";
+        if (signal.Warmth > 0.68 && energy < 0.45) return "Cozy";
+        if (signal.IsDark && energy < 0.5) return "Nocturnal";
+        if (signal.SentimentValence > 0.35) return "Bright";
+        if (signal.SentimentValence < -0.35) return "Melancholic";
+        return "Atmospheric";
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * t);
