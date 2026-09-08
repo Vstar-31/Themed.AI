@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,14 +15,14 @@ using ThemeManager.Core.Skins;
 
 namespace ThemeManager.Integration.Skins;
 
-/// <summary>VibeFinderAI-backed recommendation measure with active-theme-aware caching.</summary>
-public sealed class VibeFinderMeasure : IMeasure
+/// <summary>VibeFinderAI-backed recommendation measure with active-theme-aware caching and widget-scoped cancellation.</summary>
+public sealed class VibeFinderMeasure : IMeasure, IDisposable
 {
     private const string BaseUrl = "https://vibefinderai.onrender.com";
     private const string ActiveThemeSentinel = "$theme";
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RetryBackoff = TimeSpan.FromMinutes(5);
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private static readonly ConcurrentDictionary<string, TokenEntry> Tokens = new();
     private static readonly ConcurrentDictionary<string, ResultEntry> Cache = new();
 
@@ -40,7 +41,9 @@ public sealed class VibeFinderMeasure : IMeasure
     private readonly string _target;
     private readonly ILogger _logger;
     private readonly IActiveThemeProvider? _activeThemeProvider;
+    private readonly CancellationTokenSource _lifetimeCts = new();
     private string _lastLoggedText = "";
+    private int _disposed;
 
     private sealed class TokenEntry { public string? AccessToken; }
 
@@ -67,6 +70,8 @@ public sealed class VibeFinderMeasure : IMeasure
 
     public void Refresh()
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
+
         if (VibeFinderWebState.IsActive)
         {
             CurrentTrackTitle = VibeFinderWebState.Title;
@@ -127,7 +132,7 @@ public sealed class VibeFinderMeasure : IMeasure
         if (shouldFetch)
         {
             _logger.LogDebug("VibeFinderMeasure[{MeasureName}]: cache stale, starting one background fetch for phrase \"{Phrase}\"", Name, vibeText);
-            _ = Task.Run(() => FetchAsync(entry, parts[0], parts[1], vibeText!));
+            _ = FetchAsync(entry, parts[0], parts[1], vibeText!, _lifetimeCts.Token);
         }
 
         List<(string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl, string? VideoId)> tracks;
@@ -183,64 +188,75 @@ public sealed class VibeFinderMeasure : IMeasure
         return theme is null ? null : ThemeVibeText.Describe(theme);
     }
 
-    private async Task FetchAsync(ResultEntry entry, string username, string password, string vibeText)
+    private async Task FetchAsync(ResultEntry entry, string username, string password, string vibeText, CancellationToken cancellationToken)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            string? token = await GetTokenAsync(username, password);
+            cancellationToken.ThrowIfCancellationRequested();
+            string? token = await GetTokenAsync(username, password, false, cancellationToken).ConfigureAwait(false);
             if (token is null)
             {
                 _logger.LogWarning("VibeFinderAI login failed for user \"{User}\"; retrying after backoff", username);
                 return;
             }
 
-            var resp = await PostAnalyzeAsync(token, vibeText);
-            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            using var resp1 = await PostAnalyzeAsync(token, vibeText, cancellationToken).ConfigureAwait(false);
+            HttpResponseMessage response = resp1;
+            if (resp1.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
-                token = await GetTokenAsync(username, password, true);
+                token = await GetTokenAsync(username, password, true, cancellationToken).ConfigureAwait(false);
                 if (token is null) return;
-                resp = await PostAnalyzeAsync(token, vibeText);
-            }
-            if (!resp.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("VibeFinderAI /api/vibe/analyze returned {Status} after {ElapsedMs}ms", resp.StatusCode, sw.ElapsedMilliseconds);
-                return;
+                response = await PostAnalyzeAsync(token, vibeText, cancellationToken).ConfigureAwait(false);
             }
 
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-            var root = doc.RootElement;
-            string mood = root.TryGetProperty("dominant_vibe", out var moodEl) ? moodEl.GetString() ?? "—" : "—";
-            var tracks = new List<(string, string, string, string?, string?, string?, string?, string?)>();
-            if (root.TryGetProperty("tracks", out var tracksEl) && tracksEl.ValueKind == JsonValueKind.Array)
+            using (response)
             {
-                foreach (var track in tracksEl.EnumerateArray())
+                if (!response.IsSuccessStatusCode)
                 {
-                    string title = track.TryGetProperty("title", out var titleEl) ? titleEl.GetString() ?? "—" : "—";
-                    string artist = track.TryGetProperty("artist", out var artistEl) ? artistEl.GetString() ?? "—" : "—";
-                    string? spotify = null, apple = null, cover = null, preview = null, video = null;
-                    if (track.TryGetProperty("spotify_uri", out var spotifyEl))
-                    {
-                        var uri = spotifyEl.GetString();
-                        if (uri?.StartsWith("spotify:track:", StringComparison.Ordinal) == true) spotify = $"https://open.spotify.com/track/{uri.Substring(14)}";
-                        else if (uri?.StartsWith("spotify:search:", StringComparison.Ordinal) == true) spotify = $"https://open.spotify.com/search/{uri.Substring(15)}";
-                    }
-                    if (track.TryGetProperty("apple_uri", out var appleEl)) apple = appleEl.GetString();
-                    if (track.TryGetProperty("cover_art", out var coverEl)) cover = coverEl.GetString()?.Replace("100x100bb", "512x512bb");
-                    if (track.TryGetProperty("preview_url", out var previewEl)) preview = previewEl.GetString();
-                    if (track.TryGetProperty("youtube_video_id", out var videoEl)) video = videoEl.GetString();
-                    if (!string.IsNullOrEmpty(cover)) tracks.Add((title, artist, mood, spotify, apple, cover, preview, video));
+                    _logger.LogWarning("VibeFinderAI /api/vibe/analyze returned {Status} after {ElapsedMs}ms", response.StatusCode, sw.ElapsedMilliseconds);
+                    return;
                 }
-            }
-            if (tracks.Count == 0) tracks.Add(("No match", "—", mood, null, null, null, null, null));
 
-            lock (entry.Lock)
-            {
-                entry.Tracks = tracks;
-                entry.CurrentIndex = 0;
-                entry.LastSuccess = DateTime.UtcNow;
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                var root = doc.RootElement;
+                string mood = root.TryGetProperty("dominant_vibe", out var moodEl) ? moodEl.GetString() ?? "—" : "—";
+                var tracks = new List<(string, string, string, string?, string?, string?, string?, string?)>();
+                if (root.TryGetProperty("tracks", out var tracksEl) && tracksEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var track in tracksEl.EnumerateArray())
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        string title = track.TryGetProperty("title", out var titleEl) ? titleEl.GetString() ?? "—" : "—";
+                        string artist = track.TryGetProperty("artist", out var artistEl) ? artistEl.GetString() ?? "—" : "—";
+                        string? spotify = null, apple = null, cover = null, preview = null, video = null;
+                        if (track.TryGetProperty("spotify_uri", out var spotifyEl))
+                        {
+                            var uri = spotifyEl.GetString();
+                            if (uri?.StartsWith("spotify:track:", StringComparison.Ordinal) == true) spotify = $"https://open.spotify.com/track/{uri.Substring(14)}";
+                            else if (uri?.StartsWith("spotify:search:", StringComparison.Ordinal) == true) spotify = $"https://open.spotify.com/search/{uri.Substring(15)}";
+                        }
+                        if (track.TryGetProperty("apple_uri", out var appleEl)) apple = appleEl.GetString();
+                        if (track.TryGetProperty("cover_art", out var coverEl)) cover = coverEl.GetString()?.Replace("100x100bb", "512x512bb");
+                        if (track.TryGetProperty("preview_url", out var previewEl)) preview = previewEl.GetString();
+                        if (track.TryGetProperty("youtube_video_id", out var videoEl)) video = videoEl.GetString();
+                        if (!string.IsNullOrEmpty(cover)) tracks.Add((title, artist, mood, spotify, apple, cover, preview, video));
+                    }
+                }
+                if (tracks.Count == 0) tracks.Add(("No match", "—", mood, null, null, null, null, null));
+
+                lock (entry.Lock)
+                {
+                    entry.Tracks = tracks;
+                    entry.CurrentIndex = 0;
+                    entry.LastSuccess = DateTime.UtcNow;
+                }
+                _logger.LogInformation("VibeFinderMeasure[{MeasureName}]: fetched {Count} track(s) in {ElapsedMs}ms for \"{Phrase}\"", Name, tracks.Count, sw.ElapsedMilliseconds, vibeText);
             }
-            _logger.LogInformation("VibeFinderMeasure[{MeasureName}]: fetched {Count} track(s) in {ElapsedMs}ms for \"{Phrase}\"", Name, tracks.Count, sw.ElapsedMilliseconds, vibeText);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("VibeFinderMeasure[{MeasureName}]: background fetch cancelled during widget teardown", Name);
         }
         catch (Exception ex)
         {
@@ -252,17 +268,17 @@ public sealed class VibeFinderMeasure : IMeasure
         }
     }
 
-    private static Task<HttpResponseMessage> PostAnalyzeAsync(string token, string vibeText)
+    private static Task<HttpResponseMessage> PostAnalyzeAsync(string token, string vibeText, CancellationToken cancellationToken)
     {
         var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/api/vibe/analyze")
         {
             Content = JsonContent.Create(new { text = vibeText, track_limit = 20 })
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return Http.SendAsync(req);
+        return Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    private async Task<string?> GetTokenAsync(string username, string password, bool forceRefresh = false)
+    private async Task<string?> GetTokenAsync(string username, string password, bool forceRefresh, CancellationToken cancellationToken)
     {
         string key = $"{username}|{password}";
         var entry = Tokens.GetOrAdd(key, _ => new TokenEntry());
@@ -275,16 +291,20 @@ public sealed class VibeFinderMeasure : IMeasure
                 ["username"] = username,
                 ["password"] = password
             });
-            var response = await Http.PostAsync($"{BaseUrl}/auth/token", form);
+            using var response = await Http.PostAsync($"{BaseUrl}/auth/token", form, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 entry.AccessToken = null;
                 _logger.LogWarning("VibeFinderAI /auth/token returned {Status} for user \"{User}\"", response.StatusCode, username);
                 return null;
             }
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
             entry.AccessToken = doc.RootElement.TryGetProperty("access_token", out var tokenEl) ? tokenEl.GetString() : null;
             return entry.AccessToken;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return null;
         }
         catch (Exception ex)
         {
@@ -333,5 +353,12 @@ public sealed class VibeFinderMeasure : IMeasure
         if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
         var span = TimeSpan.FromSeconds(seconds);
         return span.TotalHours >= 1 ? $"{(int)span.TotalHours}:{span.Minutes:D2}:{span.Seconds:D2}" : $"{span.Minutes}:{span.Seconds:D2}";
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
     }
 }
