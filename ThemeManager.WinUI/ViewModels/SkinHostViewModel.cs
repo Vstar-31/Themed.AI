@@ -6,11 +6,7 @@ using ThemeManager.Integration.Skins;
 
 namespace ThemeManager.WinUI.ViewModels;
 
-/// <summary>
-/// Drives a single floating widget: owns the concrete <see cref="IMeasure"/> instances for its
-/// skin and the <see cref="MeterViewModelBase"/> collection its <see cref="Views.SkinHostWindow"/>
-/// renders.
-/// </summary>
+/// <summary>Drives a single floating widget and owns its measures/meters.</summary>
 public sealed class SkinHostViewModel : ViewModelBase
 {
     public SkinDefinition Definition { get; }
@@ -25,10 +21,8 @@ public sealed class SkinHostViewModel : ViewModelBase
     {
         Definition = definition;
         _logger = logger;
-
         foreach (var measureDef in definition.Measures)
             _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider);
-
         foreach (var meterDef in definition.Meters)
         {
             MeterViewModelBase vm = meterDef.Kind switch
@@ -44,16 +38,12 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Refreshes every measure this skin owns. Safe to call on a background thread.</summary>
     public void RefreshMeasures()
     {
         if (IsClosed) return;
         foreach (var measure in _measuresByName.Values)
         {
-            try
-            {
-                measure.Refresh();
-            }
+            try { measure.Refresh(); }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Skin \"{Skin}\": measure \"{Measure}\" ({MeasureType}) threw during Refresh()",
@@ -62,16 +52,12 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Updates every meter from the new values. Must be called on the UI thread.</summary>
     public void UpdateMeters()
     {
         if (IsClosed) return;
         foreach (var meter in Meters)
         {
-            try
-            {
-                meter.Tick(_measuresByName);
-            }
+            try { meter.Tick(_measuresByName); }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Skin \"{Skin}\": meter \"{Meter}\" ({MeterType}) threw during Tick()",
@@ -80,13 +66,9 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Stops measure-owned background work before the native widget HWND is torn down. Measures
-    /// such as VibeFinder use this hook to cancel network operations tied to the widget lifetime.
-    /// </summary>
+    /// <summary>Disposes all measure-owned resources. Safe to call after IsClosed was already set.</summary>
     public void DisposeMeasures()
     {
-        if (IsClosed) return;
         IsClosed = true;
         foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
         {
