@@ -9,9 +9,7 @@ namespace ThemeManager.WinUI.ViewModels;
 /// <summary>
 /// Drives a single floating widget: owns the concrete <see cref="IMeasure"/> instances for its
 /// skin and the <see cref="MeterViewModelBase"/> collection its <see cref="Views.SkinHostWindow"/>
-/// renders. Each widget's measures are private to it — two skins both reading "CPU" each get
-/// their own <see cref="CpuMeasure"/>, which is deliberately simple even though it means two
-/// GetSystemTimes calls instead of one if you ever run two CPU widgets side by side.
+/// renders.
 /// </summary>
 public sealed class SkinHostViewModel : ViewModelBase
 {
@@ -23,12 +21,6 @@ public sealed class SkinHostViewModel : ViewModelBase
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
     private readonly ILogger? _logger;
 
-    /// <param name="activeThemeProvider">Passed straight through to <see cref="MeasureFactory.Create"/>
-    /// for every measure this skin owns — only a VibeFinderAI measure targeting "$theme" actually
-    /// uses it (see phases.md, Phase 6). <c>SkinManagerService</c> is the only current caller and
-    /// passes <c>App.ThemeService</c>; left null here, VibeFinderAI "$theme" widgets fall back to
-    /// "Config Err" but every other measure — and a VibeFinderAI widget with a literal typed
-    /// phrase — is unaffected.</param>
     public SkinHostViewModel(SkinDefinition definition, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
     {
         Definition = definition;
@@ -53,19 +45,9 @@ public sealed class SkinHostViewModel : ViewModelBase
     }
 
     /// <summary>Refreshes every measure this skin owns. Safe to call on a background thread.</summary>
-    ///
-    /// <remarks>
-    /// Each measure is refreshed inside its own try/catch. Previously the whole foreach was
-    /// unguarded, so one measure throwing (e.g. VibeFinderMeasure hitting the CurrentIndex race
-    /// during a rapid song switch) aborted the loop and left every OTHER measure on this same
-    /// widget frozen on its last value for the rest of the tick — a CPU widget going stale
-    /// because the Vibe widget three rows down threw. SkinManagerService.TickAll's outer catch
-    /// caught the aborted loop, but its log message didn't say which skin OR which measure, so
-    /// this was invisible short of attaching a debugger. Now a single bad measure logs by name
-    /// and the rest keep refreshing normally.
-    /// </remarks>
     public void RefreshMeasures()
     {
+        if (IsClosed) return;
         foreach (var measure in _measuresByName.Values)
         {
             try
@@ -74,18 +56,16 @@ public sealed class SkinHostViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Skin \"{Skin}\": measure \"{Measure}\" ({MeasureType}) threw during Refresh() — its value is left stale for this tick, other measures on this widget are unaffected",
+                _logger?.LogWarning(ex, "Skin \"{Skin}\": measure \"{Measure}\" ({MeasureType}) threw during Refresh()",
                     Definition.Name, measure.Name, measure.GetType().Name);
             }
         }
     }
 
     /// <summary>Updates every meter from the new values. Must be called on the UI thread.</summary>
-    /// <remarks>Same per-item isolation as <see cref="RefreshMeasures"/> and for the same
-    /// reason — a meter's Tick() throwing (e.g. a binding expression hitting a null it didn't
-    /// expect) shouldn't freeze every other meter on the widget.</remarks>
     public void UpdateMeters()
     {
+        if (IsClosed) return;
         foreach (var meter in Meters)
         {
             try
@@ -96,6 +76,25 @@ public sealed class SkinHostViewModel : ViewModelBase
             {
                 _logger?.LogWarning(ex, "Skin \"{Skin}\": meter \"{Meter}\" ({MeterType}) threw during Tick()",
                     Definition.Name, meter.LogLabel, meter.GetType().Name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stops measure-owned background work before the native widget HWND is torn down. Measures
+    /// such as VibeFinder use this hook to cancel network operations tied to the widget lifetime.
+    /// </summary>
+    public void DisposeMeasures()
+    {
+        if (IsClosed) return;
+        IsClosed = true;
+        foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+        {
+            try { disposable.Dispose(); }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" failed during disposal",
+                    Definition.Name, disposable.GetType().Name);
             }
         }
     }
