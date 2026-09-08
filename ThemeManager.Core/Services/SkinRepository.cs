@@ -18,19 +18,46 @@ public sealed class SkinRepository
 
     public async Task<List<SkinDefinition>> LoadAllAsync()
     {
-        EnsureStorageFolderExists();
-        if (!File.Exists(SkinsFilePath)) return await SeedDefaultsAsync();
         try
         {
+            EnsureStorageFolderExists();
+            if (!File.Exists(SkinsFilePath)) return await SeedDefaultsAsync();
+
             await using var stream = File.OpenRead(SkinsFilePath);
             var skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions) ?? new();
-            if (Migrate(skins)) await SaveAllAsync(skins);
+            if (Migrate(skins))
+            {
+                try
+                {
+                    await SaveAllAsync(skins);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Migration is best-effort. A locked/ACL-protected skins.json must never stop
+                    // the desktop customizer from launching with the already-valid in-memory model.
+                }
+            }
             return skins;
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            try { File.Move(SkinsFilePath, SkinsFilePath + ".bak", overwrite: true); } catch (IOException) { }
-            return await SeedDefaultsAsync();
+            // Storage problems are recoverable. Keep the app alive and fall back to canonical
+            // defaults in memory; the next successful edit can persist them.
+            try
+            {
+                if (File.Exists(SkinsFilePath))
+                    File.Move(SkinsFilePath, SkinsFilePath + ".bak", overwrite: true);
+            }
+            catch (Exception backupEx) when (backupEx is IOException or UnauthorizedAccessException) { }
+
+            try
+            {
+                return SkinDefaults.CreateAllDefaults().ToList();
+            }
+            catch
+            {
+                return new List<SkinDefinition>();
+            }
         }
     }
 
@@ -38,23 +65,42 @@ public sealed class SkinRepository
 
     public async Task SaveAllAsync(IEnumerable<SkinDefinition> skins)
     {
-        EnsureStorageFolderExists();
-        await _saveLock.WaitAsync();
         try
         {
-            var list = skins.ToList();
-            var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
-            try { await WriteAndMoveAsync(list, tempPath); }
-            catch (IOException)
+            EnsureStorageFolderExists();
+            await _saveLock.WaitAsync();
+            try
             {
-                await Task.Delay(200);
-                await WriteAndMoveAsync(list, tempPath);
+                var list = skins.ToList();
+                var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
+                try
+                {
+                    await WriteAndMoveAsync(list, tempPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // A reader/another instance/AV scanner may briefly own the target. Retry once,
+                    // then deliberately leave the in-memory state authoritative instead of failing
+                    // the UI operation or crashing startup.
+                    await Task.Delay(200);
+                    try
+                    {
+                        await WriteAndMoveAsync(list, tempPath);
+                    }
+                    catch (Exception retryEx) when (retryEx is IOException or UnauthorizedAccessException)
+                    {
+                    }
+                }
             }
+            finally { _saveLock.Release(); }
         }
-        finally { _saveLock.Release(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Storage is persistence, not a prerequisite for rendering the desktop.
+        }
     }
 
-    private async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
+    private static async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
     {
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, list, JsonOptions);
@@ -70,8 +116,6 @@ public sealed class SkinRepository
 
         foreach (var skin in skins)
         {
-            // Version 3 is the visual refresh: existing shipped widgets get the same repaired
-            // typography/layout as a fresh install. Position and enabled state remain personal.
             if (skin.Id.StartsWith("builtin-", StringComparison.OrdinalIgnoreCase) && skin.SchemaVersion < 3 && defaults.TryGetValue(skin.Id, out var canonical))
             {
                 var enabled = skin.Enabled;
@@ -135,8 +179,6 @@ public sealed class SkinRepository
                     meter.Opacity = 1.0;
                     changed = true;
                 }
-                // Prevent clipped glyphs/text from older presets. String meters get a predictable
-                // line box instead of relying on a too-small legacy Height value.
                 if (meter.Kind == MeterKind.String)
                 {
                     var minimumHeight = Math.Ceiling(meter.FontSize * 1.45);
@@ -159,7 +201,11 @@ public sealed class SkinRepository
     private async Task<List<SkinDefinition>> SeedDefaultsAsync()
     {
         var defaults = SkinDefaults.CreateAllDefaults();
-        await SaveAllAsync(defaults);
+        try
+        {
+            await SaveAllAsync(defaults);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         return defaults;
     }
 }
