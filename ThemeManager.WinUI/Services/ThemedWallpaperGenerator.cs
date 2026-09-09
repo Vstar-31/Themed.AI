@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using ThemeManager.Core.Models;
 
 namespace ThemeManager.WinUI.Services;
@@ -7,6 +8,8 @@ namespace ThemeManager.WinUI.Services;
 /// <summary>
 /// Generates themed wallpapers entirely on-device from the active theme palette.
 /// No network calls, paid APIs, API keys, or external image-generation services are required.
+/// Pixel output uses a locked bitmap buffer rather than Bitmap.SetPixel so large 1440p/4K
+/// wallpapers do not crawl through millions of managed property calls.
 /// </summary>
 public static class ThemedWallpaperGenerator
 {
@@ -56,27 +59,51 @@ public static class ThemedWallpaperGenerator
         var palette = BuildPalette(theme);
         var normalizedStyle = style.ToLowerInvariant();
 
-        for (var y = 0; y < height; y++)
+        var rect = new Rectangle(0, 0, width, height);
+        var data = bitmap.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+        try
         {
-            token.ThrowIfCancellationRequested();
-            var ny = y / (double)Math.Max(1, height - 1);
+            var stride = Math.Abs(data.Stride);
+            var buffer = new byte[stride * height];
+            var denominatorX = (double)Math.Max(1, width - 1);
+            var denominatorY = (double)Math.Max(1, height - 1);
 
-            for (var x = 0; x < width; x++)
+            for (var y = 0; y < height; y++)
             {
-                var nx = x / (double)Math.Max(1, width - 1);
-                var color = normalizedStyle switch
+                token.ThrowIfCancellationRequested();
+                var ny = y / denominatorY;
+                var rowOffset = data.Stride >= 0
+                    ? y * stride
+                    : (height - 1 - y) * stride;
+
+                for (var x = 0; x < width; x++)
                 {
-                    "glass mesh" => MeshColor(nx, ny, palette),
-                    "orbital night" => OrbitColor(nx, ny, palette),
-                    "soft gradient" => GradientColor(nx, ny, palette),
-                    "zen minimal" => MinimalColor(nx, ny, palette),
-                    "neon glow" => GlowColor(nx, ny, palette),
-                    _ => AuroraColor(nx, ny, palette),
-                };
-                bitmap.SetPixel(x, y, Color.FromArgb(color.R, color.G, color.B));
+                    var nx = x / denominatorX;
+                    var color = normalizedStyle switch
+                    {
+                        "glass mesh" => MeshColor(nx, ny, palette),
+                        "orbital night" => OrbitColor(nx, ny, palette),
+                        "soft gradient" => GradientColor(nx, ny, palette),
+                        "zen minimal" => MinimalColor(nx, ny, palette),
+                        "neon glow" => GlowColor(nx, ny, palette),
+                        _ => AuroraColor(nx, ny, palette),
+                    };
+
+                    var pixel = rowOffset + x * 3;
+                    buffer[pixel] = color.B;
+                    buffer[pixel + 1] = color.G;
+                    buffer[pixel + 2] = color.R;
+                }
             }
+
+            Marshal.Copy(buffer, 0, data.Scan0, buffer.Length);
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
         }
 
+        token.ThrowIfCancellationRequested();
         bitmap.Save(path, ImageFormat.Bmp);
     }
 
