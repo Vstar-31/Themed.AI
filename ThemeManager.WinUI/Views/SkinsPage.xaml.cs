@@ -14,7 +14,6 @@ public sealed partial class SkinsPage : Page
     {
         InitializeComponent();
         ViewModel = new SkinsViewModel(App.SkinManager);
-
         Unloaded += (_, _) => ViewModel.Dispose();
     }
 
@@ -45,6 +44,15 @@ public sealed partial class SkinsPage : Page
         await ViewModel.ToggleClickThroughAsync(skin, ts.IsOn);
     }
 
+    private async void AlwaysOnTopToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        var ts = (ToggleSwitch)sender;
+        if (ts.FocusState == FocusState.Unfocused) return;
+        var skin = ts.Tag as SkinDefinition;
+        if (skin is null || skin.AlwaysOnTop == ts.IsOn) return;
+        await ViewModel.ToggleAlwaysOnTopAsync(skin, ts.IsOn);
+    }
+
     private async void LockedToggle_Toggled(object sender, RoutedEventArgs e)
     {
         var ts = (ToggleSwitch)sender;
@@ -65,9 +73,7 @@ public sealed partial class SkinsPage : Page
     {
         var ts = sender as ToggleSwitch;
         if (ts != null && ts.FocusState != FocusState.Unfocused)
-        {
             ViewModel.ToggleMasterVisibility();
-        }
     }
 
     private async void NewWidgetButton_Click(object sender, RoutedEventArgs e)
@@ -100,8 +106,6 @@ public sealed partial class SkinsPage : Page
         };
 
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
             await ViewModel.DeleteSkinAsync(skin);
-        }
     }
 }
