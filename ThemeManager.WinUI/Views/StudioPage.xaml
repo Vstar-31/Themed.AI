@@ -38,7 +38,14 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TextBlock Text="WORLDS" FontWeight="SemiBold" Opacity="0.7" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="WORLDS" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ElementName=ScenesList, Path=Items.Count, Mode=OneWay}" FontSize="11" Opacity="0.45" VerticalAlignment="Center" />
+                        </Grid>
                         <ListView x:Name="ScenesList" Grid.Row="1" Margin="0,12,0,0" SelectionChanged="ScenesList_SelectionChanged">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
@@ -51,7 +58,10 @@
                                             <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
                                             <TextBlock Text="{Binding Description}" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="{Binding Widgets.Count}" VerticalAlignment="Center" Opacity="0.6" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Widgets.Count}" Opacity="0.6" />
+                                            <TextBlock Text="widgets" FontSize="10" Opacity="0.4" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -110,12 +120,22 @@
                             </StackPanel>
                         </Border>
 
-                        <Grid Grid.Row="3">
-                            <StackPanel>
+                        <Grid Grid.Row="3" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
                                 <TextBlock x:Name="ApplyStatus" Text="Ready" FontSize="12" Opacity="0.6" />
-                                <TextBlock Text="Changes are applied to the desktop, not just this panel." FontSize="12" Opacity="0.45" Margin="0,3,0,0" />
+                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Opacity="0.45" Margin="0,3,0,0" />
                             </StackPanel>
-                            <Button Content="Apply to desktop" Click="ApplyScene_Click" HorizontalAlignment="Right" Padding="20,10" />
+                            <Button Grid.Column="1" Content="Save current layout" Click="SaveCurrentLayout_Click" />
+                            <Button Grid.Column="2" Content="Duplicate" Click="DuplicateWorld_Click" />
+                            <Button Grid.Column="3" Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" />
+                            <Button Grid.Column="4" Content="Apply to desktop" Click="ApplyScene_Click" Padding="20,10" />
                         </Grid>
                     </Grid>
                 </Border>
