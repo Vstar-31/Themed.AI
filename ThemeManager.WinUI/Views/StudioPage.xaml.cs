@@ -139,9 +139,9 @@ public sealed partial class StudioPage : Page
         }
     }
 
-    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await CreateWorldAsync();
+    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await CreateWorldAsync(true);
 
-    private async Task CreateWorldAsync()
+    private async Task CreateWorldAsync(bool generateWallpaper)
     {
         var pick = Worlds[Random.Shared.Next(Worlds.Length)];
         var scene = new DesktopScene
@@ -158,9 +158,29 @@ public sealed partial class StudioPage : Page
             },
             Behavior = new SceneBehavior { ReactToVibeFinder = true, ReactToMedia = true, TransitionSeconds = 0.9 }
         };
+
         await App.SceneService.UpsertAsync(scene);
         Select(scene);
+
+        // A generated world is a complete composition, so give it a wallpaper automatically.
+        // The style is intentionally matched to the world's visual archetype.
+        if (generateWallpaper)
+        {
+            WallpaperStyleCombo.SelectedItem = WallpaperStyleForTag(pick.Tag);
+            WallpaperNameBox.Text = scene.Name;
+            await GenerateWallpaperAsync(false);
+        }
     }
+
+    private static string WallpaperStyleForTag(string tag) => tag switch
+    {
+        "nocturnal" => "Orbital Night",
+        "cozy" => "Cozy Aurora",
+        "hud" => "Glass Mesh",
+        "neon" => "Neon Glow",
+        "minimal" => "Zen Minimal",
+        _ => "Soft Gradient"
+    };
 
     private List<SceneWidgetPlacement> CaptureCurrentWidgetLayout() =>
         App.SkinManager?.Skins
@@ -181,7 +201,7 @@ public sealed partial class StudioPage : Page
 
     private async void SurpriseMe_Click(object sender, RoutedEventArgs e)
     {
-        await CreateWorldAsync();
+        await CreateWorldAsync(true);
         await ApplySelectedWorldAsync();
     }
 
@@ -191,6 +211,102 @@ public sealed partial class StudioPage : Page
     {
         if (ScenesList.SelectedItem is DesktopScene scene) Select(scene);
     }
+
+    private async void SaveCurrentLayout_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null)
+        {
+            ApplyStatus.Text = "Select a world first.";
+            return;
+        }
+
+        _selected.Widgets = CaptureCurrentWidgetLayout();
+        await App.SceneService.UpsertAsync(_selected);
+        Select(_selected, false);
+        ApplyStatus.Text = "Current desktop layout saved to this world ✓";
+    }
+
+    private async void DuplicateWorld_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+
+        var copy = new DesktopScene
+        {
+            Name = _selected.Name + " Copy",
+            Description = _selected.Description,
+            Author = _selected.Author,
+            Tags = _selected.Tags.ToList(),
+            ThemeId = _selected.ThemeId,
+            WallpaperPath = _selected.WallpaperPath,
+            WallpaperOpacity = _selected.WallpaperOpacity,
+            WallpaperFit = _selected.WallpaperFit,
+            Widgets = _selected.Widgets.Select(ClonePlacement).ToList(),
+            Effects = _selected.Effects.Select(CloneEffect).ToList(),
+            Behavior = CloneBehavior(_selected.Behavior)
+        };
+
+        await App.SceneService.UpsertAsync(copy);
+        Select(copy);
+        ApplyStatus.Text = $"Created {copy.Name} ✓";
+    }
+
+    private async void DeleteWorld_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete this world?",
+            Content = $"\"{_selected.Name}\" will be removed permanently. Your widget definitions are not deleted.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var deletedName = _selected.Name;
+        var deletedId = _selected.Id;
+        await App.SceneService.DeleteAsync(deletedId);
+        _selected = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
+        if (_selected is not null) Select(_selected, false);
+        ApplyStatus.Text = $"Deleted {deletedName}.";
+    }
+
+    private static SceneWidgetPlacement ClonePlacement(SceneWidgetPlacement source) => new()
+    {
+        WidgetId = source.WidgetId,
+        X = source.X,
+        Y = source.Y,
+        Scale = source.Scale,
+        Rotation = source.Rotation,
+        Opacity = source.Opacity,
+        ZIndex = source.ZIndex,
+        Visible = source.Visible,
+        Monitor = source.Monitor
+    };
+
+    private static SceneEffect CloneEffect(SceneEffect source) => new()
+    {
+        Type = source.Type,
+        Intensity = source.Intensity,
+        Speed = source.Speed,
+        Enabled = source.Enabled,
+        Parameters = source.Parameters.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase)
+    };
+
+    private static SceneBehavior CloneBehavior(SceneBehavior source) => new()
+    {
+        FollowWindowsTheme = source.FollowWindowsTheme,
+        ReactToMedia = source.ReactToMedia,
+        ReactToVibeFinder = source.ReactToVibeFinder,
+        ReactToWeather = source.ReactToWeather,
+        AutoSwitch = source.AutoSwitch,
+        TransitionSeconds = source.TransitionSeconds,
+        MotionIntensity = source.MotionIntensity,
+        AudioSensitivity = source.AudioSensitivity
+    };
 
     private async Task GenerateWallpaperAsync(bool applyAfterGeneration)
     {
@@ -337,8 +453,6 @@ public sealed partial class StudioPage : Page
                 var known = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
                 var sceneIds = _selected.Widgets.Select(w => w.WidgetId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                // Apply all placement mutations without closing/reopening an already-visible widget.
-                // The runtime owns the native window and receives one deterministic placement update.
                 foreach (var placement in _selected.Widgets)
                 {
                     if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
@@ -350,9 +464,6 @@ public sealed partial class StudioPage : Page
                         placement.Visible);
                 }
 
-                // A scene is a complete desktop snapshot: widgets absent from the selected world
-                // should not linger from a different world. Their own persisted X/Y and z-order are
-                // untouched, so switching back to another scene restores them exactly where they were.
                 foreach (var skin in App.SkinManager.Skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
                     await App.SkinManager.ApplyScenePlacementAsync(skin, skin.X, skin.Y, skin.Opacity, false);
             }
@@ -360,6 +471,10 @@ public sealed partial class StudioPage : Page
             App.SceneService.SetActiveScene(_selected);
             ApplyStatus.Text = "Applied to desktop ✓";
             ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} saved widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
+        }
+        catch (Exception ex)
+        {
+            ApplyStatus.Text = $"World apply failed: {ex.Message}";
         }
         finally
         {
