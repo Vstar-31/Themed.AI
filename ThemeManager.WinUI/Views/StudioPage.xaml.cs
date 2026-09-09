@@ -1,13 +1,18 @@
+using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
+using ThemeManager.WinUI.Services;
 
 namespace ThemeManager.WinUI.Views;
 
 public sealed partial class StudioPage : Page
 {
     private DesktopScene? _selected;
+    private string? _lastWallpaperPath;
+    private bool _wallpaperBusy;
+
     private static readonly (string Name, string Description, string Tag)[] Worlds =
     {
         ("Midnight Kyoto", "Rainy neon, quiet motion and a late-night city glow.", "nocturnal"),
@@ -16,6 +21,18 @@ public sealed partial class StudioPage : Page
         ("Neon Afterglow", "Electric color and music-reactive atmosphere for the night.", "neon"),
         ("Arctic Glass", "Cool light, clean glass and almost-silent movement.", "minimal")
     };
+
+    public IReadOnlyList<string> WallpaperStyles { get; } = ThemedWallpaperGenerator.AvailableStyles;
+
+    public IReadOnlyList<string> WallpaperSizes { get; } =
+    [
+        "1920 × 1080",
+        "2560 × 1440",
+        "2560 × 1080",
+        "3440 × 1440",
+        "3840 × 2160",
+        "3840 × 1600"
+    ];
 
     public StudioPage()
     {
@@ -28,7 +45,16 @@ public sealed partial class StudioPage : Page
             Refresh();
         };
         App.SceneService.ScenesChanged += OnScenesChanged;
+        App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
+        Unloaded += (_, _) =>
+        {
+            App.SceneService.ScenesChanged -= OnScenesChanged;
+            App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
+        };
     }
+
+    private void ThemeService_ThemeChanged(object? sender, CozyTheme e) =>
+        DispatcherQueue.TryEnqueue(UpdateWallpaperStatus);
 
     private void OnScenesChanged(object? sender, EventArgs e)
     {
@@ -47,7 +73,7 @@ public sealed partial class StudioPage : Page
         _selected = scene;
         if (activate) App.SceneService.SetActiveScene(scene);
         ActiveSceneName.Text = scene.Name;
-        var vibe = Services.VibeSnapshotHub.Current;
+        var vibe = VibeSnapshotHub.Current;
         var track = string.IsNullOrWhiteSpace(vibe.TrackTitle) ? "No track" : $"{vibe.TrackTitle} · {vibe.Artist}";
         ActiveSceneMeta.Text = $"{scene.Description} · {scene.Widgets.Count} widgets · {scene.Effects.Count} effects · {vibe.Mood} · {track}";
         ApplyStatus.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive · Ready to apply" : "Static world · Ready to apply";
@@ -57,11 +83,22 @@ public sealed partial class StudioPage : Page
         AddDetail("Effects", scene.Effects.Count.ToString());
         AddDetail("Adaptation", scene.Behavior.ReactToVibeFinder ? "VibeFinder + media" : "Static");
         AddDetail("Transition", $"{scene.Behavior.TransitionSeconds:0.0}s");
+        UpdateWallpaperStatus();
     }
 
     private void AddDetail(string label, string value)
     {
         SceneDetails.Children.Add(new TextBlock { Text = $"{label}  ·  {value}", FontSize = 13, Opacity = 0.72 });
+    }
+
+    private void UpdateWallpaperStatus()
+    {
+        if (_selected is null) return;
+        var wallpaper = _selected.WallpaperPath;
+        if (!string.IsNullOrWhiteSpace(wallpaper) && File.Exists(wallpaper))
+            WallpaperStatusText.Text = $"Bound to this world ✓  {Path.GetFileName(wallpaper)}";
+        else
+            WallpaperStatusText.Text = $"No wallpaper bound. Active theme: {App.ThemeService.ActiveTheme.Name} · {App.ThemeService.ActiveTheme.AccentPrimary} · generation is fully local/free.";
     }
 
     private async Task SeedStarterWorldsAsync()
@@ -144,21 +181,142 @@ public sealed partial class StudioPage : Page
         if (ScenesList.SelectedItem is DesktopScene scene) Select(scene);
     }
 
+    private async Task GenerateWallpaperAsync(bool applyAfterGeneration)
+    {
+        if (_selected is null)
+        {
+            WallpaperStatusText.Text = "Select a world first.";
+            return;
+        }
+
+        if (_wallpaperBusy) return;
+        _wallpaperBusy = true;
+
+        try
+        {
+            var style = WallpaperStyleCombo.SelectedItem as string ?? WallpaperStyles[0];
+            var (width, height) = ParseSize(WallpaperSizeCombo.SelectedItem as string);
+            var name = string.IsNullOrWhiteSpace(WallpaperNameBox.Text)
+                ? _selected.Name
+                : WallpaperNameBox.Text.Trim();
+
+            WallpaperStatusText.Text = $"Generating {style} wallpaper from {App.ThemeService.ActiveTheme.Name}…";
+            var path = await ThemedWallpaperGenerator.GenerateAsync(
+                App.ThemeService.ActiveTheme,
+                style,
+                width,
+                height,
+                name);
+
+            _lastWallpaperPath = path;
+            _selected.WallpaperPath = path;
+            _selected.WallpaperFit = "Fill";
+            _selected.WallpaperOpacity = 1.0;
+            await App.SceneService.UpsertAsync(_selected);
+
+            if (applyAfterGeneration)
+            {
+                WallpaperStatusText.Text = "Generated ✓ · applying to Windows…";
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(path);
+                WallpaperStatusText.Text = applied
+                    ? $"Applied ✓  {Path.GetFileName(path)} · bound to {_selected.Name}"
+                    : $"Generated ✓ but Windows did not accept the wallpaper change. Saved at {path}";
+            }
+            else
+            {
+                WallpaperStatusText.Text = $"Generated ✓  {Path.GetFileName(path)} · bound to {_selected.Name}";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            WallpaperStatusText.Text = "Wallpaper generation cancelled.";
+        }
+        catch (Exception ex)
+        {
+            WallpaperStatusText.Text = $"Wallpaper generation failed: {ex.Message}";
+        }
+        finally
+        {
+            _wallpaperBusy = false;
+        }
+    }
+
+    private async void GenerateWallpaper_Click(object sender, RoutedEventArgs e) =>
+        await GenerateWallpaperAsync(false);
+
+    private async void GenerateAndApplyWallpaper_Click(object sender, RoutedEventArgs e) =>
+        await GenerateWallpaperAsync(true);
+
+    private async void ApplyLastWallpaper_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _lastWallpaperPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            path = _selected?.WallpaperPath;
+        }
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            WallpaperStatusText.Text = "No generated wallpaper is available for this world yet.";
+            return;
+        }
+
+        try
+        {
+            var applied = await App.SystemIntegrator.ApplyWallpaperAsync(path);
+            WallpaperStatusText.Text = applied
+                ? $"Applied ✓  {Path.GetFileName(path)}"
+                : "Windows rejected the wallpaper change.";
+        }
+        catch (Exception ex)
+        {
+            WallpaperStatusText.Text = $"Could not apply wallpaper: {ex.Message}";
+        }
+    }
+
+    private static (int Width, int Height) ParseSize(string? value)
+    {
+        var numbers = value?
+            .Replace("×", "x", StringComparison.Ordinal)
+            .Split('x', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (numbers is { Length: 2 } &&
+            int.TryParse(numbers[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var width) &&
+            int.TryParse(numbers[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var height))
+        {
+            return (width, height);
+        }
+
+        return (1920, 1080);
+    }
+
     private async Task ApplySelectedWorldAsync()
     {
         if (_selected is null) return;
         var themes = await App.ThemeRepository.LoadAllAsync();
         var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
+
         if (targetTheme is not null)
         {
             App.ThemeService.SetActiveTheme(targetTheme);
             await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
-            if (targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
-                await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
         }
-        else if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
+
+        // A wallpaper bound to the world wins over the theme-level wallpaper. This is what
+        // lets each Desktop World keep its own generated visual identity.
+        if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
         {
-            await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
+            var applied = await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
+            WallpaperStatusText.Text = applied
+                ? $"Applied ✓  {Path.GetFileName(_selected.WallpaperPath)} · bound to {_selected.Name}"
+                : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(_selected.WallpaperPath)}";
+        }
+        else if (targetTheme is not null && targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
+        {
+            var applied = await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
+            WallpaperStatusText.Text = applied
+                ? $"Applied theme wallpaper ✓  {Path.GetFileName(targetTheme.WallpaperPath)}"
+                : "Theme wallpaper was not accepted by Windows.";
         }
 
         if (App.SkinManager is not null)
@@ -175,6 +333,7 @@ public sealed partial class StudioPage : Page
                 await App.SkinManager.SetEnabledAsync(skin, placement.Visible);
             }
         }
+
         App.SceneService.SetActiveScene(_selected);
         ApplyStatus.Text = "Applied to desktop";
         ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
