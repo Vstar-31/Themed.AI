@@ -149,6 +149,16 @@ public sealed class SkinRepository
                 changed = true;
             }
 
+            // v4 changes the desktop window policy: widgets are normal desktop windows by default,
+            // not global always-on-top windows. A future explicit user choice is stored in
+            // AlwaysOnTop; only legacy skins created before this policy existed are migrated.
+            if (skin.SchemaVersion < 4)
+            {
+                skin.AlwaysOnTop = false;
+                skin.SchemaVersion = 4;
+                changed = true;
+            }
+
             if (skin.Tags is null)
             {
                 skin.Tags = new List<string>();
