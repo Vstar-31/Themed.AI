@@ -50,7 +50,7 @@ public sealed class MeterDefinition
 
 public sealed class SkinDefinition
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
     public string Description { get; set; } = "";
@@ -63,7 +63,7 @@ public sealed class SkinDefinition
     public double Height { get; set; } = 120;
     public double Opacity { get; set; } = 0.90;
     public bool ClickThrough { get; set; }
-    public bool AlwaysOnTop { get; set; } = true;
+    public bool AlwaysOnTop { get; set; }
     public bool Locked { get; set; }
     public bool DesktopLayer { get; set; }
     public int UpdateIntervalMs { get; set; } = 1000;
