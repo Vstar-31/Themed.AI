@@ -5,7 +5,7 @@ namespace ThemeManager.WinUI.Services;
 /// <summary>Canonical, modular desktop presets. Each visual element is an independent meter so users can rearrange the composition in the editor.</summary>
 public static class DefaultWidgetCatalog
 {
-    public const string DesignVersion = "3";
+    public const string DesignVersion = "4";
 
     public static void RebuildVibeFinder(SkinDefinition skin)
     {
@@ -18,7 +18,7 @@ public static class DefaultWidgetCatalog
         skin.Tags = new List<string> { "built-in", "vibefinder", "music", "desktop", "modular", "album-art" };
         skin.Variables["designVersion"] = DesignVersion;
         skin.ClickThrough = false;
-        skin.AlwaysOnTop = true;
+        skin.AlwaysOnTop = false;
         skin.Locked = false;
         skin.DesktopLayer = false;
         skin.Opacity = 0.86;
