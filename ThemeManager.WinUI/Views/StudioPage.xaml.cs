@@ -162,8 +162,6 @@ public sealed partial class StudioPage : Page
         await App.SceneService.UpsertAsync(scene);
         Select(scene);
 
-        // A generated world is a complete composition, so give it a wallpaper automatically.
-        // The style is intentionally matched to the world's visual archetype.
         if (generateWallpaper)
         {
             WallpaperStyleCombo.SelectedItem = WallpaperStyleForTag(pick.Tag);
@@ -462,10 +460,17 @@ public sealed partial class StudioPage : Page
                         placement.Y,
                         placement.Opacity,
                         placement.Visible);
+                    // ApplyScenePlacementAsync mutates the live model and window but intentionally
+                    // does not persist on every call. SetOpacityAsync writes the already-mutated
+                    // model once per placement, so X/Y/visibility survive an app restart as well.
+                    await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
                 }
 
                 foreach (var skin in App.SkinManager.Skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
+                {
                     await App.SkinManager.ApplyScenePlacementAsync(skin, skin.X, skin.Y, skin.Opacity, false);
+                    await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
+                }
             }
 
             App.SceneService.SetActiveScene(_selected);
