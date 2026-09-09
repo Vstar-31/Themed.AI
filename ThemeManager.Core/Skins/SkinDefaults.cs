@@ -3,12 +3,12 @@ namespace ThemeManager.Core.Skins;
 /// <summary>Curated built-in widgets. Layouts favor generous typography, consistent spacing and readable data.</summary>
 public static class SkinDefaults
 {
-    private const int CurrentDesignVersion = 3;
+    private const int CurrentDesignVersion = 4;
 
     private static SkinDefinition Base(string id, string name, double x, double y, double width, double height) => new()
     {
         Id = id, Name = name, X = x, Y = y, Width = width, Height = height, SchemaVersion = CurrentDesignVersion,
-        Opacity = 0.86, AlwaysOnTop = true, Tags = new() { "built-in", "desktop" }
+        Opacity = 0.86, AlwaysOnTop = false, Tags = new() { "built-in", "desktop" }
     };
 
     public static SkinDefinition CreateClock()
