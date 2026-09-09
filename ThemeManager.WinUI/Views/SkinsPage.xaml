@@ -8,14 +8,11 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />   <!-- Page header -->
-            <RowDefinition Height="*" />      <!-- Widget grid -->
-            <RowDefinition Height="Auto" />   <!-- Status bar  -->
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ══════════════════════════════════════════════════════════
-             Page header
-        ══════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="0" Padding="32,28,32,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -27,51 +24,41 @@
                            FontSize="{StaticResource FontSizeTitle}"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Rainmeter-style desktop widgets. Toggle, tint, lock, and drag the built-ins here — click Edit to change what a widget actually shows."
+                <TextBlock Text="Rainmeter-style desktop widgets. Normal desktop layering by default — opt into Stay on top only when you need it. Toggle, tint, lock, and drag widgets here."
                            Style="{StaticResource CaptionStyle}"
                            TextWrapping="Wrap" />
             </StackPanel>
-            
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top" Margin="0,0,16,0">
                 <TextBlock Text="Master visibility" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}"/>
                 <ToggleSwitch x:Name="MasterVisibilityToggle" IsOn="True" Toggled="MasterVisibilityToggle_Toggled" Style="{StaticResource CozyToggleStyle}" OnContent="" OffContent="" />
             </StackPanel>
-
             <Button Grid.Column="2" Content="+ New Widget"
                     Style="{StaticResource PrimaryButtonStyle}"
                     VerticalAlignment="Top"
                     Click="NewWidgetButton_Click" />
         </Grid>
 
-        <!-- ══════════════════════════════════════════════════════════
-             Widget grid
-        ══════════════════════════════════════════════════════════ -->
         <ScrollViewer Grid.Row="1"
                       Padding="32,0,32,32"
                       VerticalScrollBarVisibility="Auto">
-
             <ItemsRepeater x:Name="SkinsRepeater"
                            ItemsSource="{x:Bind ViewModel.Skins, Mode=OneWay}">
-
                 <ItemsRepeater.Layout>
                     <UniformGridLayout MinItemWidth="300"
                                        MinColumnSpacing="16"
                                        MinRowSpacing="16" />
                 </ItemsRepeater.Layout>
-
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="skins:SkinDefinition">
-
                         <Border Style="{StaticResource CardStyle}" Margin="0">
                             <Grid RowSpacing="10">
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" /> <!-- Name + Enabled switch -->
-                                    <RowDefinition Height="Auto" /> <!-- Opacity slider        -->
-                                    <RowDefinition Height="Auto" /> <!-- Click-through / Lock  -->
-                                    <RowDefinition Height="Auto" /> <!-- Reset position        -->
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <!-- Name + Enabled -->
                                 <Grid Grid.Row="0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -91,7 +78,6 @@
                                                   Toggled="EnabledToggle_Toggled" />
                                 </Grid>
 
-                                <!-- Opacity -->
                                 <StackPanel Grid.Row="1" Spacing="2">
                                     <TextBlock Text="Card background" Style="{StaticResource CaptionStyle}" />
                                     <Slider Tag="{x:Bind}"
@@ -101,9 +87,12 @@
                                             ValueChanged="OpacitySlider_ValueChanged" />
                                 </StackPanel>
 
-                                <!-- Click-through / Locked -->
-                                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="20">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="Click-through" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
                                                       IsOn="{x:Bind ClickThrough}"
@@ -111,7 +100,22 @@
                                                       OnContent="" OffContent=""
                                                       Toggled="ClickThroughToggle_Toggled" />
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="Stay on top" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
+                                        <ToggleSwitch Tag="{x:Bind}"
+                                                      IsOn="{x:Bind AlwaysOnTop}"
+                                                      Style="{StaticResource CozyToggleStyle}"
+                                                      OnContent="" OffContent=""
+                                                      Toggled="AlwaysOnTopToggle_Toggled" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Grid.Row="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="Locked" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
                                                       IsOn="{x:Bind Locked}"
@@ -119,34 +123,19 @@
                                                       OnContent="" OffContent=""
                                                       Toggled="LockedToggle_Toggled" />
                                     </StackPanel>
-                                </StackPanel>
-
-                                <!-- Reset position / Edit / Delete -->
-                                <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
-                                    <Button Content="Reset position"
-                                            Tag="{x:Bind}"
-                                            Click="ResetPositionButton_Click" />
-                                    <Button Content="Edit"
-                                            Tag="{x:Bind}"
-                                            Click="EditButton_Click" />
-                                    <Button Content="Delete"
-                                            Tag="{x:Bind}"
-                                            Style="{StaticResource DangerButtonStyle}"
-                                            Click="DeleteButton_Click" />
-                                </StackPanel>
-
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                        <Button Content="Reset" Tag="{x:Bind}" Click="ResetPositionButton_Click" />
+                                        <Button Content="Edit" Tag="{x:Bind}" Click="EditButton_Click" />
+                                        <Button Content="Delete" Tag="{x:Bind}" Style="{StaticResource DangerButtonStyle}" Click="DeleteButton_Click" />
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                         </Border>
-
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
-
             </ItemsRepeater>
         </ScrollViewer>
 
-        <!-- ══════════════════════════════════════════════════════════
-             Status bar
-        ══════════════════════════════════════════════════════════ -->
         <Border Grid.Row="2"
                 Background="{StaticResource SidebarBackgroundBrush}"
                 BorderBrush="{StaticResource BorderSubtleBrush}"
@@ -155,6 +144,5 @@
             <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                        Style="{StaticResource CaptionStyle}" />
         </Border>
-
     </Grid>
 </Page>
