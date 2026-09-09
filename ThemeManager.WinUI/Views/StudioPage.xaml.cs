@@ -104,7 +104,11 @@ public sealed partial class StudioPage : Page
     private async Task SeedStarterWorldsAsync()
     {
         if (App.SceneService.Scenes.Count > 0) return;
-        var widgets = App.SkinManager?.Skins.Where(s => s.Enabled).ToList() ?? new List<SkinDefinition>();
+
+        // Starter worlds should inherit the user's real desktop arrangement. They are visual
+        // presets, not layout randomizers. The old implementation manufactured a grid here,
+        // which caused every widget to jump into a tight cluster when the world was applied again.
+        var widgets = CaptureCurrentWidgetLayout();
         for (var i = 0; i < Worlds.Length; i++)
         {
             var pick = Worlds[i];
@@ -114,14 +118,17 @@ public sealed partial class StudioPage : Page
                 Description = pick.Description,
                 ThemeId = App.ThemeService.ActiveTheme.Id,
                 Tags = new List<string> { pick.Tag, "starter", "vibe" },
-                Widgets = widgets.Select((w, index) => new SceneWidgetPlacement
+                Widgets = widgets.Select(w => new SceneWidgetPlacement
                 {
-                    WidgetId = w.Id,
-                    X = 40 + ((index + i) % 3) * 240,
-                    Y = 80 + ((index + i) % 3) * 150,
+                    WidgetId = w.WidgetId,
+                    X = w.X,
+                    Y = w.Y,
+                    Scale = w.Scale,
+                    Rotation = w.Rotation,
                     Opacity = w.Opacity,
-                    ZIndex = index,
-                    Visible = true
+                    ZIndex = w.ZIndex,
+                    Visible = w.Visible,
+                    Monitor = w.Monitor
                 }).ToList(),
                 Effects = new List<SceneEffect>
                 {
@@ -145,7 +152,7 @@ public sealed partial class StudioPage : Page
             Description = pick.Description,
             ThemeId = App.ThemeService.ActiveTheme.Id,
             Tags = new List<string> { pick.Tag, "generated", "vibe" },
-            Widgets = BuildCurrentWidgetLayout(),
+            Widgets = CaptureCurrentWidgetLayout(),
             Effects = new List<SceneEffect>
             {
                 new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = pick.Tag is "neon" or "hud" ? 0.8 : 0.35 },
@@ -157,16 +164,27 @@ public sealed partial class StudioPage : Page
         Select(scene);
     }
 
-    private List<SceneWidgetPlacement> BuildCurrentWidgetLayout() =>
-        App.SkinManager?.Skins.Where(s => s.Enabled).Select((w, index) => new SceneWidgetPlacement
-        {
-            WidgetId = w.Id,
-            X = 40 + (index % 4) * 220,
-            Y = 80 + (index / 4) * 140,
-            Opacity = w.Opacity,
-            ZIndex = index,
-            Visible = true
-        }).ToList() ?? new List<SceneWidgetPlacement>();
+    /// <summary>
+    /// Takes a snapshot of the widgets' actual persisted desktop positions. Studio worlds use this
+    /// snapshot as their layout baseline, so changing a theme never invents a new grid or clusters
+    /// widgets together. Positions are already stored in screen-space DIPs by SkinManagerService.
+    /// </summary>
+    private List<SceneWidgetPlacement> CaptureCurrentWidgetLayout() =>
+        App.SkinManager?.Skins
+            .Where(w => w.Enabled)
+            .Select((w, index) => new SceneWidgetPlacement
+            {
+                WidgetId = w.Id,
+                X = w.X,
+                Y = w.Y,
+                Scale = 1.0,
+                Rotation = 0,
+                Opacity = Math.Clamp(w.Opacity, 0, 1),
+                ZIndex = index,
+                Visible = w.Enabled,
+                Monitor = "Primary"
+            })
+            .ToList() ?? new List<SceneWidgetPlacement>();
 
     private async void SurpriseMe_Click(object sender, RoutedEventArgs e)
     {
@@ -325,10 +343,12 @@ public sealed partial class StudioPage : Page
             foreach (var placement in _selected.Widgets)
             {
                 if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
+
+                // Restore the saved scene coordinates exactly. Do not generate a fallback grid or
+                // derive a new position during theme application.
                 skin.X = placement.X;
                 skin.Y = placement.Y;
                 skin.Opacity = Math.Clamp(placement.Opacity, 0, 1);
-                await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
                 await App.SkinManager.SaveSkinAsync(skin);
                 await App.SkinManager.SetEnabledAsync(skin, placement.Visible);
             }
