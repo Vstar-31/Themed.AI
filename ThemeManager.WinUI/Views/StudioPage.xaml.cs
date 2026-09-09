@@ -12,6 +12,7 @@ public sealed partial class StudioPage : Page
     private DesktopScene? _selected;
     private string? _lastWallpaperPath;
     private bool _wallpaperBusy;
+    private bool _sceneApplyBusy;
 
     private static readonly (string Name, string Description, string Tag)[] Worlds =
     {
@@ -105,9 +106,6 @@ public sealed partial class StudioPage : Page
     {
         if (App.SceneService.Scenes.Count > 0) return;
 
-        // Starter worlds should inherit the user's real desktop arrangement. They are visual
-        // presets, not layout randomizers. The old implementation manufactured a grid here,
-        // which caused every widget to jump into a tight cluster when the world was applied again.
         var widgets = CaptureCurrentWidgetLayout();
         for (var i = 0; i < Worlds.Length; i++)
         {
@@ -164,11 +162,6 @@ public sealed partial class StudioPage : Page
         Select(scene);
     }
 
-    /// <summary>
-    /// Takes a snapshot of the widgets' actual persisted desktop positions. Studio worlds use this
-    /// snapshot as their layout baseline, so changing a theme never invents a new grid or clusters
-    /// widgets together. Positions are already stored in screen-space DIPs by SkinManagerService.
-    /// </summary>
     private List<SceneWidgetPlacement> CaptureCurrentWidgetLayout() =>
         App.SkinManager?.Skins
             .Where(w => w.Enabled)
@@ -269,9 +262,7 @@ public sealed partial class StudioPage : Page
     {
         var path = _lastWallpaperPath;
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
             path = _selected?.WallpaperPath;
-        }
 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
@@ -310,52 +301,69 @@ public sealed partial class StudioPage : Page
 
     private async Task ApplySelectedWorldAsync()
     {
-        if (_selected is null) return;
-        var themes = await App.ThemeRepository.LoadAllAsync();
-        var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
+        if (_selected is null || _sceneApplyBusy) return;
+        _sceneApplyBusy = true;
 
-        if (targetTheme is not null)
+        try
         {
-            App.ThemeService.SetActiveTheme(targetTheme);
-            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
-        }
+            ApplyStatus.Text = $"Applying {_selected.Name}…";
 
-        // A wallpaper bound to the world wins over the theme-level wallpaper. This is what
-        // lets each Desktop World keep its own generated visual identity.
-        if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
-        {
-            var applied = await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
-            WallpaperStatusText.Text = applied
-                ? $"Applied ✓  {Path.GetFileName(_selected.WallpaperPath)} · bound to {_selected.Name}"
-                : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(_selected.WallpaperPath)}";
-        }
-        else if (targetTheme is not null && targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
-        {
-            var applied = await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
-            WallpaperStatusText.Text = applied
-                ? $"Applied theme wallpaper ✓  {Path.GetFileName(targetTheme.WallpaperPath)}"
-                : "Theme wallpaper was not accepted by Windows.";
-        }
+            var themes = await App.ThemeRepository.LoadAllAsync();
+            var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
 
-        if (App.SkinManager is not null)
-        {
-            var known = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-            foreach (var placement in _selected.Widgets)
+            if (targetTheme is not null)
             {
-                if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
-
-                // Restore the saved scene coordinates exactly. Do not generate a fallback grid or
-                // derive a new position during theme application.
-                skin.X = placement.X;
-                skin.Y = placement.Y;
-                skin.Opacity = Math.Clamp(placement.Opacity, 0, 1);
-                await App.SkinManager.SaveSkinAsync(skin);
-                await App.SkinManager.SetEnabledAsync(skin, placement.Visible);
+                App.ThemeService.SetActiveTheme(targetTheme);
+                await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
             }
-        }
 
-        App.SceneService.SetActiveScene(_selected);
-        ApplyStatus.Text = "Applied to desktop";
-        ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
+            if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
+            {
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
+                WallpaperStatusText.Text = applied
+                    ? $"Applied ✓  {Path.GetFileName(_selected.WallpaperPath)} · bound to {_selected.Name}"
+                    : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(_selected.WallpaperPath)}";
+            }
+            else if (targetTheme is not null && targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
+            {
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
+                WallpaperStatusText.Text = applied
+                    ? $"Applied theme wallpaper ✓  {Path.GetFileName(targetTheme.WallpaperPath)}"
+                    : "Theme wallpaper was not accepted by Windows.";
+            }
+
+            if (App.SkinManager is not null)
+            {
+                var known = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+                var sceneIds = _selected.Widgets.Select(w => w.WidgetId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                // Apply all placement mutations without closing/reopening an already-visible widget.
+                // The runtime owns the native window and receives one deterministic placement update.
+                foreach (var placement in _selected.Widgets)
+                {
+                    if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
+                    await App.SkinManager.ApplyScenePlacementAsync(
+                        skin,
+                        placement.X,
+                        placement.Y,
+                        placement.Opacity,
+                        placement.Visible);
+                }
+
+                // A scene is a complete desktop snapshot: widgets absent from the selected world
+                // should not linger from a different world. Their own persisted X/Y and z-order are
+                // untouched, so switching back to another scene restores them exactly where they were.
+                foreach (var skin in App.SkinManager.Skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
+                    await App.SkinManager.ApplyScenePlacementAsync(skin, skin.X, skin.Y, skin.Opacity, false);
+            }
+
+            App.SceneService.SetActiveScene(_selected);
+            ApplyStatus.Text = "Applied to desktop ✓";
+            ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} saved widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
+        }
+        finally
+        {
+            _sceneApplyBusy = false;
+        }
     }
 }
