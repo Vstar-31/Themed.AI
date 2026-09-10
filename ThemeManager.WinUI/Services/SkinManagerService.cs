@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using ThemeManager.Core.Skins;
@@ -103,7 +104,8 @@ public sealed class SkinManagerService : IDisposable
     public async Task SetAlwaysOnTopAsync(SkinDefinition skin, bool enabled)
     {
         skin.AlwaysOnTop = enabled;
-        if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyAlwaysOnTop(skin.AlwaysOnTop);
+        if (_open.TryGetValue(skin.Id, out var entry) && entry.Window.AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.IsAlwaysOnTop = enabled;
         await PersistAsync(true);
     }
 
