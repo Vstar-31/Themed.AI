@@ -1,0 +1,110 @@
+name: Patch VibeFinder Save & Apply
+
+on:
+  push:
+    branches:
+      - rehaul/desktop-experience-v7
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch crash-prone Save & Apply flow
+        shell: pwsh
+        run: |
+          $path = 'ThemeManager.WinUI/Views/VibeFinderAIPage.xaml.cs'
+          $text = Get-Content -Raw -Encoding UTF8 $path
+
+          $text = $text.Replace(
+            '    private void SaveCredentials_Click(object sender, RoutedEventArgs e)',
+            '    private async void SaveCredentials_Click(object sender, RoutedEventArgs e)')
+
+          $text = $text.Replace(
+            '        _skinManager.UpdateVibeFinderCredentials(target);',
+            '        await ApplyVibeFinderCredentialsAsync(target);')
+
+          $text = $text.Replace(
+            '        _ = TryInjectLoginAsync(user, pass);',
+            '        await TryInjectLoginAsync(user, pass);')
+
+          $marker = '    /// <summary>Forces a fresh login in the embedded WebView2,'
+          $helper = @'
+    /// <summary>
+    /// Applies all VibeFinder credential changes as one awaited transaction. The old path
+    /// launched one fire-and-forget SaveSkinAsync per VibeFinder widget and then immediately
+    /// reset the hidden prewarm browser and pushed WebView commands. That allowed native widget
+    /// teardown/recreation to overlap with WebView2 work and could terminate WinUI with
+    /// 0xc000027b. Rebuild/persist each widget sequentially instead.
+    /// </summary>
+    private async System.Threading.Tasks.Task ApplyVibeFinderCredentialsAsync(string target)
+    {
+        var vibeSkins = _skinManager.Skins
+            .Where(s => s.Name.StartsWith("VibeFinder"))
+            .ToList();
+
+        bool changed = false;
+        foreach (var skin in vibeSkins)
+        {
+            foreach (var measure in skin.Measures)
+            {
+                if (measure.Type != ThemeManager.Core.Skins.MeasureType.VibeTrackTitle &&
+                    measure.Type != ThemeManager.Core.Skins.MeasureType.VibeTrackArtist &&
+                    measure.Type != ThemeManager.Core.Skins.MeasureType.VibeMood &&
+                    measure.Type != ThemeManager.Core.Skins.MeasureType.VibePlaybackState &&
+                    measure.Type != ThemeManager.Core.Skins.MeasureType.VibeTrackProgress)
+                    continue;
+
+                if (!string.Equals(measure.Target, target, System.StringComparison.Ordinal))
+                {
+                    measure.Target = target;
+                    changed = true;
+                }
+            }
+        }
+
+        if (!changed)
+        {
+            _logger.LogDebug("VibeFinderAIPage: Save & Apply — credentials unchanged; skipping skin rebuilds");
+            return;
+        }
+
+        foreach (var skin in vibeSkins)
+        {
+            _logger.LogDebug("VibeFinderAIPage: persisting VibeFinder skin {SkinName} sequentially", skin.Name);
+            await _skinManager.SaveSkinAsync(skin);
+        }
+
+        _logger.LogInformation("VibeFinderAIPage: VibeFinder credentials persisted for {SkinCount} skin(s) without concurrent rebuilds", vibeSkins.Count);
+    }
+
+'@
+
+          if (-not $text.Contains($marker)) { throw 'Insertion marker not found.' }
+          if (-not $text.Contains('await ApplyVibeFinderCredentialsAsync(target);')) { throw 'Save replacement failed.' }
+
+          $text = $text.Replace($marker, $helper + $marker)
+          Set-Content -Path $path -Value $text -Encoding UTF8
+
+      - name: Build Release
+        shell: pwsh
+        run: dotnet build ThemeManager.sln --configuration Release
+
+      - name: Commit patch to v7 and remove one-shot workflow
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ThemeManager.WinUI/Views/VibeFinderAIPage.xaml.cs
+          git commit -m 'fix: serialize VibeFinder Save & Apply operations'
+          git push origin rehaul/desktop-experience-v7
+          git rm .github/workflows/v7-save-apply-fix.yml
+          git commit -m 'chore: remove one-shot v7 crash fix workflow'
+          git push origin rehaul/desktop-experience-v7
