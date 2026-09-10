@@ -40,5 +40,9 @@
     <SolidColorBrush x:Key="ComboBoxForeground" Color="{ThemeResource ColorTextPrimary}" />
     <SolidColorBrush x:Key="ComboBoxPlaceholderForeground" Color="{ThemeResource ColorTextMuted}" />
     <SolidColorBrush x:Key="ComboBoxItemForeground" Color="{ThemeResource ColorTextPrimary}" />
+    <SolidColorBrush x:Key="ListViewForeground" Color="{ThemeResource ColorTextPrimary}" />
+    <SolidColorBrush x:Key="ListViewItemForeground" Color="{ThemeResource ColorTextPrimary}" />
+    <SolidColorBrush x:Key="NavigationViewItemForeground" Color="{ThemeResource ColorTextPrimary}" />
+    <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="{ThemeResource ColorTextPrimary}" />
 
 </ResourceDictionary>
