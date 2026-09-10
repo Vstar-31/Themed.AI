@@ -3,7 +3,7 @@ using ThemeManager.Core.Skins;
 namespace ThemeManager.WinUI.Services;
 
 /// <summary>Canonical, modular desktop presets. Each visual element is an independent meter so users can rearrange the composition in the editor.</summary>
-public static class DefaultWidgetCatalog
+public static partial class DefaultWidgetCatalog
 {
     public const string DesignVersion = "4";
 
