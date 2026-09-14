@@ -52,15 +52,31 @@ public sealed class DesktopWorldRuntime : IDisposable
     }
 
     private void OnVibeFinderStateChanged(object? sender, EventArgs e) { if (_dispatcher.HasThreadAccess) PullVibeFinderState(); else _dispatcher.TryEnqueue(PullVibeFinderState); }
+
     private static void PullVibeFinderState()
     {
-        if (!VibeFinderWebState.IsActive) return;
-        var signal = VibeAnalyzer.Analyze($"{VibeFinderWebState.Title} {VibeFinderWebState.Artist}");
+        if (!VibeFinderWebState.IsActive && VibeFinderWebState.Profile.Signals <= 0) return;
+
+        var titleArtist = $"{VibeFinderWebState.Title} {VibeFinderWebState.Artist}";
+        var signal = VibeAnalyzer.Analyze(titleArtist);
         var atmosphere = DesktopVibeAdapter.From(signal);
         var energy = VibeFinderWebState.IsPlaying ? atmosphere.Energy : atmosphere.Energy * 0.22;
         var mood = signal.HasSignal ? atmosphere.Mood : (VibeFinderWebState.IsPlaying ? "Atmospheric" : "Neutral");
         var warmth = signal.HasSignal ? atmosphere.Warmth : 0.5;
-        VibeSnapshotHub.Publish(new VibeSnapshot(mood, Math.Clamp(energy, 0, 1), Math.Clamp(warmth, 0, 1), "VibeFinder", VibeFinderWebState.Title == "—" ? null : VibeFinderWebState.Title, VibeFinderWebState.Artist == "—" ? null : VibeFinderWebState.Artist));
+
+        // The learned profile acts as a second-order signal: when current track information is
+        // weak, a learned mood can still steer the desktop experience toward the user's history.
+        if (VibeFinderWebState.Profile.Signals >= 2 && !string.IsNullOrWhiteSpace(VibeFinderWebState.Profile.TopMood))
+            mood = VibeFinderWebState.Profile.TopMood!;
+
+        VibeSnapshotHub.Publish(new VibeSnapshot(
+            mood,
+            Math.Clamp(energy, 0, 1),
+            Math.Clamp(warmth, 0, 1),
+            "VibeFinder",
+            VibeFinderWebState.Title == "—" ? null : VibeFinderWebState.Title,
+            VibeFinderWebState.Artist == "—" ? null : VibeFinderWebState.Artist,
+            VibeFinderWebState.Profile));
     }
 
     private void OnVibeChanged(object? sender, VibeSnapshot snapshot)
@@ -96,6 +112,15 @@ public sealed class DesktopWorldRuntime : IDisposable
         var energy = behavior.ReactToVibeFinder ? snapshot.Energy : 0.05;
         if (behavior.ReactToMedia && snapshot.Source == "VibeFinder")
             energy = Math.Clamp(energy * Math.Max(0.35, behavior.AudioSensitivity), 0, 1);
+
+        // A strong learned preference gently biases warmth and energy, without overriding the
+        // current mood signal. This keeps adaptation responsive instead of becoming sticky.
+        if (snapshot.Profile is { Signals: >= 3 })
+        {
+            var learnedTheme = snapshot.Profile.TopTheme;
+            if (!string.IsNullOrWhiteSpace(learnedTheme) && learnedTheme.Contains("dark", StringComparison.OrdinalIgnoreCase))
+                energy = Math.Min(energy, 0.78);
+        }
 
         TargetAtmosphere = ApplySceneEffects(DesktopVibeAdapter.From(snapshot.Mood, energy, snapshot.Warmth, behavior.TransitionSeconds));
         _transitioning = true;
@@ -148,7 +173,23 @@ public sealed class DesktopWorldRuntime : IDisposable
     {
         var active = _scenes.ActiveScene;
         if (active is null || !active.Behavior.AutoSwitch || !active.Behavior.ReactToVibeFinder) return;
-        var desiredTag = snapshot.Mood.ToLowerInvariant() switch { "nocturnal" => "nocturnal", "cozy" => "cozy", "euphoric" or "intense" => "neon", "bright" => "minimal", "melancholic" => "nocturnal", _ => null };
+
+        var learnedMood = snapshot.Profile?.TopMood;
+        var effectiveMood = !string.IsNullOrWhiteSpace(learnedMood) && snapshot.Profile!.Signals >= 3
+            ? learnedMood!
+            : snapshot.Mood;
+
+        var desiredTag = effectiveMood.ToLowerInvariant() switch
+        {
+            "nocturnal" => "nocturnal",
+            "cozy" => "cozy",
+            "euphoric" or "intense" => "neon",
+            "bright" => "minimal",
+            "melancholic" or "heartbreak" => "nocturnal",
+            "focus" or "calm" => "minimal",
+            _ => null
+        };
+
         if (desiredTag is null || active.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase))) return;
         var candidate = _scenes.Scenes.FirstOrDefault(s => s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
         if (candidate is not null) _scenes.SetActiveScene(candidate);
