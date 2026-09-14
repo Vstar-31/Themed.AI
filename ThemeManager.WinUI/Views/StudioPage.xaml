@@ -4,7 +4,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:ThemeManager.WinUI.Views"
     mc:Ignorable="d">
+
+    <Page.Resources>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid Padding="32">
@@ -55,11 +60,19 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                                                            Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <Ellipse Width="6" Height="6" Fill="{StaticResource PrimaryAccentBrush}" />
+                                                    <TextBlock Text="ACTIVE" FontSize="10" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryAccentBrush}" />
+                                                </StackPanel>
+                                            </StackPanel>
                                             <TextBlock Text="{Binding Description}" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Widgets.Count}" Opacity="0.6" />
+                                            <TextBlock Text="{Binding WidgetCount}" Opacity="0.6" />
                                             <TextBlock Text="widgets" FontSize="10" Opacity="0.4" />
                                         </StackPanel>
                                     </Grid>
