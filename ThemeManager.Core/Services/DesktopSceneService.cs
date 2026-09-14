@@ -21,7 +21,15 @@ public sealed class DesktopSceneService
         if (_initialized) return;
         _scenes = await _repository.LoadAllAsync(cancellationToken);
         _initialized = true;
+
+        var activeId = await _repository.LoadActiveSceneIdAsync(cancellationToken);
+        var restored = !string.IsNullOrWhiteSpace(activeId)
+            ? _scenes.FirstOrDefault(s => s.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
+            : null;
+
+        ActiveScene = restored ?? _scenes.FirstOrDefault();
         ScenesChanged?.Invoke(this, EventArgs.Empty);
+        ActiveSceneChanged?.Invoke(this, ActiveScene);
     }
 
     public async Task UpsertAsync(DesktopScene scene, CancellationToken cancellationToken = default)
@@ -48,7 +56,14 @@ public sealed class DesktopSceneService
     {
         if (ReferenceEquals(ActiveScene, scene)) return;
         ActiveScene = scene;
+        _ = PersistActiveSceneAsync(scene);
         ActiveSceneChanged?.Invoke(this, scene);
+    }
+
+    private async Task PersistActiveSceneAsync(DesktopScene? scene)
+    {
+        try { await _repository.SaveActiveSceneIdAsync(scene?.Id); }
+        catch { /* active-state persistence must never block world switching */ }
     }
 
     private async Task PersistAsync(CancellationToken cancellationToken)
