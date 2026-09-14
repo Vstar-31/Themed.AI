@@ -12,7 +12,7 @@ public sealed partial class StudioPage
         if (_activeStateUiInstalled) return;
         _activeStateUiInstalled = true;
 
-        // Selecting a world previews it without changing the global active world.
+        // Clicking a world previews it without applying the world immediately.
         ScenesList.SelectionMode = ListViewSelectionMode.None;
         ScenesList.IsItemClickEnabled = true;
         ScenesList.ItemClick += ScenesList_ItemClickForPreview;
@@ -48,11 +48,11 @@ public sealed partial class StudioPage
         if (SetActiveWorldButton is null) return;
 
         var active = _selected is not null && ReferenceEquals(_selected, App.SceneService.ActiveScene);
-        SetActiveWorldButton.Content = active ? "Active world ✓" : "Set selected world active";
+        SetActiveWorldButton.Content = active ? "Active world ✓" : "Activate this world";
         SetActiveWorldButton.IsEnabled = _selected is not null && !active;
     }
 
-    private void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
+    private async void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null)
         {
@@ -60,8 +60,9 @@ public sealed partial class StudioPage
             return;
         }
 
-        App.SceneService.SetActiveScene(_selected);
+        // Activation is a real desktop operation: apply the world's saved theme, wallpaper,
+        // widget placements and visibility, then persist it as the active world.
+        await ApplySelectedWorldAsync();
         UpdateSetActiveButtonState();
-        ApplyStatus.Text = $"{_selected.Name} is now the active world ✓";
     }
 }
