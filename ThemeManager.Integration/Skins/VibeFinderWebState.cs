@@ -5,15 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ThemeManager.WinUI.Services;
+using ThemeManager.Core.Models;
 
 namespace ThemeManager.Integration.Skins;
 
 /// <summary>
 /// Holds synchronized state from the active VibeFinder AI embed and provides a resilient command
-/// bridge for desktop widget controls. The web player remains the preferred playback engine; when
-/// a command is sent successfully but no corresponding state update arrives, the bridge falls back
-/// to the native 30-second preview so widgets never become permanently dead controls.
+/// bridge for desktop widget controls.
 /// </summary>
 public static class VibeFinderWebState
 {
@@ -79,7 +77,6 @@ public static class VibeFinderWebState
     private static void HandleProfile(JsonElement root)
     {
         if (!root.TryGetProperty("profile", out var profileEl) || profileEl.ValueKind != JsonValueKind.Object) return;
-
         Profile = new VibePersonalizationProfile(
             ReadDouble(profileEl, "signals"),
             ReadScoreMap(profileEl, "topMoods"),
@@ -88,7 +85,6 @@ public static class VibeFinderWebState
             ReadInterfaceMap(profileEl, "interface", "themes"),
             ReadInterfaceMap(profileEl, "interface", "ambience"),
             ReadStringList(profileEl, "recentContexts"));
-
         StateChanged?.Invoke(null, EventArgs.Empty);
     }
 
@@ -110,7 +106,8 @@ public static class VibeFinderWebState
 
     private static Dictionary<string, double> ReadInterfaceMap(JsonElement root, string containerName, string fieldName)
     {
-        if (!root.TryGetProperty(containerName, out var container) || container.ValueKind != JsonValueKind.Object) return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        if (!root.TryGetProperty(containerName, out var container) || container.ValueKind != JsonValueKind.Object)
+            return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         return container.TryGetProperty(fieldName, out _) ? ReadScoreMap(container, fieldName) : new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -129,7 +126,6 @@ public static class VibeFinderWebState
     private static void HandleResults(JsonElement root)
     {
         if (!root.TryGetProperty("tracks", out var tracksEl) || tracksEl.ValueKind != JsonValueKind.Array) return;
-
         var newTracks = new List<TrackInfo>();
         foreach (var t in tracksEl.EnumerateArray())
         {
@@ -141,7 +137,6 @@ public static class VibeFinderWebState
                 PreviewUrl = t.TryGetProperty("preview_url", out var preview) ? preview.GetString() : null,
             });
         }
-
         if (newTracks.Count == 0) return;
         CancelNativeFallback();
         _tracks = newTracks;
@@ -156,16 +151,13 @@ public static class VibeFinderWebState
         CancelNativeFallback();
         IsActive = true;
         IsPlayerActive = true;
-
-        if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            IsPlaying = play.GetBoolean();
+        if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False) IsPlaying = play.GetBoolean();
         if (root.TryGetProperty("title", out var title)) Title = title.GetString() ?? "—";
         if (root.TryGetProperty("artist", out var artist)) Artist = artist.GetString() ?? "—";
         if (root.TryGetProperty("coverArt", out var cover)) CoverArt = cover.GetString();
         if (root.TryGetProperty("previewUrl", out var preview)) PreviewUrl = preview.GetString();
         if (root.TryGetProperty("currentTime", out var cur) && cur.TryGetDouble(out var c)) CurrentTime = Math.Max(0, c);
         if (root.TryGetProperty("duration", out var dur) && dur.TryGetDouble(out var d)) Duration = Math.Max(0, d);
-
         SyncCurrentIndexToPlayerTrack();
         Interlocked.Increment(ref _stateVersion);
         StateChanged?.Invoke(null, EventArgs.Empty);
@@ -176,8 +168,7 @@ public static class VibeFinderWebState
         if (_tracks.Count == 0 || string.IsNullOrWhiteSpace(Title)) return;
         for (var i = 0; i < _tracks.Count; i++)
         {
-            if (string.Equals(_tracks[i].Title, Title, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(_tracks[i].Artist, Artist, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_tracks[i].Title, Title, StringComparison.OrdinalIgnoreCase) && string.Equals(_tracks[i].Artist, Artist, StringComparison.OrdinalIgnoreCase))
             {
                 CurrentIndex = i;
                 return;
@@ -211,37 +202,25 @@ public static class VibeFinderWebState
     {
         var sender = _sendCommand;
         if (sender is null) return;
-
         string? command = null;
         try
         {
             using var doc = JsonDocument.Parse(commandJson);
             if (doc.RootElement.TryGetProperty("command", out var commandEl)) command = commandEl.GetString();
         }
-        catch (JsonException ex)
-        {
-            _logger.LogWarning(ex, "VibeFinderWebState: command JSON malformed; passing through unchanged");
-        }
-
-        if (command is not ("playpause" or "next" or "prev"))
-        {
-            sender(commandJson);
-            return;
-        }
-
+        catch (JsonException ex) { _logger.LogWarning(ex, "VibeFinderWebState: command JSON malformed; passing through unchanged"); }
+        if (command is not ("playpause" or "next" or "prev")) { sender(commandJson); return; }
         var beforeVersion = Volatile.Read(ref _stateVersion);
         var beforePlaying = IsPlaying;
         var beforeTitle = Title;
         var generation = Interlocked.Increment(ref _commandGeneration);
-
         try { sender(commandJson); }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "VibeFinderWebState: web playback command {Command} threw; using native fallback", command);
-            StartNativeFallback(command, beforePlaying, beforeTitle);
+            StartNativeFallback(command, beforePlaying);
             return;
         }
-
         _ = MonitorPlaybackCommandAsync(command!, beforeVersion, beforePlaying, beforeTitle, generation);
     }
 
@@ -251,35 +230,28 @@ public static class VibeFinderWebState
         {
             await Task.Delay(900).ConfigureAwait(false);
             if (generation != Volatile.Read(ref _commandGeneration)) return;
-
             var changed = Volatile.Read(ref _stateVersion) != beforeVersion;
             var playingChanged = IsPlaying != beforePlaying;
             var trackChanged = !string.Equals(Title, beforeTitle, StringComparison.OrdinalIgnoreCase);
-
             if (changed && (command == "playpause" ? playingChanged : trackChanged)) return;
-
             if (command == "playpause" && beforePlaying)
             {
                 _sendCommand?.Invoke("{\"command\":\"playpause\"}");
                 await Task.Delay(600).ConfigureAwait(false);
                 return;
             }
-
-            StartNativeFallback(command, beforePlaying, beforeTitle);
+            StartNativeFallback(command, beforePlaying);
         }
         catch (Exception ex) { _logger.LogDebug(ex, "VibeFinderWebState: playback command monitor aborted"); }
     }
 
-    private static void StartNativeFallback(string command, bool beforePlaying, string beforeTitle)
+    private static void StartNativeFallback(string command, bool beforePlaying)
     {
         if (_tracks.Count == 0) return;
-
         CancelNativeFallback();
         var generation = Volatile.Read(ref _commandGeneration);
-
         if (command == "next") CurrentIndex = (CurrentIndex + 1) % _tracks.Count;
         else if (command == "prev") CurrentIndex = (CurrentIndex - 1 + _tracks.Count) % _tracks.Count;
-
         var track = _tracks[Math.Clamp(CurrentIndex, 0, _tracks.Count - 1)];
         Title = track.Title;
         Artist = track.Artist;
@@ -289,14 +261,11 @@ public static class VibeFinderWebState
         Duration = 0;
         IsActive = true;
         IsPlayerActive = true;
-
         if (command == "playpause" && beforePlaying) return;
-
         VibeFinderPreviewPlayer.Play(track.PreviewUrl);
         IsPlaying = VibeFinderPreviewPlayer.IsPlaying;
         Duration = VibeFinderPreviewPlayer.Duration;
         StateChanged?.Invoke(null, EventArgs.Empty);
-
         var cts = new CancellationTokenSource();
         _nativeFallbackCts = cts;
         _ = MonitorNativeFallbackAsync(generation, cts.Token);
