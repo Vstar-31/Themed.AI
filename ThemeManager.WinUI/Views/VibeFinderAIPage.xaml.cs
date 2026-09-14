@@ -13,6 +13,8 @@ public sealed partial class VibeFinderAIPage : Page
     private readonly SkinManagerService _skinManager = App.SkinManager;
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<VibeFinderAIPage>();
     private bool _isInitializing = true;
+    private bool _embedReady;
+    private bool _embedHasToken;
     private System.EventHandler<ThemeManager.Core.Models.CozyTheme>? _themeChangedHandler;
     private const string ActiveThemeSentinel = "$theme";
     private const int AutoFillTrackLimit = 50;
@@ -39,6 +41,14 @@ public sealed partial class VibeFinderAIPage : Page
                 }
                 if (TryParseAppReady(json, out bool hasToken))
                 {
+                    _embedReady = true;
+                    _embedHasToken = hasToken;
+                    StatusText.Text = hasToken
+                        ? "Connected to VibeFinder AI ✓"
+                        : "VibeFinder AI loaded — signing in…";
+                    StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                        hasToken ? Microsoft.UI.Colors.Green : Microsoft.UI.Colors.Gray);
+                    StatusText.Visibility = Visibility.Visible;
                     _logger.LogInformation("VibeFinderAIPage: embed mounted (VIBEFINDER_APP_READY, hasToken={HasToken}) — {Action}", hasToken, hasToken ? "pushing prompt and triggering a run" : "pushing prompt only, waiting on auto-login");
                     PushVibePromptAndTrackLimit(triggerRun: hasToken);
                     return;
@@ -164,8 +174,8 @@ public sealed partial class VibeFinderAIPage : Page
         App.MainWindow?.ResetVibeFinderPrewarm();
         PushVibePromptAndTrackLimit();
 
-        StatusText.Text = "Saved!";
-        StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
+        StatusText.Text = "Saved — syncing VibeFinder AI…";
+        StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
         StatusText.Visibility = Visibility.Visible;
     }
 
@@ -225,13 +235,27 @@ public sealed partial class VibeFinderAIPage : Page
     {
         if (success)
         {
+            _embedReady = true;
+            _embedHasToken = true;
+            StatusText.Text = "Connected to VibeFinder AI ✓";
+            StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
+            StatusText.Visibility = Visibility.Visible;
             _logger.LogInformation("VibeFinderAIPage: embed login succeeded");
             return;
         }
+
+        // The embedded React app is authoritative. A background/duplicate login request can fail
+        // while the already-mounted embed still has a valid token and is playing normally.
+        if (_embedReady && _embedHasToken)
+        {
+            _logger.LogDebug("VibeFinderAIPage: ignoring login failure ({Reason}) because embed is already ready with a token", reason ?? "unspecified");
+            return;
+        }
+
         _logger.LogWarning("VibeFinderAIPage: embed login failed, reason={Reason}", reason ?? "(unspecified)");
         if (reason == "network")
         {
-            StatusText.Text = "Couldn't reach VibeFinder AI — check your connection.";
+            StatusText.Text = "Couldn't reach VibeFinder AI — the embed is still loading/retrying.";
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Orange);
             StatusText.Visibility = Visibility.Visible;
             return;
@@ -242,7 +266,7 @@ public sealed partial class VibeFinderAIPage : Page
         }
         else
         {
-            await ShowIssueDialogAsync("VibeFinder AI is unreachable", "VibeFinder AI's servers returned an error rather than signing in. This is usually temporary — try Save & Apply again in a bit.");
+            await ShowIssueDialogAsync("VibeFinder AI is unreachable", "VibeFinder AI's servers returned an error rather than signing in. The embedded app will remain open and can retry without taking down the desktop widgets.");
         }
     }
 
@@ -311,6 +335,12 @@ public sealed partial class VibeFinderAIPage : Page
     {
         if (_themeChangedHandler is not null)
             App.ThemeService.ThemeChanged -= _themeChangedHandler;
-        ThemeManager.Integration.Skins.VibeFinderWebState.Detach();
+
+        // The hidden prewarm WebView is the persistent bridge for desktop widgets. Do not tear it
+        // down just because this settings page went away.
+        if (App.MainWindow?.IsVibeFinderPrewarmActive == true)
+            App.MainWindow.RebindVibeFinderPrewarmBridge();
+        else
+            ThemeManager.Integration.Skins.VibeFinderWebState.Detach();
     }
 }
