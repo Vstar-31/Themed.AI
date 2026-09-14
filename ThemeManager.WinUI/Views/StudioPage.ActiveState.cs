@@ -11,12 +11,28 @@ public sealed partial class StudioPage
     {
         if (_activeStateUiInstalled) return;
         _activeStateUiInstalled = true;
+
+        // Clicking a world previews it without changing the global active world.
+        ScenesList.SelectionMode = ListViewSelectionMode.None;
+        ScenesList.IsItemClickEnabled = true;
+        ScenesList.ItemClick += ScenesList_ItemClickForPreview;
         UpdateSetActiveButtonState();
     }
 
     private void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
     {
+        if (!_activeStateUiInstalled) return;
+        ScenesList.ItemClick -= ScenesList_ItemClickForPreview;
         _activeStateUiInstalled = false;
+    }
+
+    private void ScenesList_ItemClickForPreview(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is WorldListItem item)
+        {
+            Select(item.Scene, false);
+            UpdateSetActiveButtonState();
+        }
     }
 
     private void UpdateSetActiveButtonState()
