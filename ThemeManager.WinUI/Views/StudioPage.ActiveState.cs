@@ -12,10 +12,11 @@ public sealed partial class StudioPage
         if (_activeStateUiInstalled) return;
         _activeStateUiInstalled = true;
 
-        // Clicking a world previews it without changing the global active world.
+        // Selecting a world previews it without changing the global active world.
         ScenesList.SelectionMode = ListViewSelectionMode.None;
         ScenesList.IsItemClickEnabled = true;
         ScenesList.ItemClick += ScenesList_ItemClickForPreview;
+        App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
         UpdateSetActiveButtonState();
     }
 
@@ -23,7 +24,14 @@ public sealed partial class StudioPage
     {
         if (!_activeStateUiInstalled) return;
         ScenesList.ItemClick -= ScenesList_ItemClickForPreview;
+        App.SceneService.ActiveSceneChanged -= ActiveStateSceneChanged;
         _activeStateUiInstalled = false;
+    }
+
+    private void ActiveStateSceneChanged(object? sender, ThemeManager.Core.Models.DesktopScene? scene)
+    {
+        if (DispatcherQueue.HasThreadAccess) UpdateSetActiveButtonState();
+        else DispatcherQueue.TryEnqueue(UpdateSetActiveButtonState);
     }
 
     private void ScenesList_ItemClickForPreview(object sender, ItemClickEventArgs e)
@@ -39,9 +47,7 @@ public sealed partial class StudioPage
     {
         if (SetActiveWorldButton is null) return;
 
-        var active = _selected is not null &&
-                     ReferenceEquals(_selected, App.SceneService.ActiveScene);
-
+        var active = _selected is not null && ReferenceEquals(_selected, App.SceneService.ActiveScene);
         SetActiveWorldButton.Content = active ? "Active world ✓" : "Set selected world active";
         SetActiveWorldButton.IsEnabled = _selected is not null && !active;
     }
