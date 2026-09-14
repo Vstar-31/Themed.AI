@@ -1,9 +1,8 @@
 namespace ThemeManager.WinUI.Services;
 
 /// <summary>
-/// Lightweight, UI-independent representation of the current VibeFinder mood.
-/// Keeping this model small lets desktop scenes react without coupling the scene
-/// engine to a particular WebView or media provider.
+/// Lightweight, UI-independent representation of the current VibeFinder mood plus the
+/// cross-domain personalization state used by the desktop adaptation layer.
 /// </summary>
 public sealed record VibeSnapshot(
     string Mood,
@@ -11,7 +10,8 @@ public sealed record VibeSnapshot(
     double Warmth,
     string? Source = null,
     string? TrackTitle = null,
-    string? Artist = null)
+    string? Artist = null,
+    VibePersonalizationProfile? Profile = null)
 {
-    public static VibeSnapshot Neutral { get; } = new("Neutral", 0.35, 0.5);
+    public static VibeSnapshot Neutral { get; } = new("Neutral", 0.35, 0.5, Profile: VibePersonalizationProfile.Empty);
 }
