@@ -5,7 +5,9 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:ThemeManager.WinUI.Views"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Loaded="StudioPage_ActiveStateLoaded"
+    Unloaded="StudioPage_ActiveStateUnloaded">
 
     <Page.Resources>
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
@@ -42,6 +44,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
@@ -79,6 +82,13 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                        <Button x:Name="SetActiveWorldButton"
+                                Grid.Row="2"
+                                Content="Set selected world active"
+                                HorizontalAlignment="Stretch"
+                                Margin="0,12,0,0"
+                                Padding="14,10"
+                                Click="SetSelectedWorldActive_Click" />
                     </Grid>
                 </Border>
 
