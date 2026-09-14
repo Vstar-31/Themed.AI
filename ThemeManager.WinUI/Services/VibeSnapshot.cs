@@ -1,3 +1,5 @@
+using ThemeManager.Core.Models;
+
 namespace ThemeManager.WinUI.Services;
 
 /// <summary>
