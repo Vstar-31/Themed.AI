@@ -20,6 +20,9 @@ public sealed partial class MainWindow : Window
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<MainWindow>();
     private bool _vibeFinderPrewarmStarted;
     private bool _vibeFinderAwaitingNetwork;
+    private bool _vibeFinderPrewarmHandlersAttached;
+    private const int VibeTrackLimit = 50;
+    private const string ActiveThemeSentinel = "$theme";
     private static int _vibeFinderDialogOpen;
 
     public MainWindow()
@@ -30,30 +33,179 @@ public sealed partial class MainWindow : Window
         SetActiveNav(NavThemes);
     }
 
+    public bool IsVibeFinderPrewarmActive =>
+        _vibeFinderPrewarmStarted && VibeFinderPrewarmWebView.CoreWebView2 is not null;
+
     public async void EnsureVibeFinderPrewarm()
     {
-        if (_vibeFinderPrewarmStarted) { _logger.LogDebug("EnsureVibeFinderPrewarm: already started — ignored"); return; }
+        if (_vibeFinderPrewarmStarted)
+        {
+            RebindVibeFinderPrewarmBridge();
+            _logger.LogDebug("EnsureVibeFinderPrewarm: already started — bridge rebound/ignored");
+            return;
+        }
         if (App.SkinManager is null) return;
-        if (!App.SkinManager.Skins.Any(s => s.Name.StartsWith("VibeFinder") && s.Enabled)) { _logger.LogDebug("EnsureVibeFinderPrewarm: no enabled VibeFinder widget — skipping"); return; }
+        if (!App.SkinManager.Skins.Any(s => s.Name.StartsWith("VibeFinder") && s.Enabled))
+        {
+            _logger.LogDebug("EnsureVibeFinderPrewarm: no enabled VibeFinder widget — skipping");
+            return;
+        }
+
         var (user, pass) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass)) return;
-        if (!NetworkStatus.IsInternetAvailable()) { SubscribeVibeFinderNetworkRetry(); return; }
-        _vibeFinderPrewarmStarted = true;
-        try { await VibeFinderPrewarmWebView.EnsureCoreWebView2Async(); }
-        catch (Exception ex) { _vibeFinderPrewarmStarted = false; _logger.LogWarning(ex, "VibeFinderAI pre-warm failed to initialize CoreWebView2"); await ShowVibeFinderIssueDialogAsync("VibeFinder AI widgets need the WebView2 Runtime", "Themed.AI couldn't start the embedded browser used to sign in and fetch playlists. Installing (or repairing) the Microsoft Edge WebView2 Runtime should fix this."); return; }
-        VibeFinderPrewarmWebView.CoreWebView2.WebMessageReceived += async (sender, args) => { var json = args.TryGetWebMessageAsString(); if (!string.IsNullOrEmpty(json)) await HandleVibeFinderLoginResultAsync(json); };
-        VibeFinderPrewarmWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
+        if (!NetworkStatus.IsInternetAvailable())
         {
-            if (!args.IsSuccess) return;
-            var uri = sender.Source; if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
-            try { await sender.ExecuteScriptAsync(VibeFinderAuth.SkipTutorialScript); } catch (Exception ex) { _logger.LogDebug(ex, "VibeFinder prewarm tutorial skip failed"); }
-            var (u, p) = VibeFinderAuth.TryReadCredentials(App.SkinManager); if (string.IsNullOrWhiteSpace(u) || string.IsNullOrWhiteSpace(p)) return;
-            try { await sender.ExecuteScriptAsync(VibeFinderAuth.BuildAutoLoginScript(u, p)); } catch (Exception ex) { _logger.LogWarning(ex, "VibeFinder prewarm auto-login failed for user {User}", u); }
-        };
+            SubscribeVibeFinderNetworkRetry();
+            return;
+        }
+
+        _vibeFinderPrewarmStarted = true;
+        try
+        {
+            await VibeFinderPrewarmWebView.EnsureCoreWebView2Async();
+        }
+        catch (Exception ex)
+        {
+            _vibeFinderPrewarmStarted = false;
+            _logger.LogWarning(ex, "VibeFinderAI pre-warm failed to initialize CoreWebView2");
+            await ShowVibeFinderIssueDialogAsync(
+                "VibeFinder AI widgets need the WebView2 Runtime",
+                "Themed.AI couldn't start the embedded browser used to sign in and control VibeFinder AI. Installing (or repairing) the Microsoft Edge WebView2 Runtime should fix this.");
+            return;
+        }
+
+        if (!_vibeFinderPrewarmHandlersAttached)
+        {
+            _vibeFinderPrewarmHandlersAttached = true;
+            VibeFinderPrewarmWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
+            {
+                var json = args.TryGetWebMessageAsString();
+                if (string.IsNullOrEmpty(json)) return;
+
+                if (VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason))
+                {
+                    await HandleVibeFinderLoginResultAsync(json);
+                    return;
+                }
+
+                if (TryParseAppReady(json, out bool hasToken))
+                {
+                    _logger.LogInformation("VibeFinder prewarm: embed ready (hasToken={HasToken})", hasToken);
+                    if (hasToken)
+                        PushVibePromptAndTrackLimit();
+                    return;
+                }
+
+                VibeFinderWebState.HandleMessage(json);
+            };
+
+            VibeFinderPrewarmWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
+            {
+                if (!args.IsSuccess) return;
+                var uri = sender.Source;
+                if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+
+                try { await sender.ExecuteScriptAsync(VibeFinderAuth.SkipTutorialScript); }
+                catch (Exception ex) { _logger.LogDebug(ex, "VibeFinder prewarm tutorial skip failed"); }
+
+                var (u, p) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
+                if (string.IsNullOrWhiteSpace(u) || string.IsNullOrWhiteSpace(p)) return;
+                try
+                {
+                    await sender.ExecuteScriptAsync(VibeFinderAuth.BuildAutoLoginScript(u, p));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinder prewarm auto-login failed for user {User}", u);
+                }
+            };
+        }
+
+        RebindVibeFinderPrewarmBridge();
         VibeFinderPrewarmWebView.Source = new Uri("https://vibefinderai.netlify.app/app");
     }
 
-    public void ResetVibeFinderPrewarm() { _vibeFinderPrewarmStarted = false; EnsureVibeFinderPrewarm(); }
+    public void ResetVibeFinderPrewarm()
+    {
+        _vibeFinderPrewarmStarted = false;
+        EnsureVibeFinderPrewarm();
+    }
+
+    public void RebindVibeFinderPrewarmBridge()
+    {
+        var core = VibeFinderPrewarmWebView.CoreWebView2;
+        if (core is null) return;
+
+        VibeFinderWebState.SendCommand = commandJson =>
+        {
+            try
+            {
+                core.PostWebMessageAsJson(commandJson);
+                _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "VibeFinder prewarm bridge: failed to post command {Command}", commandJson);
+            }
+        };
+    }
+
+    private void PushVibePromptAndTrackLimit()
+    {
+        if (VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+
+        string rawPrompt = "";
+        var (user, pass) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
+        if (App.SkinManager is not null)
+        {
+            var vibeSkin = App.SkinManager.Skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
+            var measure = vibeSkin?.Measures.FirstOrDefault(m =>
+                m.Type == MeasureType.VibeTrackTitle ||
+                m.Type == MeasureType.VibeTrackArtist ||
+                m.Type == MeasureType.VibeMood);
+            if (!string.IsNullOrWhiteSpace(measure?.Target))
+            {
+                var target = measure.Target!;
+                if (target.StartsWith("|")) target = target[1..];
+                var parts = target.Split('|', 3);
+                if (parts.Length >= 3) rawPrompt = parts[2];
+            }
+        }
+
+        string vibeText = string.Equals(rawPrompt.Trim(), ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase)
+            ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
+            : rawPrompt.Trim();
+
+        if (string.IsNullOrWhiteSpace(vibeText)) return;
+
+        try
+        {
+            var core = VibeFinderPrewarmWebView.CoreWebView2;
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText }));
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setTrackLimit", value = VibeTrackLimit }));
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = VibeTrackLimit }));
+            _logger.LogDebug("VibeFinder prewarm: pushed prompt and triggered analysis for {User}", user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "VibeFinder prewarm: failed to push prompt/run analysis");
+        }
+    }
+
+    private static bool TryParseAppReady(string messageJson, out bool hasToken)
+    {
+        hasToken = false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(messageJson);
+            if (!doc.RootElement.TryGetProperty("type", out var typeEl) || typeEl.GetString() != "VIBEFINDER_APP_READY")
+                return false;
+            if (doc.RootElement.TryGetProperty("hasToken", out var tokenEl) && tokenEl.ValueKind == System.Text.Json.JsonValueKind.True)
+                hasToken = true;
+            return true;
+        }
+        catch { return false; }
+    }
 
     private void SubscribeVibeFinderNetworkRetry()
     {
@@ -65,16 +217,34 @@ public sealed partial class MainWindow : Window
     private void OnNetworkStatusChangedForVibeFinderRetry(object sender)
     {
         if (!NetworkStatus.IsInternetAvailable()) return;
-        DispatcherQueue.TryEnqueue(() => { NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChangedForVibeFinderRetry; _vibeFinderAwaitingNetwork = false; EnsureVibeFinderPrewarm(); });
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChangedForVibeFinderRetry;
+            _vibeFinderAwaitingNetwork = false;
+            EnsureVibeFinderPrewarm();
+        });
     }
 
     private async Task HandleVibeFinderLoginResultAsync(string json)
     {
         if (!VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason)) return;
         if (success) return;
-        if (reason == "network") { _vibeFinderPrewarmStarted = false; SubscribeVibeFinderNetworkRetry(); return; }
-        if (reason == "invalid_credentials") await ShowVibeFinderIssueDialogAsync("VibeFinder AI sign-in failed", "The saved VibeFinder AI username/password were rejected. Update them from Widgets → VibeFinder AI, then hit Save & Apply.");
-        else await ShowVibeFinderIssueDialogAsync("VibeFinder AI is unreachable", "VibeFinder AI's servers returned an error rather than signing in. This is usually temporary — it'll be retried the next time a widget is toggled or the app restarts.");
+
+        // Prewarm is a background reliability layer. Its transient auth/network failures must not
+        // claim that VibeFinder is unavailable when the visible embed is already healthy.
+        if (reason == "network")
+        {
+            _vibeFinderPrewarmStarted = false;
+            SubscribeVibeFinderNetworkRetry();
+            _logger.LogWarning("VibeFinder prewarm login reported a network failure; scheduled retry without user-facing error");
+            return;
+        }
+        if (reason == "invalid_credentials")
+        {
+            _logger.LogWarning("VibeFinder prewarm login rejected saved credentials");
+            return;
+        }
+        _logger.LogWarning("VibeFinder prewarm login failed: {Reason}; leaving the visible embed authoritative", reason ?? "unknown");
     }
 
     private async Task ShowVibeFinderIssueDialogAsync(string title, string message)
