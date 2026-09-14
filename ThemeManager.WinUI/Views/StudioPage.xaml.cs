@@ -14,6 +14,18 @@ public sealed partial class StudioPage : Page
     private bool _wallpaperBusy;
     private bool _sceneApplyBusy;
 
+    // Display row for the WORLDS list. DesktopScene has no notion of "active" — that lives on
+    // DesktopSceneService.ActiveScene — so we wrap each scene with a computed IsActive flag at
+    // bind time instead of adding UI state to the Core model.
+    private sealed class WorldListItem
+    {
+        public required DesktopScene Scene { get; init; }
+        public required string Name { get; init; }
+        public required string Description { get; init; }
+        public required int WidgetCount { get; init; }
+        public required bool IsActive { get; init; }
+    }
+
     private static readonly (string Name, string Description, string Tag)[] Worlds =
     {
         ("Midnight Kyoto", "Rainy neon, quiet motion and a late-night city glow.", "nocturnal"),
@@ -46,10 +58,12 @@ public sealed partial class StudioPage : Page
             Refresh();
         };
         App.SceneService.ScenesChanged += OnScenesChanged;
+        App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
         App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
         Unloaded += (_, _) =>
         {
             App.SceneService.ScenesChanged -= OnScenesChanged;
+            App.SceneService.ActiveSceneChanged -= OnActiveSceneChanged;
             App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
         };
     }
@@ -62,9 +76,28 @@ public sealed partial class StudioPage : Page
         if (!DispatcherQueue.HasThreadAccess) DispatcherQueue.TryEnqueue(Refresh); else Refresh();
     }
 
+    // SetActiveScene raises ActiveSceneChanged, not ScenesChanged — without this handler the
+    // WORLDS list never re-renders (and never picks up the ACTIVE badge below) when the active
+    // world changes from the Desktop World page, a quick-build preset, or Apply to desktop here.
+    private void OnActiveSceneChanged(object? sender, DesktopScene? scene)
+    {
+        if (!DispatcherQueue.HasThreadAccess) DispatcherQueue.TryEnqueue(Refresh); else Refresh();
+    }
+
     private void Refresh()
     {
-        ScenesList.ItemsSource = App.SceneService.Scenes.ToList();
+        var activeId = App.SceneService.ActiveScene?.Id;
+        ScenesList.ItemsSource = App.SceneService.Scenes
+            .Select(s => new WorldListItem
+            {
+                Scene = s,
+                Name = s.Name,
+                Description = s.Description,
+                WidgetCount = s.Widgets.Count,
+                IsActive = activeId is not null && activeId.Equals(s.Id, StringComparison.OrdinalIgnoreCase)
+            })
+            .ToList();
+
         var scene = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
         if (scene is not null) Select(scene, false);
     }
@@ -207,7 +240,7 @@ public sealed partial class StudioPage : Page
 
     private void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ScenesList.SelectedItem is DesktopScene scene) Select(scene);
+        if (ScenesList.SelectedItem is WorldListItem item) Select(item.Scene);
     }
 
     private async void SaveCurrentLayout_Click(object sender, RoutedEventArgs e)
