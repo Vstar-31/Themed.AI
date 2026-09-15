@@ -27,7 +27,20 @@ public sealed partial class MainWindow
         App.SkinManager.EnsureVibeFinderSkinsExist();
         await Task.Delay(100);
 
-        var vibeWidget = PickProvisioningWidget();
+        var credentialedWidget = FindCredentialedWidget();
+        var playlistWidget = App.SkinManager.Skins.FirstOrDefault(s =>
+            s.Name.Equals("VibeFinder Playlist", StringComparison.OrdinalIgnoreCase));
+
+        if (playlistWidget is not null && credentialedWidget is not null && !ReferenceEquals(playlistWidget, credentialedWidget))
+        {
+            CopyTargetToVibeMeasures(credentialedWidget, playlistWidget);
+            await App.SkinManager.SaveSkinAsync(playlistWidget);
+            _logger.LogInformation("VibeFinder provisioning: copied saved VibeFinder target into Playlist widget");
+        }
+
+        var vibeWidget = playlistWidget ?? credentialedWidget ?? App.SkinManager.Skins.FirstOrDefault(s =>
+            s.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase));
+
         if (vibeWidget is not null && !vibeWidget.Enabled)
         {
             await App.SkinManager.SetEnabledAsync(vibeWidget, true);
@@ -40,21 +53,10 @@ public sealed partial class MainWindow
         await EnsureVibeFinderPlacementAsync(vibeWidget);
     }
 
-    private SkinDefinition? PickProvisioningWidget()
+    private SkinDefinition? FindCredentialedWidget()
     {
-        if (App.SkinManager is null) return null;
-
-        // Prefer the richer Playlist widget, but preserve credentials from an existing
-        // VibeFinder skin when it is the only one carrying saved credentials.
-        var playlist = App.SkinManager.Skins.FirstOrDefault(s =>
-            s.Name.Equals("VibeFinder Playlist", StringComparison.OrdinalIgnoreCase));
-        if (playlist is not null && HasUsableCredentials(playlist))
-            return playlist;
-
-        var withCredentials = App.SkinManager.Skins.FirstOrDefault(s =>
+        return App.SkinManager?.Skins.FirstOrDefault(s =>
             s.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase) && HasUsableCredentials(s));
-        return withCredentials ?? playlist ?? App.SkinManager.Skins.FirstOrDefault(s =>
-            s.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool HasUsableCredentials(SkinDefinition skin)
@@ -63,6 +65,7 @@ public sealed partial class MainWindow
         {
             if (measure.Type is not (MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood))
                 continue;
+
             var target = measure.Target?.TrimStart('|');
             var parts = target?.Split('|', 3);
             return parts is { Length: >= 2 }
@@ -71,6 +74,31 @@ public sealed partial class MainWindow
                    && !parts[0].Equals("listener", StringComparison.OrdinalIgnoreCase);
         }
         return false;
+    }
+
+    private static string? ReadVibeTarget(SkinDefinition skin)
+    {
+        foreach (var measure in skin.Measures)
+        {
+            if (measure.Type is MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood)
+            {
+                var target = measure.Target?.TrimStart('|');
+                if (!string.IsNullOrWhiteSpace(target)) return target;
+            }
+        }
+        return null;
+    }
+
+    private static void CopyTargetToVibeMeasures(SkinDefinition source, SkinDefinition destination)
+    {
+        var target = ReadVibeTarget(source);
+        if (string.IsNullOrWhiteSpace(target)) return;
+
+        foreach (var measure in destination.Measures)
+        {
+            if (measure.Type is MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood)
+                measure.Target = target;
+        }
     }
 
     private async Task EnsureVibeFinderPlacementAsync(SkinDefinition? vibeWidget)
