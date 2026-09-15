@@ -108,7 +108,7 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel>
-                            <TextBlock Text="ACTIVE WORLD" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextMutedBrush}" />
+                            <TextBlock x:Name="WorldStateLabel" Text="ACTIVE WORLD" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextMutedBrush}" />
                             <TextBlock x:Name="ActiveSceneName" Text="No world selected" FontSize="30" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,4,0,0" />
                             <TextBlock x:Name="ActiveSceneMeta" Text="Select a world to preview its composition." FontSize="13" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
 
