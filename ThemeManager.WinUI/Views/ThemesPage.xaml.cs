@@ -17,10 +17,7 @@ public sealed partial class ThemesPage : Page
 
         ThemesRepeater.ElementPrepared += ThemesRepeater_ElementPrepared;
 
-        Unloaded += (_, _) =>
-        {
-            ViewModel.Dispose();
-        };
+        Unloaded += (_, _) => ViewModel.Dispose();
     }
 
     private void ThemesRepeater_ElementPrepared(
@@ -40,8 +37,7 @@ public sealed partial class ThemesPage : Page
 
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            if (VisualTreeHelper.GetChild(root, i) is Grid strip &&
-                Grid.GetRow(strip) == 0)
+            if (VisualTreeHelper.GetChild(root, i) is Grid strip && Grid.GetRow(strip) == 0)
             {
                 string[] colors =
                 [
@@ -70,45 +66,16 @@ public sealed partial class ThemesPage : Page
             Frame.Navigate(typeof(ThemeEditorPage), ViewModel.SelectedTheme);
     }
 
-    private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
+    private void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
 
+        // ThemeService is the single source of truth. Its ThemeChanged/ThemeChangeHub
+        // pipeline updates Themed.AI resources and, on the Windows integration branch,
+        // synchronizes native Windows application appearance and accent.
         ViewModel.SetAsActive(theme);
         ViewModel.RefreshThemesList();
-
-        // Windows exposes a native Light/Dark application + system mode rather than arbitrary
-        // per-surface colors. Map our palette luminance to that native mode and keep the accent in
-        // sync, so Explorer and other Windows apps that support the contract follow our theme.
-        bool isLightMode = IsLightPalette(theme.BackgroundBase);
-        await App.SystemIntegrator.ApplyWindowsThemeAsync(isLightMode);
-
-        string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
-        await App.SystemIntegrator.ApplyAccentColorAsync(safeAccent);
-
-        if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
-            await App.SystemIntegrator.ApplyWallpaperAsync(theme.WallpaperPath);
-    }
-
-    private static bool IsLightPalette(string hex)
-    {
-        try
-        {
-            var color = App.HexToColor(CozyTheme.NormalizeHex(hex));
-            static double Linear(byte channel)
-            {
-                double v = channel / 255.0;
-                return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
-            }
-
-            double luminance = 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
-            return luminance >= 0.42;
-        }
-        catch
-        {
-            return true;
-        }
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
