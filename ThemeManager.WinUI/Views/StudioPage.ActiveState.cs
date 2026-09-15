@@ -133,7 +133,31 @@ public sealed partial class StudioPage
         }
 
         App.ThemeService.SetActiveTheme(worldTheme);
+
+        // Map the world's palette to the native Windows Light/Dark app + system mode so supported
+        // Windows apps such as File Explorer follow the same visual direction.
+        await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(worldTheme.BackgroundBase));
         await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(worldTheme.AccentPrimary));
+    }
+
+    private static bool IsLightPalette(string hex)
+    {
+        try
+        {
+            var c = App.HexToColor(CozyTheme.NormalizeHex(hex));
+            static double Linear(byte channel)
+            {
+                double v = channel / 255.0;
+                return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+            }
+
+            double luminance = 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+            return luminance >= 0.42;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private async void ScenesList_ItemClickForPreview(object sender, ItemClickEventArgs e)
