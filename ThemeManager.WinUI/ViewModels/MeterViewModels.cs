@@ -1,4 +1,5 @@
 using ThemeManager.Core.Skins;
+using ThemeManager.Integration.Skins;
 
 namespace ThemeManager.WinUI.ViewModels;
 
@@ -33,7 +34,6 @@ public abstract class MeterViewModelBase : ViewModelBase
     public bool HasThreshold => ThresholdPercent > 0;
 
     private string? _actionUrl;
-    /// <summary>Optional URL to open when this meter is clicked.</summary>
     public string? ActionUrl
     {
         get => _actionUrl;
@@ -41,7 +41,6 @@ public abstract class MeterViewModelBase : ViewModelBase
     }
 
     private string? _secondaryActionUrl;
-    /// <summary>Optional alternate URL to open on a right-click, independent of <see cref="ActionUrl"/>.</summary>
     public string? SecondaryActionUrl
     {
         get => _secondaryActionUrl;
@@ -49,7 +48,6 @@ public abstract class MeterViewModelBase : ViewModelBase
     }
 
     private string? _imageUrl;
-    /// <summary>Optional image URL a meter can render instead of (or alongside) a static glyph.</summary>
     public string? ImageUrl
     {
         get => _imageUrl;
@@ -57,10 +55,6 @@ public abstract class MeterViewModelBase : ViewModelBase
     }
 
     public MeterDefinition Definition { get; }
-
-    /// <summary>Identifies this meter in logs — the measure it reads from when it has one
-    /// (e.g. "VibeTitle"), otherwise its definition Id. Not shown in the UI.</summary>
-    public string LogLabel => string.IsNullOrEmpty(Definition.MeasureName) ? Definition.Id : Definition.MeasureName;
 
     protected MeterViewModelBase(MeterDefinition definition)
     {
@@ -73,98 +67,30 @@ public abstract class MeterViewModelBase : ViewModelBase
         ThresholdColorHex = definition.ThresholdColorHex;
     }
 
-    /// <summary>Re-reads its bound measure (if any) and refreshes bindable text/value. Called every tick.</summary>
     public abstract void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName);
 }
 
-/// <summary>A text label — either a static caption or formatted from a measure's live value/text.</summary>
 public sealed class StringMeterViewModel : MeterViewModelBase
 {
     private readonly string? _measureName;
-    private readonly string _format;
-    private readonly string _staticText;
-
     public double FontSize { get; }
     public bool Bold { get; }
     public bool CenterText { get; }
 
-    private string _displayText;
+    private string _displayText = "";
     public string DisplayText
     {
         get => _displayText;
         private set => SetProperty(ref _displayText, value);
     }
 
-    private readonly bool _thresholdAppliesToText;
-    private readonly double _barMax;
-
     public StringMeterViewModel(MeterDefinition definition) : base(definition)
     {
         _measureName = definition.MeasureName;
-        _format = definition.Format;
-        _staticText = definition.StaticText;
-        FontSize = definition.FontSize;
+        FontSize = definition.FontSize <= 0 ? 14 : definition.FontSize;
         Bold = definition.Bold;
         CenterText = definition.CenterText;
-        _thresholdAppliesToText = definition.ThresholdAppliesToText;
-        _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
-        _displayText = string.IsNullOrEmpty(_measureName) ? _staticText : "";
-    }
-
-    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
-    {
-        if (string.IsNullOrEmpty(_measureName))
-        {
-            DisplayText = _staticText;
-            IsThresholdCrossed = false;
-            ActionUrl = Definition.ActionUrl;
-            SecondaryActionUrl = Definition.SecondaryActionUrl;
-            ImageUrl = null;
-            return;
-        }
-
-        if (measuresByName.TryGetValue(_measureName, out var measure))
-        {
-            ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
-            SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
-            ImageUrl = measure.ImageUrl;
-            try
-            {
-                DisplayText = string.Format(_format, measure.Value, measure.Text);
-            }
-            catch (FormatException)
-            {
-                // A hand-edited skins.json with a bad Format string shouldn't crash the widget —
-                // fall back to the measure's own plain text.
-                DisplayText = measure.Text;
-            }
-
-            if (HasThreshold && _thresholdAppliesToText)
-                IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
-        }
-    }
-}
-
-/// <summary>
-/// A scrolling line graph of a measure's recent values, normalized against
-/// <see cref="MeterDefinition.BarMax"/>. Keeps its own small ring buffer — the rendering side
-/// (<see cref="Views.SkinHostWindow"/>) subscribes to <see cref="HistoryUpdated"/> and redraws.
-/// </summary>
-public sealed class GraphMeterViewModel : MeterViewModelBase
-{
-    private readonly string? _measureName;
-    private readonly double _barMax;
-    private readonly int _historyLength;
-    private readonly Queue<double> _history = new();
-
-    /// <summary>Raised after every <see cref="Tick"/> that has a new sample to show.</summary>
-    public event Action? HistoryUpdated;
-
-    public GraphMeterViewModel(MeterDefinition definition) : base(definition)
-    {
-        _measureName = definition.MeasureName;
-        _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
-        _historyLength = definition.HistoryLength <= 1 ? 60 : definition.HistoryLength;
+        DisplayText = definition.StaticText ?? "";
     }
 
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
@@ -174,34 +100,25 @@ public sealed class GraphMeterViewModel : MeterViewModelBase
             ActionUrl = Definition.ActionUrl;
             SecondaryActionUrl = Definition.SecondaryActionUrl;
             ImageUrl = null;
+            DisplayText = Definition.StaticText ?? "";
             return;
         }
 
         ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
         SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
         ImageUrl = measure.ImageUrl;
-        double normalized = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
-        _history.Enqueue(normalized);
-        while (_history.Count > _historyLength)
-            _history.Dequeue();
+        DisplayText = measure.Text;
 
         if (HasThreshold)
-            IsThresholdCrossed = (normalized * 100) >= ThresholdPercent;
-
-        HistoryUpdated?.Invoke();
+            IsThresholdCrossed = (measure.Value >= ThresholdPercent);
     }
-
-    /// <summary>Current samples, oldest first, each already normalized to 0.0–1.0.</summary>
-    public double[] Snapshot() => _history.ToArray();
 }
 
-/// <summary>A horizontal fill bar showing a measure's value against <see cref="MeterDefinition.BarMax"/>.</summary>
 public sealed class BarMeterViewModel : MeterViewModelBase
 {
     private readonly string? _measureName;
     private readonly double _barMax;
 
-    /// <summary>0.0–1.0 fill fraction, ready to multiply straight into a bar's pixel width.</summary>
     private double _fillFraction;
     public double FillFraction
     {
@@ -236,62 +153,10 @@ public sealed class BarMeterViewModel : MeterViewModelBase
 }
 
 /// <summary>
-/// A circular percentage gauge — same fill-fraction-from-BarMax data as
-/// <see cref="BarMeterViewModel"/>, kept as a separate class rather than reusing it so the
-/// rendering-side pattern match (<c>meter switch { BarMeterViewModel ... }</c>) can tell the two
-/// shapes apart without an extra Kind check.
-/// </summary>
-public sealed class RingMeterViewModel : MeterViewModelBase
-{
-    private readonly string? _measureName;
-    private readonly double _barMax;
-
-    /// <summary>0.0–1.0 fill fraction, ready to convert into an arc sweep angle.</summary>
-    private double _fillFraction;
-    public double FillFraction
-    {
-        get => _fillFraction;
-        private set => SetProperty(ref _fillFraction, value);
-    }
-
-    public RingMeterViewModel(MeterDefinition definition) : base(definition)
-    {
-        _measureName = definition.MeasureName;
-        _barMax = definition.BarMax <= 0 ? 100 : definition.BarMax;
-    }
-
-    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName)
-    {
-        if (_measureName is null || !measuresByName.TryGetValue(_measureName, out var measure))
-        {
-            ActionUrl = Definition.ActionUrl;
-            SecondaryActionUrl = Definition.SecondaryActionUrl;
-            ImageUrl = null;
-            return;
-        }
-
-        ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
-        SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
-        ImageUrl = measure.ImageUrl;
-        FillFraction = Math.Clamp(measure.Value / _barMax, 0.0, 1.0);
-
-        if (HasThreshold)
-            IsThresholdCrossed = (FillFraction * 100) >= ThresholdPercent;
-    }
-}
-
-/// <summary>
 /// A single icon glyph — bound to a measure purely so it can recolor on threshold cross, the same
-/// way a Bar or Graph meter does, same as a plain static caption. CORRECTION (this class used to
-/// claim here that "the glyph itself never changes at runtime; only its color does" — no longer
-/// true): a measure whose <see cref="ThemeManager.Core.Skins.IMeasure.Text"/> reads "PLAYING" or
-/// "PAUSED" — currently only <c>VibePlaybackState</c> — additionally swaps the glyph itself
-/// between the Play (<c>\uE768</c>) and Pause (<c>\uE769</c>) Segoe Fluent Icons glyphs; see
-/// <see cref="Tick"/>. Every other measure's glyph still only ever comes from
-/// <see cref="ThemeManager.Core.Skins.MeterDefinition.IconGlyph"/> and stays fixed. A bound measure
-/// can additionally supply <see cref="MeterViewModelBase.ImageUrl"/> (e.g. album art), which the
-/// rendering side shows in place of the glyph when present — also tick-reactive, same as the
-/// play/pause swap.
+/// way a Bar or Graph meter does, same as a plain static caption. A VibePlaybackState-bound meter
+/// swaps between the Play and Pause Segoe Fluent Icons glyphs using the authoritative
+/// <see cref="VibeFinderWebState.IsPlaying"/> value whenever the VibeState measure is present.
 /// </summary>
 public sealed class IconMeterViewModel : MeterViewModelBase
 {
@@ -329,9 +194,16 @@ public sealed class IconMeterViewModel : MeterViewModelBase
             ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
             SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
             ImageUrl = measure.ImageUrl;
-            
-            if (measure.Text == "PLAYING") Glyph = "\uE769"; // Pause icon
-            else if (measure.Text == "PAUSED") Glyph = "\uE768"; // Play icon
+
+            // VibeFinder's web bridge is the authoritative playback state. The measure text can
+            // arrive on a different refresh tick, so don't let a stale "PLAYING" value keep the
+            // Pause glyph visible after playback has actually stopped.
+            if (string.Equals(_measureName, "VibeState", StringComparison.OrdinalIgnoreCase))
+                Glyph = VibeFinderWebState.IsPlaying ? "\uE769" : "\uE768"; // Pause : Play
+            else if (measure.Text == "PLAYING")
+                Glyph = "\uE769"; // Pause icon
+            else if (measure.Text == "PAUSED")
+                Glyph = "\uE768"; // Play icon
 
             if (HasThreshold)
                 IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
