@@ -8,7 +8,7 @@ public sealed partial class StudioPage
 {
     private bool _activeStateUiInstalled;
 
-    private void StudioPage_ActiveStateLoaded(object sender, RoutedEventArgs e)
+    private async void StudioPage_ActiveStateLoaded(object sender, RoutedEventArgs e)
     {
         if (_activeStateUiInstalled) return;
         _activeStateUiInstalled = true;
@@ -19,6 +19,10 @@ public sealed partial class StudioPage
         ScenesList.ItemClick += ScenesList_ItemClickForPreview;
         App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
         UpdateSetActiveButtonState();
+
+        // Re-hydrate the active world's visual identity when Studio is opened after startup.
+        if (App.SceneService.ActiveScene is { } active)
+            await ApplyWorldPaletteAsync(active);
     }
 
     private void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
@@ -48,35 +52,48 @@ public sealed partial class StudioPage
                               || t.Equals("minimal", StringComparison.OrdinalIgnoreCase));
         if (tag is null) return;
 
-        var palette = tag.ToLowerInvariant() switch
+        var worldThemeId = $"world-{tag.ToLowerInvariant()}";
+        var worldTheme = App.ThemeService.Themes
+            .FirstOrDefault(t => t.Id.Equals(worldThemeId, StringComparison.OrdinalIgnoreCase));
+
+        if (worldTheme is null)
         {
-            "nocturnal" => ("#101521", "#182235", "#263A57", "#6EA8FE", "#D9E7FF", "#EEF5FF", "#9EB4D4", "#344766", 0.92, 0.90),
-            "cozy"      => ("#F5F1EA", "#D7C9B8", "#B2967D", "#7D5A44", "#4A342A", "#3B2A20", "#7F7065", "#E0D5C7", 1.00, 1.05),
-            "hud"       => ("#071014", "#0D1B22", "#11303A", "#62E6F7", "#B8F7FF", "#E9FDFF", "#8FB7BE", "#214751", 0.92, 0.94),
-            "neon"      => ("#0B0616", "#160D27", "#281343", "#FF4FD8", "#77F7FF", "#F7EFFF", "#B7A6C9", "#43265D", 1.05, 0.96),
-            "minimal"   => ("#F4F6F8", "#E4E8EC", "#D2D9E0", "#5D7186", "#263646", "#24313D", "#71808E", "#CDD4DB", 0.92, 0.92),
-            _           => default
-        };
+            var current = App.ThemeService.ActiveTheme;
+            worldTheme = current.Duplicate();
+            worldTheme.Id = worldThemeId;
+            worldTheme.Name = $"{scene.Name} · World";
+            worldTheme.Description = scene.Description;
+            worldTheme.IsBuiltIn = false;
 
-        var current = App.ThemeService.ActiveTheme;
-        if (current.Name.Equals($"{scene.Name} · World", StringComparison.OrdinalIgnoreCase)
-            && current.AccentPrimary.Equals(palette.Item4, StringComparison.OrdinalIgnoreCase))
-            return;
+            var palette = tag.ToLowerInvariant() switch
+            {
+                "nocturnal" => ("#101521", "#182235", "#263A57", "#6EA8FE", "#D9E7FF", "#EEF5FF", "#9EB4D4", "#344766", 0.92, 0.90),
+                "cozy"      => ("#F5F1EA", "#D7C9B8", "#B2967D", "#7D5A44", "#4A342A", "#3B2A20", "#7F7065", "#E0D5C7", 1.00, 1.05),
+                "hud"       => ("#071014", "#0D1B22", "#11303A", "#62E6F7", "#B8F7FF", "#E9FDFF", "#8FB7BE", "#214751", 0.92, 0.94),
+                "neon"      => ("#0B0616", "#160D27", "#281343", "#FF4FD8", "#77F7FF", "#F7EFFF", "#B7A6C9", "#43265D", 1.05, 0.96),
+                "minimal"   => ("#F4F6F8", "#E4E8EC", "#D2D9E0", "#5D7186", "#263646", "#24313D", "#71808E", "#CDD4DB", 0.92, 0.92),
+                _           => default
+            };
 
-        var worldTheme = current.Duplicate();
-        worldTheme.Name = $"{scene.Name} · World";
-        worldTheme.Description = scene.Description;
-        worldTheme.IsBuiltIn = false;
-        worldTheme.BackgroundBase = palette.Item1;
-        worldTheme.BackgroundAlt = palette.Item2;
-        worldTheme.Surface = palette.Item3;
-        worldTheme.AccentPrimary = palette.Item4;
-        worldTheme.AccentStrong = palette.Item5;
-        worldTheme.TextPrimary = palette.Item6;
-        worldTheme.TextMuted = palette.Item7;
-        worldTheme.BorderSubtle = palette.Item8;
-        worldTheme.CornerRadiusScale = palette.Item9;
-        worldTheme.DensityScale = palette.Item10;
+            worldTheme.BackgroundBase = palette.Item1;
+            worldTheme.BackgroundAlt = palette.Item2;
+            worldTheme.Surface = palette.Item3;
+            worldTheme.AccentPrimary = palette.Item4;
+            worldTheme.AccentStrong = palette.Item5;
+            worldTheme.TextPrimary = palette.Item6;
+            worldTheme.TextMuted = palette.Item7;
+            worldTheme.BorderSubtle = palette.Item8;
+            worldTheme.CornerRadiusScale = palette.Item9;
+            worldTheme.DensityScale = palette.Item10;
+
+            await App.ThemeService.SaveThemeAsync(worldTheme);
+        }
+
+        if (!scene.ThemeId.Equals(worldTheme.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            scene.ThemeId = worldTheme.Id;
+            await App.SceneService.UpsertAsync(scene);
+        }
 
         App.ThemeService.SetActiveTheme(worldTheme);
         await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(worldTheme.AccentPrimary));
