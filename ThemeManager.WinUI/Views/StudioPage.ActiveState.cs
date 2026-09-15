@@ -20,9 +20,38 @@ public sealed partial class StudioPage
         App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
         UpdateSetActiveButtonState();
 
-        // Re-hydrate the active world's visual identity when Studio is opened after startup.
-        if (App.SceneService.ActiveScene is { } active)
-            await ApplyWorldPaletteAsync(active);
+        // Studio has two Loaded paths: this XAML handler and the initialization handler in
+        // StudioPage.xaml.cs. The latter loads persisted scenes asynchronously, so this handler
+        // can legitimately run before ActiveScene is hydrated. Retry briefly on the UI dispatcher
+        // rather than leaving a persisted active world visually stuck on Cozy Café until another
+        // navigation/activation happens.
+        _ = RehydrateActiveWorldAsync();
+    }
+
+    private async Task RehydrateActiveWorldAsync()
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            if (App.SceneService.ActiveScene is { } active)
+            {
+                try
+                {
+                    await ApplyWorldPaletteAsync(active);
+                    if (DispatcherQueue.HasThreadAccess)
+                        Refresh();
+                    else
+                        DispatcherQueue.TryEnqueue(Refresh);
+                }
+                catch
+                {
+                    // The normal initialization handler may still be loading the scene repository.
+                    // The next retry will re-attempt the same idempotent hydration.
+                }
+                return;
+            }
+
+            await Task.Delay(50);
+        }
     }
 
     private void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
