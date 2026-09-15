@@ -78,13 +78,37 @@ public sealed partial class ThemesPage : Page
         ViewModel.SetAsActive(theme);
         ViewModel.RefreshThemesList();
 
-        // AccentPrimary is the theme's main interactive color — now that
-        // ColorizationColorBalance=100 renders it exactly, this is correct.
+        // Windows exposes a native Light/Dark application + system mode rather than arbitrary
+        // per-surface colors. Map our palette luminance to that native mode and keep the accent in
+        // sync, so Explorer and other Windows apps that support the contract follow our theme.
+        bool isLightMode = IsLightPalette(theme.BackgroundBase);
+        await App.SystemIntegrator.ApplyWindowsThemeAsync(isLightMode);
+
         string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
         await App.SystemIntegrator.ApplyAccentColorAsync(safeAccent);
 
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
             await App.SystemIntegrator.ApplyWallpaperAsync(theme.WallpaperPath);
+    }
+
+    private static bool IsLightPalette(string hex)
+    {
+        try
+        {
+            var color = App.HexToColor(CozyTheme.NormalizeHex(hex));
+            static double Linear(byte channel)
+            {
+                double v = channel / 255.0;
+                return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+            }
+
+            double luminance = 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+            return luminance >= 0.42;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)
