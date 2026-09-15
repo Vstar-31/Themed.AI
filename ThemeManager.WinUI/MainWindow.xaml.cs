@@ -31,6 +31,10 @@ public sealed partial class MainWindow : Window
         ConfigureTitleBar();
         ContentFrame.Navigate(typeof(ThemesPage));
         SetActiveNav(NavThemes);
+
+        // WinUI 3 Window has no XAML Loaded event. Start the provisioning pipeline from the
+        // constructor; the pipeline itself waits asynchronously for SkinManagerService.
+        _ = InitializeVibeProvisioningAsync();
     }
 
     public bool IsVibeFinderPrewarmActive =>
@@ -133,20 +137,23 @@ public sealed partial class MainWindow : Window
 
     public void RebindVibeFinderPrewarmBridge()
     {
-        var core = VibeFinderPrewarmWebView.CoreWebView2;
-        if (core is null) return;
-
+        var dispatch = DispatcherQueue;
         VibeFinderWebState.SendCommand = commandJson =>
         {
-            try
+            dispatch.TryEnqueue(() =>
             {
-                core.PostWebMessageAsJson(commandJson);
-                _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "VibeFinder prewarm bridge: failed to post command {Command}", commandJson);
-            }
+                try
+                {
+                    var core = VibeFinderPrewarmWebView.CoreWebView2;
+                    if (core is null) return;
+                    core.PostWebMessageAsJson(commandJson);
+                    _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinder prewarm bridge: failed to post command {Command}", commandJson);
+                }
+            });
         };
     }
 
