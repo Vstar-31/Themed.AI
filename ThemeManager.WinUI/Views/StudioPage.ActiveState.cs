@@ -7,6 +7,7 @@ namespace ThemeManager.WinUI.Views;
 public sealed partial class StudioPage
 {
     private bool _activeStateUiInstalled;
+    private bool _autoSwitchUiUpdating;
 
     private async void StudioPage_ActiveStateLoaded(object sender, RoutedEventArgs e)
     {
@@ -19,12 +20,8 @@ public sealed partial class StudioPage
         ScenesList.ItemClick += ScenesList_ItemClickForPreview;
         App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
         UpdateSetActiveButtonState();
+        UpdateAutoSwitchUi();
 
-        // Studio has two Loaded paths: this XAML handler and the initialization handler in
-        // StudioPage.xaml.cs. The latter loads persisted scenes asynchronously, so this handler
-        // can legitimately run before ActiveScene is hydrated. Retry briefly on the UI dispatcher
-        // rather than leaving a persisted active world visually stuck on Cozy Café until another
-        // navigation/activation happens.
         _ = RehydrateActiveWorldAsync();
     }
 
@@ -44,8 +41,7 @@ public sealed partial class StudioPage
                 }
                 catch
                 {
-                    // The normal initialization handler may still be loading the scene repository.
-                    // The next retry will re-attempt the same idempotent hydration.
+                    // Initialization may still be hydrating persisted scenes; retry briefly.
                 }
                 return;
             }
@@ -62,13 +58,53 @@ public sealed partial class StudioPage
         _activeStateUiInstalled = false;
     }
 
-    private async void ActiveStateSceneChanged(object? sender, ThemeManager.Core.Models.DesktopScene? scene)
+    private async void ActiveStateSceneChanged(object? sender, DesktopScene? scene)
     {
         if (DispatcherQueue.HasThreadAccess) UpdateSetActiveButtonState();
         else DispatcherQueue.TryEnqueue(UpdateSetActiveButtonState);
 
+        UpdateAutoSwitchUi();
+
         if (scene is not null)
             await ApplyWorldPaletteAsync(scene);
+    }
+
+    private void UpdateAutoSwitchUi()
+    {
+        if (AutoSwitchToggle is null) return;
+
+        _autoSwitchUiUpdating = true;
+        try
+        {
+            AutoSwitchToggle.IsOn = _selected?.Behavior.AutoSwitch == true;
+            AutoSwitchToggle.IsEnabled = _selected is not null && _selected.Behavior.ReactToVibeFinder;
+            AutoSwitchStatusText.Text = AutoSwitchToggle.IsOn
+                ? "Automatically moves between vibe-matched worlds."
+                : "Manual world selection only.";
+        }
+        finally
+        {
+            _autoSwitchUiUpdating = false;
+        }
+    }
+
+    private async void AutoSwitchToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_autoSwitchUiUpdating || _selected is null) return;
+        if (!_selected.Behavior.ReactToVibeFinder)
+        {
+            UpdateAutoSwitchUi();
+            return;
+        }
+
+        _selected.Behavior.AutoSwitch = AutoSwitchToggle.IsOn;
+        await App.SceneService.UpsertAsync(_selected);
+        AutoSwitchStatusText.Text = AutoSwitchToggle.IsOn
+            ? "Automatically moves between vibe-matched worlds."
+            : "Manual world selection only.";
+        ApplyStatus.Text = AutoSwitchToggle.IsOn
+            ? "Vibe auto-switch enabled ✓"
+            : "Vibe auto-switch disabled.";
     }
 
     private async Task ApplyWorldPaletteAsync(DesktopScene scene)
@@ -97,10 +133,10 @@ public sealed partial class StudioPage
             var palette = tag.ToLowerInvariant() switch
             {
                 "nocturnal" => ("#101521", "#182235", "#263A57", "#6EA8FE", "#D9E7FF", "#EEF5FF", "#9EB4D4", "#344766", 0.92, 0.90),
-                "cozy"      => ("#F5F1EA", "#D7C9B8", "#B2967D", "#7D5A44", "#4A342A", "#3B2A20", "#7F7065", "#E0D5C7", 1.00, 1.05),
+                "cozy"      => ("#F5F1EA", "#D7C9B8", "#B2967D", "#7D5A44", "#4A342A", "#3B2A20", "#5E4D42", "#E0D5C7", 1.00, 1.05),
                 "hud"       => ("#071014", "#0D1B22", "#11303A", "#62E6F7", "#B8F7FF", "#E9FDFF", "#8FB7BE", "#214751", 0.92, 0.94),
                 "neon"      => ("#0B0616", "#160D27", "#281343", "#FF4FD8", "#77F7FF", "#F7EFFF", "#B7A6C9", "#43265D", 1.05, 0.96),
-                "minimal"   => ("#F4F6F8", "#E4E8EC", "#D2D9E0", "#5D7186", "#263646", "#24313D", "#71808E", "#CDD4DB", 0.92, 0.92),
+                "minimal"   => ("#F4F6F8", "#E4E8EC", "#D2D9E0", "#5D7186", "#263646", "#24313D", "#5A6875", "#CDD4DB", 0.92, 0.92),
                 _           => default
             };
 
@@ -133,6 +169,7 @@ public sealed partial class StudioPage
         if (e.ClickedItem is WorldListItem item)
         {
             Select(item.Scene, false);
+            UpdateAutoSwitchUi();
             UpdateSetActiveButtonState();
         }
     }
@@ -141,7 +178,11 @@ public sealed partial class StudioPage
     {
         if (SetActiveWorldButton is null) return;
 
-        var active = _selected is not null && ReferenceEquals(_selected, App.SceneService.ActiveScene);
+        var activeId = App.SceneService.ActiveScene?.Id;
+        var active = _selected?.Id is not null
+            && activeId is not null
+            && string.Equals(_selected.Id, activeId, StringComparison.OrdinalIgnoreCase);
+
         SetActiveWorldButton.Content = active ? "Active world ✓" : "Activate this world";
         SetActiveWorldButton.IsEnabled = _selected is not null && !active;
     }
@@ -154,19 +195,8 @@ public sealed partial class StudioPage
             return;
         }
 
-        // Activation is a real desktop operation: apply the world's saved theme, wallpaper,
-        // widget placements and visibility, then persist it as the active world.
         await ApplySelectedWorldAsync();
-
-        // Vibe-tagged worlds participate in the feedback-aware desktop loop by default.
-        if (_selected.Tags.Any(t => t.Equals("vibe", StringComparison.OrdinalIgnoreCase)) &&
-            !_selected.Behavior.AutoSwitch)
-        {
-            _selected.Behavior.AutoSwitch = true;
-            await App.SceneService.UpsertAsync(_selected);
-            ApplyStatus.Text = "Applied to desktop ✓ · Vibe auto-switch on";
-        }
-
+        UpdateAutoSwitchUi();
         UpdateSetActiveButtonState();
     }
 }
