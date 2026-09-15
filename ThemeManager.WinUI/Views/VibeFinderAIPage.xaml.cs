@@ -57,15 +57,20 @@ public sealed partial class VibeFinderAIPage : Page
             };
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = (cmd) =>
             {
-                try
+                DispatcherQueue.TryEnqueue(() =>
                 {
-                    VibeFinderWebView.CoreWebView2.PostWebMessageAsJson(cmd);
-                    _logger.LogTrace("VibeFinderAIPage: posted command to embed: {Command}", cmd);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "VibeFinderAIPage: failed to post command to embed: {Command}", cmd);
-                }
+                    try
+                    {
+                        var core = VibeFinderWebView.CoreWebView2;
+                        if (core is null) return;
+                        core.PostWebMessageAsJson(cmd);
+                        _logger.LogTrace("VibeFinderAIPage: posted command to embed: {Command}", cmd);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "VibeFinderAIPage: failed to post command to embed: {Command}", cmd);
+                    }
+                });
             };
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
@@ -244,8 +249,6 @@ public sealed partial class VibeFinderAIPage : Page
             return;
         }
 
-        // The embedded React app is authoritative. A background/duplicate login request can fail
-        // while the already-mounted embed still has a valid token and is playing normally.
         if (_embedReady && _embedHasToken)
         {
             _logger.LogDebug("VibeFinderAIPage: ignoring login failure ({Reason}) because embed is already ready with a token", reason ?? "unspecified");
@@ -336,8 +339,6 @@ public sealed partial class VibeFinderAIPage : Page
         if (_themeChangedHandler is not null)
             App.ThemeService.ThemeChanged -= _themeChangedHandler;
 
-        // The hidden prewarm WebView is the persistent bridge for desktop widgets. Do not tear it
-        // down just because this settings page went away.
         if (App.MainWindow?.IsVibeFinderPrewarmActive == true)
             App.MainWindow.RebindVibeFinderPrewarmBridge();
         else
