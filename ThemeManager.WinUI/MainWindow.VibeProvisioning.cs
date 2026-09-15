@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using ThemeManager.Integration.Skins;
@@ -16,7 +17,6 @@ public sealed partial class MainWindow
 
         App.ThemeService.ThemeChanged += OnProvisioningThemeChanged;
 
-        // MainWindow is created before SkinManagerService is initialized by App.OnLaunched.
         for (var attempt = 0; attempt < 120 && App.SkinManager is null; attempt++)
             await Task.Delay(50);
 
