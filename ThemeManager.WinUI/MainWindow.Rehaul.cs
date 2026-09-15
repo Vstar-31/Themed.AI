@@ -12,24 +12,39 @@ public sealed partial class MainWindow
     {
         ContentFrame.Navigate(typeof(StudioPage));
         SetActiveNav(NavStudio);
-        NavWorld.Style = (Style)Application.Current.Resources["NavItemStyle"];
     }
 
     private void NavWorld_Click(object sender, RoutedEventArgs e)
     {
         ContentFrame.Navigate(typeof(DesktopWorldPage));
-        // SetActiveNav historically targeted NavThemes here, which left Themes looking active
-        // while Desktop World was open. Keep the legacy nav reset, then explicitly activate World.
-        SetActiveNav(NavThemes);
-        NavThemes.Style = (Style)Application.Current.Resources["NavItemStyle"];
-        NavWorld.Style = (Style)Application.Current.Resources["NavItemActiveStyle"];
+        SetActiveNav(NavWorld);
 
         if (_worldNavHooked) return;
         _worldNavHooked = true;
         ContentFrame.Navigated += (_, _) =>
         {
             if (ContentFrame.Content is not DesktopWorldPage)
-                NavWorld.Style = (Style)Application.Current.Resources["NavItemStyle"];
+                SetActiveNavFromCurrentContent();
         };
+    }
+
+    private void SetActiveNavFromCurrentContent()
+    {
+        var button = ContentFrame.Content switch
+        {
+            StudioPage => NavStudio,
+            DesktopWorldPage => NavWorld,
+            ThemesPage => NavThemes,
+            VibePage => NavVibe,
+            ThemeEditorPage => NavPreview,
+            SystemIntegrationPage => NavSystem,
+            SkinsPage => NavWidgets,
+            WidgetGeneratorPage => NavWidgetVibe,
+            GalleryPage => NavGallery,
+            VibeFinderAIPage => NavVibeFinderAI,
+            SettingsPage => NavSettings,
+            _ => NavThemes
+        };
+        SetActiveNav(button);
     }
 }
