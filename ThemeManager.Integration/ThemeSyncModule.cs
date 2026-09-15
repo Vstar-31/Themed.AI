@@ -6,8 +6,7 @@ namespace ThemeManager.Integration;
 
 /// <summary>
 /// Bridges Themed.AI theme changes into Windows' native application/system appearance.
-/// This is registered at module load so every active-theme path gets the same OS synchronization
-/// without depending on individual UI buttons or pages.
+/// Registered at module load so every active-theme path gets the same synchronization.
 /// </summary>
 internal static class ThemeSyncModule
 {
@@ -29,8 +28,16 @@ internal static class ThemeSyncModule
         await ApplyGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var isLight = IsLightTheme(theme.BackgroundBase);
-            await new SystemThemeIntegrator().ApplyWindowsThemeAsync(isLight).ConfigureAwait(false);
+            var integrator = new SystemThemeIntegrator();
+
+            if (theme.ApplyToWindowsApps)
+            {
+                var isLight = IsLightTheme(theme.BackgroundBase);
+                await integrator.ApplyWindowsThemeAsync(isLight).ConfigureAwait(false);
+            }
+
+            if (theme.ApplyToSystemAccent)
+                await integrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(theme.AccentPrimary)).ConfigureAwait(false);
         }
         catch
         {
