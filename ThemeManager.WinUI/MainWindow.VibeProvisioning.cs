@@ -1,4 +1,3 @@
-using Microsoft.UI.Xaml;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using ThemeManager.Integration.Skins;
@@ -10,7 +9,7 @@ public sealed partial class MainWindow
 {
     private bool _vibeProvisioningStarted;
 
-    private async void MainWindow_VibeProvisioningLoaded(object sender, RoutedEventArgs e)
+    private async Task InitializeVibeProvisioningAsync()
     {
         if (_vibeProvisioningStarted) return;
         _vibeProvisioningStarted = true;
