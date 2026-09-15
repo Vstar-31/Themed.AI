@@ -11,6 +11,12 @@
 
     <Page.Resources>
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <Style x:Key="StudioWorldListItemStyle" TargetType="ListViewItem">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
     </Page.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -39,7 +45,7 @@
                     <ColumnDefinition Width="2*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" CornerRadius="18" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Margin="0,0,16,0">
+                <Border Grid.Column="0" CornerRadius="18" Padding="18" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Margin="0,0,16,0">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -51,10 +57,10 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="WORLDS" FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding ElementName=ScenesList, Path=Items.Count, Mode=OneWay}" FontSize="11" Opacity="0.45" VerticalAlignment="Center" />
+                            <TextBlock Text="WORLDS" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ElementName=ScenesList, Path=Items.Count, Mode=OneWay}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
                         </Grid>
-                        <ListView x:Name="ScenesList" Grid.Row="1" Margin="0,12,0,0" SelectionChanged="ScenesList_SelectionChanged">
+                        <ListView x:Name="ScenesList" Grid.Row="1" Margin="0,12,0,0" SelectionChanged="ScenesList_SelectionChanged" ItemContainerStyle="{StaticResource StudioWorldListItemStyle}">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Padding="8,12">
@@ -64,7 +70,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
                                                 <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
                                                             Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}}">
                                                     <Ellipse Width="6" Height="6" Fill="{StaticResource PrimaryAccentBrush}" />
@@ -72,11 +78,11 @@
                                                                Foreground="{StaticResource PrimaryAccentBrush}" />
                                                 </StackPanel>
                                             </StackPanel>
-                                            <TextBlock Text="{Binding Description}" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding WidgetCount}" Opacity="0.6" />
-                                            <TextBlock Text="widgets" FontSize="10" Opacity="0.4" />
+                                            <TextBlock Text="{Binding WidgetCount}" Foreground="{StaticResource TextPrimaryBrush}" />
+                                            <TextBlock Text="widgets" FontSize="10" Foreground="{StaticResource TextMutedBrush}" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
@@ -92,7 +98,7 @@
                     </Grid>
                 </Border>
 
-                <Border Grid.Column="1" CornerRadius="22" Padding="28" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Border Grid.Column="1" CornerRadius="22" Padding="28" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -102,20 +108,20 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel>
-                            <TextBlock Text="ACTIVE WORLD" FontSize="11" FontWeight="SemiBold" Opacity="0.6" />
-                            <TextBlock x:Name="ActiveSceneName" Text="No world selected" FontSize="30" FontWeight="Bold" Margin="0,4,0,0" />
-                            <TextBlock x:Name="ActiveSceneMeta" Text="Select a world to preview its composition." FontSize="13" Opacity="0.65" Margin="0,4,0,0" TextWrapping="Wrap" />
+                            <TextBlock Text="ACTIVE WORLD" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextMutedBrush}" />
+                            <TextBlock x:Name="ActiveSceneName" Text="No world selected" FontSize="30" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="ActiveSceneMeta" Text="Select a world to preview its composition." FontSize="13" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <ScrollViewer Grid.Row="1" Margin="0,24,0,18">
                             <StackPanel x:Name="SceneDetails" Spacing="10" />
                         </ScrollViewer>
 
-                        <Border Grid.Row="2" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="14" Padding="16" Margin="0,0,0,16">
+                        <Border Grid.Row="2" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="14" Padding="16" Margin="0,0,0,16" Background="{StaticResource SidebarBackgroundBrush}">
                             <StackPanel Spacing="12">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="THEMED WALLPAPER" FontSize="11" FontWeight="SemiBold" Opacity="0.65" />
-                                    <TextBlock Text="Generate a wallpaper from the active theme palette and bind it to this desktop world. Everything runs locally and is free." FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                                    <TextBlock Text="THEMED WALLPAPER" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Text="Generate a wallpaper from the active theme palette and bind it to this desktop world. Everything runs locally and is free." FontSize="12" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <Grid ColumnSpacing="10" RowSpacing="10">
@@ -139,7 +145,7 @@
                                 </Grid>
 
                                 <Button Content="Apply last generated wallpaper" Click="ApplyLastWallpaper_Click" HorizontalAlignment="Left" />
-                                <TextBlock x:Name="WallpaperStatusText" Text="Ready — generated wallpapers follow the active theme palette." FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                                <TextBlock x:Name="WallpaperStatusText" Text="Ready — generated wallpapers follow the active theme palette." FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
@@ -152,8 +158,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock x:Name="ApplyStatus" Text="Ready" FontSize="12" Opacity="0.6" />
-                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Opacity="0.45" Margin="0,3,0,0" />
+                                <TextBlock x:Name="ApplyStatus" Text="Ready" FontSize="12" Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,3,0,0" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="Save current layout" Click="SaveCurrentLayout_Click" />
                             <Button Grid.Column="2" Content="Duplicate" Click="DuplicateWorld_Click" />
@@ -164,7 +170,7 @@
                 </Border>
             </Grid>
 
-            <TextBlock Grid.Row="2" Text="THEMED.AI  •  Desktop worlds are the new skins" HorizontalAlignment="Center" Opacity="0.4" FontSize="11" Margin="0,18,0,0" />
+            <TextBlock Grid.Row="2" Text="THEMED.AI  •  Desktop worlds are the new skins" HorizontalAlignment="Center" Foreground="{StaticResource TextMutedBrush}" Opacity="0.75" FontSize="11" Margin="0,18,0,0" />
         </Grid>
     </ScrollViewer>
 </Page>
