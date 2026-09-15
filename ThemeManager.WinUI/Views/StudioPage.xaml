@@ -90,7 +90,7 @@
                         </ListView>
                         <Button x:Name="SetActiveWorldButton"
                                 Grid.Row="2"
-                                Content="Set selected world active"
+                                Content="Activate this world"
                                 HorizontalAlignment="Stretch"
                                 Margin="0,12,0,0"
                                 Padding="14,10"
@@ -111,6 +111,25 @@
                             <TextBlock Text="ACTIVE WORLD" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextMutedBrush}" />
                             <TextBlock x:Name="ActiveSceneName" Text="No world selected" FontSize="30" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,4,0,0" />
                             <TextBlock x:Name="ActiveSceneMeta" Text="Select a world to preview its composition." FontSize="13" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+                            <Grid Margin="0,14,0,0" ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ToggleSwitch x:Name="AutoSwitchToggle"
+                                              Header="Vibe auto-switch"
+                                              IsOn="False"
+                                              Toggled="AutoSwitchToggle_Toggled"
+                                              VerticalAlignment="Center" />
+                                <TextBlock x:Name="AutoSwitchStatusText"
+                                           Grid.Column="1"
+                                           Text="Manual world selection only."
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </Grid>
                         </StackPanel>
 
                         <ScrollViewer Grid.Row="1" Margin="0,24,0,18">
