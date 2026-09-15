@@ -230,8 +230,6 @@ public sealed partial class MainWindow : Window
         if (!VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason)) return;
         if (success) return;
 
-        // Prewarm is a background reliability layer. Its transient auth/network failures must not
-        // claim that VibeFinder is unavailable when the visible embed is already healthy.
         if (reason == "network")
         {
             _vibeFinderPrewarmStarted = false;
@@ -309,7 +307,7 @@ public sealed partial class MainWindow : Window
 
     private void SetActiveNav(Button active)
     {
-        Button[] all = [NavThemes, NavVibe, NavPreview, NavSystem, NavWidgets, NavWidgetVibe, NavGallery, NavVibeFinderAI, NavSettings];
+        Button[] all = [NavStudio, NavWorld, NavThemes, NavVibe, NavPreview, NavSystem, NavWidgets, NavWidgetVibe, NavGallery, NavVibeFinderAI, NavSettings];
         foreach (var btn in all)
         {
             btn.Style = btn == active ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemActiveStyle"] : (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemStyle"];
