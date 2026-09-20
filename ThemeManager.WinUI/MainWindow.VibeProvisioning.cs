@@ -104,8 +104,11 @@ public sealed partial class MainWindow
     {
         if (vibeWidget is null || App.SceneService.Scenes.Count == 0) return;
 
+        var widgetsById = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+
         foreach (var scene in App.SceneService.Scenes.ToList())
         {
+            var sceneChanged = false;
             var placement = scene.Widgets.FirstOrDefault(w =>
                 w.WidgetId.Equals(vibeWidget.Id, StringComparison.OrdinalIgnoreCase));
 
@@ -126,17 +129,27 @@ public sealed partial class MainWindow
                     Definition = vibeWidget.Clone()
                 });
                 scene.Behavior.ReactToVibeFinder = true;
-                await App.SceneService.UpsertAsync(scene);
-                continue;
+                sceneChanged = true;
             }
-
-            // Backfill the new self-contained snapshot on older worlds without changing the user's
-            // saved placement coordinates.
-            if (placement.Definition is null)
+            else if (placement.Definition is null)
             {
                 placement.Definition = vibeWidget.Clone();
-                await App.SceneService.UpsertAsync(scene);
+                sceneChanged = true;
             }
+
+            // Repair snapshots for every other legacy placement that still exists in the current
+            // widget library. After this pass, worlds no longer depend on skins.json retaining every
+            // historical definition.
+            foreach (var widgetPlacement in scene.Widgets)
+            {
+                if (widgetPlacement.Definition is not null) continue;
+                if (!widgetsById.TryGetValue(widgetPlacement.WidgetId, out var currentWidget)) continue;
+                widgetPlacement.Definition = currentWidget.Clone();
+                sceneChanged = true;
+            }
+
+            if (sceneChanged)
+                await App.SceneService.UpsertAsync(scene);
         }
 
         if (App.SceneService.ActiveScene is { } active)
