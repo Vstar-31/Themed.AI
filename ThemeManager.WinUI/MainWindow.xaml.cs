@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
-            _logger.LogInformation("VibeFinder theme sync: refreshing playlist for "{Theme}"", theme.Name);
+            _logger.LogInformation("VibeFinder theme sync: refreshing playlist for \"{Theme}\"", theme.Name);
             PushVibePromptAndTrackLimit();
         });
     }
