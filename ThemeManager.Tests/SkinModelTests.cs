@@ -145,6 +145,28 @@ public class SkinModelTests
     }
 
     [Fact]
+    public void SkinDefinition_Clone_DeepCopiesNestedState()
+    {
+        var source = SkinDefaults.CreateClock();
+        source.Tags.Add("snapshot");
+        source.Variables["source"] = "original";
+        source.Measures[0].Target = "target";
+
+        var copy = source.Clone("copy-id");
+        copy.Tags.Add("copy-only");
+        copy.Variables["source"] = "changed";
+        copy.Measures[0].Target = "changed-target";
+        copy.Meters[0].X = 999;
+
+        Assert.Equal("copy-id", copy.Id);
+        Assert.NotSame(source, copy);
+        Assert.DoesNotContain("copy-only", source.Tags);
+        Assert.Equal("original", source.Variables["source"]);
+        Assert.Equal("target", source.Measures[0].Target);
+        Assert.NotEqual(999, source.Meters[0].X);
+    }
+
+    [Fact]
     public void SceneWidgetPlacement_PreservesDesktopCoordinates()
     {
         var placement = new ThemeManager.Core.Models.SceneWidgetPlacement
