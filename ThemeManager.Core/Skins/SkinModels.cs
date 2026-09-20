@@ -70,4 +70,72 @@ public sealed class SkinDefinition
     public List<MeasureDefinition> Measures { get; set; } = new();
     public List<MeterDefinition> Meters { get; set; } = new();
     public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Creates an independent copy suitable for embedding in a desktop-world placement or
+    /// materializing a missing widget from that placement. Nested measures, meters and variables
+    /// are copied so applying/editing the restored widget cannot mutate the saved world snapshot.
+    /// </summary>
+    public SkinDefinition Clone(string? newId = null)
+    {
+        return new SkinDefinition
+        {
+            SchemaVersion = SchemaVersion,
+            Id = newId ?? Id,
+            Name = Name,
+            Description = Description,
+            Author = Author,
+            Tags = Tags?.ToList() ?? new List<string>(),
+            Enabled = Enabled,
+            X = X,
+            Y = Y,
+            Width = Width,
+            Height = Height,
+            Opacity = Opacity,
+            ClickThrough = ClickThrough,
+            AlwaysOnTop = AlwaysOnTop,
+            Locked = Locked,
+            DesktopLayer = DesktopLayer,
+            UpdateIntervalMs = UpdateIntervalMs,
+            Measures = (Measures ?? new List<MeasureDefinition>())
+                .Select(m => new MeasureDefinition
+                {
+                    Id = m.Id,
+                    Name = m.Name,
+                    Type = m.Type,
+                    Target = m.Target
+                }).ToList(),
+            Meters = (Meters ?? new List<MeterDefinition>())
+                .Select(m => new MeterDefinition
+                {
+                    Id = m.Id,
+                    Kind = m.Kind,
+                    X = m.X,
+                    Y = m.Y,
+                    Width = m.Width,
+                    Height = m.Height,
+                    ZIndex = m.ZIndex,
+                    Rotation = m.Rotation,
+                    Opacity = m.Opacity,
+                    MeasureName = m.MeasureName,
+                    StaticText = m.StaticText,
+                    Format = m.Format,
+                    FontSize = m.FontSize,
+                    Bold = m.Bold,
+                    CenterText = m.CenterText,
+                    BarMax = m.BarMax,
+                    HistoryLength = m.HistoryLength,
+                    IconGlyph = m.IconGlyph,
+                    ThresholdPercent = m.ThresholdPercent,
+                    ThresholdColorHex = m.ThresholdColorHex,
+                    ThresholdAppliesToText = m.ThresholdAppliesToText,
+                    ActionUrl = m.ActionUrl,
+                    SecondaryActionUrl = m.SecondaryActionUrl,
+                    WebEmbedUrl = m.WebEmbedUrl
+                }).ToList(),
+            Variables = Variables is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase)
+        };
+    }
 }
