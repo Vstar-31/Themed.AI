@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Microsoft.Extensions.Logging;
 using Windows.Graphics;
@@ -655,7 +656,26 @@ public sealed partial class SkinHostWindow : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IconMeterViewModel.Glyph))
+            {
+                var oldGlyph = icon.Glyph;
                 icon.Glyph = vm.Glyph;
+
+                if (oldGlyph != vm.Glyph)
+                {
+                    var fade = new DoubleAnimation
+                    {
+                        From = 0.25,
+                        To = 1,
+                        Duration = TimeSpan.FromMilliseconds(140),
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                    };
+                    Storyboard.SetTarget(fade, icon);
+                    Storyboard.SetTargetProperty(fade, "Opacity");
+                    var story = new Storyboard();
+                    story.Children.Add(fade);
+                    story.Begin();
+                }
+            }
         };
 
         // Cover art (from a bound measure's ImageUrl, e.g. VibeFinderMeasure) layers over the
@@ -669,12 +689,69 @@ public sealed partial class SkinHostWindow : Window
             Height = vm.Height,
             Stretch = Stretch.UniformToFill,
             Visibility = Visibility.Collapsed,
+            Opacity = 0,
+            RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
+            RenderTransform = new ScaleTransform { ScaleX = 0.96, ScaleY = 0.96 },
         };
-        image.ImageOpened += (_, _) => image.Visibility = Visibility.Visible;
-        image.ImageFailed += (_, _) => image.Visibility = Visibility.Collapsed;
+
+        void AnimateArtworkIn()
+        {
+            image.Visibility = Visibility.Visible;
+
+            if (image.RenderTransform is ScaleTransform scale)
+            {
+                var scaleX = new DoubleAnimation
+                {
+                    From = scale.ScaleX,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                var scaleY = new DoubleAnimation
+                {
+                    From = scale.ScaleY,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(scaleX, scale);
+                Storyboard.SetTargetProperty(scaleX, "ScaleX");
+                Storyboard.SetTarget(scaleY, scale);
+                Storyboard.SetTargetProperty(scaleY, "ScaleY");
+
+                var fade = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(fade, image);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+
+                var story = new Storyboard();
+                story.Children.Add(scaleX);
+                story.Children.Add(scaleY);
+                story.Children.Add(fade);
+                story.Begin();
+            }
+            else
+            {
+                image.Opacity = 1;
+            }
+        }
+
+        image.ImageOpened += (_, _) => AnimateArtworkIn();
+        image.ImageFailed += (_, _) =>
+        {
+            image.Visibility = Visibility.Collapsed;
+            image.Opacity = 0;
+        };
 
         if (vm.ImageUrl is string initialUrl && Uri.TryCreate(initialUrl, UriKind.Absolute, out var initialUri))
+        {
             image.Source = new BitmapImage(initialUri);
+        }
 
         vm.PropertyChanged += (_, e) =>
         {
@@ -682,12 +759,23 @@ public sealed partial class SkinHostWindow : Window
 
             if (vm.ImageUrl is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
+                // Start the new frame just behind the old one, then fade/scale it in once the
+                // network image has decoded. This prevents the widget from hard-cutting between
+                // album covers when VibeFinder changes tracks.
+                image.Opacity = 0;
+                image.Visibility = Visibility.Visible;
+                if (image.RenderTransform is ScaleTransform scale)
+                {
+                    scale.ScaleX = 0.96;
+                    scale.ScaleY = 0.96;
+                }
                 image.Source = new BitmapImage(uri);
             }
             else
             {
                 image.Source = null;
                 image.Visibility = Visibility.Collapsed;
+                image.Opacity = 0;
             }
         };
 
