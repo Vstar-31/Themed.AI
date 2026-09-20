@@ -159,7 +159,8 @@ public sealed partial class StudioPage : Page
                     Opacity = w.Opacity,
                     ZIndex = w.ZIndex,
                     Visible = w.Visible,
-                    Monitor = w.Monitor
+                    Monitor = w.Monitor,
+                    Definition = w.Clone()
                 }).ToList(),
                 Effects = new List<SceneEffect>
                 {
@@ -315,7 +316,8 @@ public sealed partial class StudioPage : Page
         Opacity = source.Opacity,
         ZIndex = source.ZIndex,
         Visible = source.Visible,
-        Monitor = source.Monitor
+        Monitor = source.Monitor,
+        Definition = source.Definition?.Clone()
     };
 
     private static SceneEffect CloneEffect(SceneEffect source) => new()
@@ -481,28 +483,11 @@ public sealed partial class StudioPage : Page
 
             if (App.SkinManager is not null)
             {
-                var known = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-                var sceneIds = _selected.Widgets.Select(w => w.WidgetId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var result = await App.SkinManager.ApplySceneAsync(_selected.Widgets);
 
-                foreach (var placement in _selected.Widgets)
+                if (result.Missing > 0)
                 {
-                    if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
-                    await App.SkinManager.ApplyScenePlacementAsync(
-                        skin,
-                        placement.X,
-                        placement.Y,
-                        placement.Opacity,
-                        placement.Visible);
-                    // ApplyScenePlacementAsync mutates the live model and window but intentionally
-                    // does not persist on every call. SetOpacityAsync writes the already-mutated
-                    // model once per placement, so X/Y/visibility survive an app restart as well.
-                    await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
-                }
-
-                foreach (var skin in App.SkinManager.Skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
-                {
-                    await App.SkinManager.ApplyScenePlacementAsync(skin, skin.X, skin.Y, skin.Opacity, false);
-                    await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
+                    ApplyStatus.Text = $"Applied {result.Applied}/{_selected.Widgets.Count} widgets · {result.Missing} unavailable";
                 }
             }
 
