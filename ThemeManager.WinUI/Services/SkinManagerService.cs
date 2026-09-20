@@ -182,6 +182,32 @@ public sealed class SkinManagerService : IDisposable
                     "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
                     skin.Id, skin.Name);
             }
+            else if (sceneIds.Contains(skin.Id))
+            {
+                // A placement list is a composition, so the same widget definition can legitimately
+                // appear more than once. The old runtime keyed native windows solely by WidgetId, so
+                // a second placement merely moved the first window and only one copy remained visible.
+                // Materialize a separate instance from the placement snapshot for repeated ids.
+                if (placement.Definition is null)
+                {
+                    missing++;
+                    _logger.LogWarning(
+                        "Desktop world contains duplicate widget placement {WidgetId}, but no definition snapshot exists for the second instance",
+                        placement.WidgetId);
+                    continue;
+                }
+
+                var instanceId = Guid.NewGuid().ToString();
+                skin = placement.Definition.Clone(instanceId);
+                skin.Enabled = false;
+                _skins.Add(skin);
+                known[skin.Id] = skin;
+                placement.WidgetId = instanceId;
+
+                _logger.LogInformation(
+                    "Desktop world materialized repeated widget placement as instance {WidgetId} ({WidgetName})",
+                    skin.Id, skin.Name);
+            }
 
             sceneIds.Add(skin.Id);
             await ApplyScenePlacementCoreAsync(
