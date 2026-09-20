@@ -1,9 +1,11 @@
+using ThemeManager.Core.Skins;
+
 namespace ThemeManager.Core.Models;
 
 /// <summary>A complete visual desktop state. Scenes orchestrate themes, widgets, wallpaper and behavior.</summary>
 public sealed class DesktopScene
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "Untitled Scene";
     public string Description { get; set; } = "";
@@ -22,6 +24,14 @@ public sealed class DesktopScene
 public sealed class SceneWidgetPlacement
 {
     public string WidgetId { get; set; } = "";
+
+    /// <summary>
+    /// Self-contained fallback definition for this placement. Worlds historically stored only the
+    /// widget id, which meant a world could list a widget that had since disappeared from skins.json
+    /// and the desktop apply path would silently skip it. New worlds keep a snapshot so they remain
+    /// portable and can restore their complete composition.
+    /// </summary>
+    public SkinDefinition? Definition { get; set; }
     public double X { get; set; }
     public double Y { get; set; }
     public double Scale { get; set; } = 1.0;

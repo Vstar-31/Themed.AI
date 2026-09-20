@@ -115,6 +115,35 @@ public sealed class SystemThemeIntegrator : ISystemThemeIntegrator
         }
     });
 
+    public Task<bool> ApplyWindowsThemeAsync(bool isLightMode) => Task.Run(() =>
+    {
+        try
+        {
+            int value = isLightMode ? 1 : 0;
+            _logger.LogInformation("Applying Windows {Mode} mode to system and apps", isLightMode ? "Light" : "Dark");
+
+            using (var personalize = Registry.CurrentUser.CreateSubKey(ThemesKey))
+            {
+                if (personalize is null) return false;
+                personalize.SetValue("AppsUseLightTheme", value, RegistryValueKind.DWord);
+                personalize.SetValue("SystemUsesLightTheme", value, RegistryValueKind.DWord);
+                personalize.Flush();
+            }
+
+            // Ask Explorer and other interested Windows components to refresh their personalization
+            // state without restarting the shell or terminating user applications.
+            BroadcastSettingsChange("ImmersiveColorSet");
+            BroadcastSettingsChange("WindowsThemeElement");
+            _logger.LogInformation("Windows {Mode} mode successfully applied", isLightMode ? "Light" : "Dark");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to apply Windows {Mode} mode", isLightMode ? "Light" : "Dark");
+            return false;
+        }
+    });
+
     public Task<bool> ApplyWallpaperAsync(string imagePath) => Task.Run(() =>
     {
         try

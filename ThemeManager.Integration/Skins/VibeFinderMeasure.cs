@@ -82,7 +82,7 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
             {
                 MeasureType.VibeTrackTitle => VibeFinderWebState.Title,
                 MeasureType.VibeTrackArtist => VibeFinderWebState.Artist,
-                MeasureType.VibeMood => "—",
+                MeasureType.VibeMood => string.IsNullOrWhiteSpace(VibeFinderWebState.DominantVibe) ? "—" : VibeFinderWebState.DominantVibe!,
                 MeasureType.VibePlaybackState => VibeFinderWebState.IsPlaying ? "PLAYING" : "PAUSED",
                 _ => "—"
             };

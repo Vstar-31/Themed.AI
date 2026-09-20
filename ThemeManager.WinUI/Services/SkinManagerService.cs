@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using ThemeManager.Core.Services;
 using ThemeManager.WinUI.ViewModels;
@@ -23,6 +24,8 @@ public sealed class SkinManagerService : IDisposable
     private readonly WidgetTickScheduler _scheduler = new();
     private bool _widgetsHidden;
     private const int SchedulerQuantumMs = 50;
+    private static readonly IReadOnlyDictionary<string, SkinDefinition> CanonicalDefaults =
+        SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
     public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
     {
@@ -134,10 +137,125 @@ public sealed class SkinManagerService : IDisposable
 
     public async Task ApplyScenePlacementAsync(SkinDefinition skin, double x, double y, double opacity, bool enabled)
     {
+        await ApplyScenePlacementCoreAsync(skin, x, y, opacity, enabled);
+        await PersistAsync(false);
+    }
+
+    /// <summary>
+    /// Reconciles the complete widget composition of a desktop world in one pass. A world placement
+    /// may carry a serialized widget definition; when its id is no longer present in skins.json we
+    /// materialize that definition back into the live widget library instead of silently dropping the
+    /// placement. All window changes are performed before one persistence operation, which also avoids
+    /// the repeated file churn that the old Studio loop caused for every widget.
+    /// </summary>
+    public async Task<(int Applied, int Missing)> ApplySceneAsync(IEnumerable<SceneWidgetPlacement> placements)
+    {
+        ArgumentNullException.ThrowIfNull(placements);
+
+        var scenePlacements = placements
+            .Where(p => !string.IsNullOrWhiteSpace(p.WidgetId))
+            .OrderBy(p => p.ZIndex)
+            .ToList();
+
+        var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var applied = 0;
+        var missing = 0;
+
+        foreach (var placement in scenePlacements)
+        {
+            if (!known.TryGetValue(placement.WidgetId, out var skin))
+            {
+                if (placement.Definition is not null)
+                {
+                    skin = placement.Definition.Clone(placement.WidgetId);
+                    _logger.LogInformation(
+                        "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
+                        skin.Id, skin.Name);
+                }
+                else if (CanonicalDefaults.TryGetValue(placement.WidgetId, out var canonical))
+                {
+                    // Built-in widget ids are stable, so pre-snapshot worlds can still be repaired
+                    // even when a local skins.json reset removed the corresponding definition.
+                    skin = canonical.Clone(placement.WidgetId);
+                    _logger.LogInformation(
+                        "Desktop world restored canonical built-in widget {WidgetId} ({WidgetName})",
+                        skin.Id, skin.Name);
+                }
+                else
+                {
+                    missing++;
+                    _logger.LogWarning(
+                        "Desktop world placement {WidgetId} has no live or recoverable widget definition; skipping it",
+                        placement.WidgetId);
+                    continue;
+                }
+
+                skin.Enabled = false;
+                _skins.Add(skin);
+                known[skin.Id] = skin;
+            }
+            else if (sceneIds.Contains(skin.Id))
+            {
+                // A placement list is a composition, so the same widget definition can legitimately
+                // appear more than once. The old runtime keyed native windows solely by WidgetId, so
+                // a second placement merely moved the first window and only one copy remained visible.
+                // Materialize a separate instance from the placement snapshot for repeated ids.
+                if (placement.Definition is null)
+                {
+                    missing++;
+                    _logger.LogWarning(
+                        "Desktop world contains duplicate widget placement {WidgetId}, but no definition snapshot exists for the second instance",
+                        placement.WidgetId);
+                    continue;
+                }
+
+                var instanceId = Guid.NewGuid().ToString();
+                skin = placement.Definition.Clone(instanceId);
+                skin.Enabled = false;
+                _skins.Add(skin);
+                known[skin.Id] = skin;
+                placement.WidgetId = instanceId;
+
+                _logger.LogInformation(
+                    "Desktop world materialized repeated widget placement as instance {WidgetId} ({WidgetName})",
+                    skin.Id, skin.Name);
+            }
+
+            sceneIds.Add(skin.Id);
+            await ApplyScenePlacementCoreAsync(
+                skin,
+                placement.X,
+                placement.Y,
+                placement.Opacity,
+                placement.Visible);
+            applied++;
+        }
+
+        // Anything currently visible but not part of this world is hidden. This is deliberately
+        // based on the resolved ids so an unresolvable/corrupt placement cannot accidentally keep a
+        // stale widget around forever.
+        foreach (var skin in _skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
+            await ApplyScenePlacementCoreAsync(skin, skin.X, skin.Y, skin.Opacity, false);
+
+        await PersistAsync(true);
+
+        _logger.LogInformation(
+            "Desktop world applied: {AppliedCount} widget placements resolved, {MissingCount} missing definitions, {PlacementCount} placements in scene",
+            applied,
+            missing,
+            scenePlacements.Count);
+
+        return (applied, missing);
+    }
+
+    private async Task ApplyScenePlacementCoreAsync(SkinDefinition skin, double x, double y, double opacity, bool enabled)
+    {
         skin.X = x;
         skin.Y = y;
         skin.Opacity = Math.Clamp(opacity, 0, 1);
         skin.Enabled = enabled;
+
         if (enabled)
         {
             if (_open.TryGetValue(skin.Id, out var existing))
@@ -145,10 +263,15 @@ public sealed class SkinManagerService : IDisposable
                 existing.Window.ApplyPosition(skin.X, skin.Y);
                 existing.Window.ApplyOpacity(skin.Opacity);
             }
-            else OpenWindowFor(skin);
+            else
+            {
+                OpenWindowFor(skin);
+            }
         }
-        else await CloseWindowFor(skin);
-        await PersistAsync(false);
+        else
+        {
+            await CloseWindowFor(skin);
+        }
     }
 
     private async void OnWindowMoved(SkinDefinition skin, double x, double y)

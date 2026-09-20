@@ -159,7 +159,8 @@ public sealed partial class StudioPage : Page
                     Opacity = w.Opacity,
                     ZIndex = w.ZIndex,
                     Visible = w.Visible,
-                    Monitor = w.Monitor
+                    Monitor = w.Monitor,
+                    Definition = w.Clone()
                 }).ToList(),
                 Effects = new List<SceneEffect>
                 {
@@ -315,7 +316,8 @@ public sealed partial class StudioPage : Page
         Opacity = source.Opacity,
         ZIndex = source.ZIndex,
         Visible = source.Visible,
-        Monitor = source.Monitor
+        Monitor = source.Monitor,
+        Definition = source.Definition?.Clone()
     };
 
     private static SceneEffect CloneEffect(SceneEffect source) => new()
@@ -481,33 +483,36 @@ public sealed partial class StudioPage : Page
 
             if (App.SkinManager is not null)
             {
-                var known = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-                var sceneIds = _selected.Widgets.Select(w => w.WidgetId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var result = await App.SkinManager.ApplySceneAsync(_selected.Widgets);
 
+                // Backfill snapshots for older worlds whose widget ids still resolve locally. This
+                // turns a successful legacy apply into a self-contained world without changing its
+                // saved placement geometry.
+                var currentWidgets = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+                var snapshotsChanged = false;
                 foreach (var placement in _selected.Widgets)
                 {
-                    if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
-                    await App.SkinManager.ApplyScenePlacementAsync(
-                        skin,
-                        placement.X,
-                        placement.Y,
-                        placement.Opacity,
-                        placement.Visible);
-                    // ApplyScenePlacementAsync mutates the live model and window but intentionally
-                    // does not persist on every call. SetOpacityAsync writes the already-mutated
-                    // model once per placement, so X/Y/visibility survive an app restart as well.
-                    await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
+                    if (placement.Definition is null &&
+                        currentWidgets.TryGetValue(placement.WidgetId, out var resolvedWidget))
+                    {
+                        placement.Definition = resolvedWidget.Clone();
+                        snapshotsChanged = true;
+                    }
                 }
 
-                foreach (var skin in App.SkinManager.Skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
-                {
-                    await App.SkinManager.ApplyScenePlacementAsync(skin, skin.X, skin.Y, skin.Opacity, false);
-                    await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
-                }
+                if (snapshotsChanged)
+                    await App.SceneService.UpsertAsync(_selected);
+
+                ApplyStatus.Text = result.Missing > 0
+                    ? $"Applied {result.Applied}/{_selected.Widgets.Count} widgets · {result.Missing} unavailable"
+                    : $"Applied {result.Applied} widgets to desktop ✓";
+            }
+            else
+            {
+                ApplyStatus.Text = "Applied world theme and wallpaper ✓";
             }
 
             App.SceneService.SetActiveScene(_selected);
-            ApplyStatus.Text = "Applied to desktop ✓";
             ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} saved widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
         }
         catch (Exception ex)
