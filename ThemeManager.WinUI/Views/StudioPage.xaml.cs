@@ -484,15 +484,16 @@ public sealed partial class StudioPage : Page
             if (App.SkinManager is not null)
             {
                 var result = await App.SkinManager.ApplySceneAsync(_selected.Widgets);
-
-                if (result.Missing > 0)
-                {
-                    ApplyStatus.Text = $"Applied {result.Applied}/{_selected.Widgets.Count} widgets · {result.Missing} unavailable";
-                }
+                ApplyStatus.Text = result.Missing > 0
+                    ? $"Applied {result.Applied}/{_selected.Widgets.Count} widgets · {result.Missing} unavailable"
+                    : $"Applied {result.Applied} widgets to desktop ✓";
+            }
+            else
+            {
+                ApplyStatus.Text = "Applied world theme and wallpaper ✓";
             }
 
             App.SceneService.SetActiveScene(_selected);
-            ApplyStatus.Text = "Applied to desktop ✓";
             ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} saved widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
         }
         catch (Exception ex)
