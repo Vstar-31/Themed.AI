@@ -484,6 +484,25 @@ public sealed partial class StudioPage : Page
             if (App.SkinManager is not null)
             {
                 var result = await App.SkinManager.ApplySceneAsync(_selected.Widgets);
+
+                // Backfill snapshots for older worlds whose widget ids still resolve locally. This
+                // turns a successful legacy apply into a self-contained world without changing its
+                // saved placement geometry.
+                var currentWidgets = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+                var snapshotsChanged = false;
+                foreach (var placement in _selected.Widgets)
+                {
+                    if (placement.Definition is null &&
+                        currentWidgets.TryGetValue(placement.WidgetId, out var resolvedWidget))
+                    {
+                        placement.Definition = resolvedWidget.Clone();
+                        snapshotsChanged = true;
+                    }
+                }
+
+                if (snapshotsChanged)
+                    await App.SceneService.UpsertAsync(_selected);
+
                 ApplyStatus.Text = result.Missing > 0
                     ? $"Applied {result.Applied}/{_selected.Widgets.Count} widgets · {result.Missing} unavailable"
                     : $"Applied {result.Applied} widgets to desktop ✓";
