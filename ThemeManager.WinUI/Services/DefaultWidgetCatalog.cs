@@ -70,21 +70,21 @@ public static partial class DefaultWidgetCatalog
 
     private static void BuildPlaylist(SkinDefinition skin, string target)
     {
-        skin.Description = "Rich but restrained VibeFinder deck with large artwork, mood, progress and transport modules.";
-        skin.Width = 360;
-        skin.Height = 156;
+        skin.Description = "World-aware VibeFinder deck with album art, now-playing hierarchy, mood, progress and transport modules.";
+        skin.Width = 382;
+        skin.Height = 170;
         skin.Meters = new List<MeterDefinition>
         {
-            Art(12, 12, 72, 72),
-            Text("VIBE FINDER", 98, 12, 130, 16, 9, true),
-            Text("VibeMood", 98, 29, 242, 18, 10, false),
-            Text("VibeTitle", 98, 49, 242, 25, 18, true),
-            Text("VibeArtist", 98, 74, 242, 18, 11, false),
-            new() { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 98, Y = 98, Width = 242, Height = 4, BarMax = 100, Opacity = 0.95 },
-            Text("VibeProgress", 98, 106, 110, 17, 9, false),
-            Icon("Prev", "\uE100", 243, 104, 20, 18, "themed://media/prev", 11),
-            Icon("VibeState", "\uE768", 266, 100, 28, 26, "themed://media/playpause", 14),
-            Icon("Next", "\uE101", 297, 104, 20, 18, "themed://media/next", 11),
+            Art(12, 12, 82, 82),
+            Text("NOW PLAYING", 108, 12, 150, 15, 9, true),
+            Text("VibeMood", 108, 28, 250, 18, 10, false),
+            Text("VibeTitle", 108, 48, 258, 28, 18, true),
+            Text("VibeArtist", 108, 76, 258, 18, 11, false),
+            new() { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 108, Y = 100, Width = 258, Height = 5, BarMax = 100, Opacity = 0.95 },
+            Text("VibeProgress", 108, 109, 110, 17, 9, false),
+            Icon("Prev", "\uE100", 254, 106, 20, 18, "themed://media/prev", 11),
+            Icon("VibeState", "\uE768", 278, 102, 30, 28, "themed://media/playpause", 15),
+            Icon("Next", "\uE101", 312, 106, 20, 18, "themed://media/next", 11),
         };
         skin.Measures = Measures(target);
     }
