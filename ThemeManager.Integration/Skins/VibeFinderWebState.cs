@@ -25,6 +25,7 @@ public static class VibeFinderWebState
     public static string Artist { get; private set; } = "—";
     public static string? CoverArt { get; private set; }
     public static string? PreviewUrl { get; private set; }
+    public static string? DominantVibe { get; private set; }
     public static double CurrentTime { get; private set; }
     public static double Duration { get; private set; }
     public static double Progress => Duration > 0 ? Math.Clamp(CurrentTime / Duration, 0, 1) : 0;
@@ -62,6 +63,7 @@ public static class VibeFinderWebState
             var type = typeEl.GetString();
             if (type == "VIBEFINDER_RESULTS") { HandleResults(root); return; }
             if (type == "VIBEFINDER_STATE") { HandlePlayerState(root); return; }
+            if (type == "VIBEFINDER_ANALYSIS_COMPLETE") { HandleAnalysisComplete(root); return; }
             if (type == "VIBEFINDER_PLAYBACK_RESET") { HandlePlaybackReset(); return; }
             if (type == "VIBEFINDER_PROFILE") { HandleProfile(root); return; }
         }
@@ -120,6 +122,15 @@ public static class VibeFinderWebState
             if (!string.IsNullOrWhiteSpace(value)) result.Add(value);
         }
         return result;
+    }
+
+    private static void HandleAnalysisComplete(JsonElement root)
+    {
+        if (root.TryGetProperty("vibe", out var vibeEl) && vibeEl.ValueKind == JsonValueKind.String)
+            DominantVibe = vibeEl.GetString();
+
+        Interlocked.Increment(ref _stateVersion);
+        StateChanged?.Invoke(null, EventArgs.Empty);
     }
 
     private static void HandlePlaybackReset()
