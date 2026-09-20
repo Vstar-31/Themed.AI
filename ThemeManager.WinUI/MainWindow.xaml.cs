@@ -35,6 +35,23 @@ public sealed partial class MainWindow : Window
         // WinUI 3 Window has no XAML Loaded event. Start the provisioning pipeline from the
         // constructor; the pipeline itself waits asynchronously for SkinManagerService.
         _ = InitializeVibeProvisioningAsync();
+
+        // Keep the hidden VibeFinder session in lock-step with the active Themed.AI world.
+        // ThemeService commits a theme only once at the end of a crossfade, so this does not
+        // trigger one analysis per interpolation frame.
+        App.ThemeService.ThemeChanged += MainWindow_ThemeChanged;
+        Closed += (_, _) => App.ThemeService.ThemeChanged -= MainWindow_ThemeChanged;
+    }
+
+    private void MainWindow_ThemeChanged(object? sender, ThemeManager.Core.Models.CozyTheme theme)
+    {
+        if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+            _logger.LogInformation("VibeFinder theme sync: refreshing playlist for "{Theme}"", theme.Name);
+            PushVibePromptAndTrackLimit();
+        });
     }
 
     public bool IsVibeFinderPrewarmActive =>
