@@ -106,39 +106,46 @@ public sealed partial class MainWindow
 
         foreach (var scene in App.SceneService.Scenes.ToList())
         {
-            if (scene.Widgets.Any(w => w.WidgetId.Equals(vibeWidget.Id, StringComparison.OrdinalIgnoreCase)))
-                continue;
+            var placement = scene.Widgets.FirstOrDefault(w =>
+                w.WidgetId.Equals(vibeWidget.Id, StringComparison.OrdinalIgnoreCase));
 
-            var nextZ = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(w => w.ZIndex) + 1;
-            scene.Widgets.Add(new SceneWidgetPlacement
+            if (placement is null)
             {
-                WidgetId = vibeWidget.Id,
-                X = 40,
-                Y = 360,
-                Scale = 1.0,
-                Rotation = 0,
-                Opacity = 0.94,
-                ZIndex = nextZ,
-                Visible = true,
-                Monitor = "Primary"
-            });
-            scene.Behavior.ReactToVibeFinder = true;
-            await App.SceneService.UpsertAsync(scene);
+                var nextZ = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(w => w.ZIndex) + 1;
+                scene.Widgets.Add(new SceneWidgetPlacement
+                {
+                    WidgetId = vibeWidget.Id,
+                    X = 40,
+                    Y = 360,
+                    Scale = 1.0,
+                    Rotation = 0,
+                    Opacity = 0.94,
+                    ZIndex = nextZ,
+                    Visible = true,
+                    Monitor = "Primary",
+                    Definition = vibeWidget.Clone()
+                });
+                scene.Behavior.ReactToVibeFinder = true;
+                await App.SceneService.UpsertAsync(scene);
+                continue;
+            }
+
+            // Backfill the new self-contained snapshot on older worlds without changing the user's
+            // saved placement coordinates.
+            if (placement.Definition is null)
+            {
+                placement.Definition = vibeWidget.Clone();
+                await App.SceneService.UpsertAsync(scene);
+            }
         }
 
         if (App.SceneService.ActiveScene is { } active)
         {
-            var placement = active.Widgets.FirstOrDefault(w =>
-                w.WidgetId.Equals(vibeWidget.Id, StringComparison.OrdinalIgnoreCase));
-            if (placement is not null)
-            {
-                await App.SkinManager!.ApplyScenePlacementAsync(
-                    vibeWidget,
-                    placement.X,
-                    placement.Y,
-                    placement.Opacity,
-                    placement.Visible);
-            }
+            var result = await App.SkinManager!.ApplySceneAsync(active.Widgets);
+            _logger.LogInformation(
+                "VibeFinder provisioning: rehydrated active world with {AppliedCount} widgets ({MissingCount} missing definitions)",
+                result.Applied,
+                result.Missing);
         }
 
         _logger.LogInformation("VibeFinder provisioning: ensured widget {WidgetId} is part of {SceneCount} desktop worlds", vibeWidget.Id, App.SceneService.Scenes.Count);
