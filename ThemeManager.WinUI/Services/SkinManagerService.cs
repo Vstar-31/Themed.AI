@@ -24,6 +24,8 @@ public sealed class SkinManagerService : IDisposable
     private readonly WidgetTickScheduler _scheduler = new();
     private bool _widgetsHidden;
     private const int SchedulerQuantumMs = 50;
+    private static readonly IReadOnlyDictionary<string, SkinDefinition> CanonicalDefaults =
+        SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
     public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
     {
@@ -164,23 +166,34 @@ public sealed class SkinManagerService : IDisposable
         {
             if (!known.TryGetValue(placement.WidgetId, out var skin))
             {
-                if (placement.Definition is null)
+                if (placement.Definition is not null)
+                {
+                    skin = placement.Definition.Clone(placement.WidgetId);
+                    _logger.LogInformation(
+                        "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
+                        skin.Id, skin.Name);
+                }
+                else if (CanonicalDefaults.TryGetValue(placement.WidgetId, out var canonical))
+                {
+                    // Built-in widget ids are stable, so pre-snapshot worlds can still be repaired
+                    // even when a local skins.json reset removed the corresponding definition.
+                    skin = canonical.Clone(placement.WidgetId);
+                    _logger.LogInformation(
+                        "Desktop world restored canonical built-in widget {WidgetId} ({WidgetName})",
+                        skin.Id, skin.Name);
+                }
+                else
                 {
                     missing++;
                     _logger.LogWarning(
-                        "Desktop world placement {WidgetId} has no live widget definition; skipping it",
+                        "Desktop world placement {WidgetId} has no live or recoverable widget definition; skipping it",
                         placement.WidgetId);
                     continue;
                 }
 
-                skin = placement.Definition.Clone(placement.WidgetId);
                 skin.Enabled = false;
                 _skins.Add(skin);
                 known[skin.Id] = skin;
-
-                _logger.LogInformation(
-                    "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
-                    skin.Id, skin.Name);
             }
             else if (sceneIds.Contains(skin.Id))
             {
