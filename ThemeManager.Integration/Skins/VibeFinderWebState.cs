@@ -62,6 +62,7 @@ public static class VibeFinderWebState
             var type = typeEl.GetString();
             if (type == "VIBEFINDER_RESULTS") { HandleResults(root); return; }
             if (type == "VIBEFINDER_STATE") { HandlePlayerState(root); return; }
+            if (type == "VIBEFINDER_PLAYBACK_RESET") { HandlePlaybackReset(); return; }
             if (type == "VIBEFINDER_PROFILE") { HandleProfile(root); return; }
         }
         catch (JsonException ex)
@@ -119,6 +120,18 @@ public static class VibeFinderWebState
             if (!string.IsNullOrWhiteSpace(value)) result.Add(value);
         }
         return result;
+    }
+
+    private static void HandlePlaybackReset()
+    {
+        CancelNativeFallback();
+        VibeFinderPreviewPlayer.Stop();
+        IsPlaying = false;
+        IsPlayerActive = false;
+        CurrentTime = 0;
+        Duration = 0;
+        Interlocked.Increment(ref _stateVersion);
+        StateChanged?.Invoke(null, EventArgs.Empty);
     }
 
     private static void HandleResults(JsonElement root)
