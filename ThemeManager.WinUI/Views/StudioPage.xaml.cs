@@ -149,19 +149,10 @@ public sealed partial class StudioPage : Page
                 Description = pick.Description,
                 ThemeId = App.ThemeService.ActiveTheme.Id,
                 Tags = new List<string> { pick.Tag, "starter", "vibe" },
-                Widgets = widgets.Select(w => new SceneWidgetPlacement
-                {
-                    WidgetId = w.WidgetId,
-                    X = w.X,
-                    Y = w.Y,
-                    Scale = w.Scale,
-                    Rotation = w.Rotation,
-                    Opacity = w.Opacity,
-                    ZIndex = w.ZIndex,
-                    Visible = w.Visible,
-                    Monitor = w.Monitor,
-                    Definition = w.Clone()
-                }).ToList(),
+                // CaptureCurrentWidgetLayout already includes a deep widget-definition snapshot.
+                // Clone the placement so every starter world owns its own independent composition
+                // rather than sharing nested definitions between worlds.
+                Widgets = widgets.Select(ClonePlacement).ToList(),
                 Effects = new List<SceneEffect>
                 {
                     new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = pick.Tag is "neon" or "hud" ? 0.8 : 0.35 },
@@ -227,7 +218,8 @@ public sealed partial class StudioPage : Page
                 Opacity = Math.Clamp(w.Opacity, 0, 1),
                 ZIndex = index,
                 Visible = w.Enabled,
-                Monitor = "Primary"
+                Monitor = "Primary",
+                Definition = w.Clone()
             })
             .ToList() ?? new List<SceneWidgetPlacement>();
 
