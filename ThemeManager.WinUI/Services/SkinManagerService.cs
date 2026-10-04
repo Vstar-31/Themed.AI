@@ -15,6 +15,7 @@ public sealed class SkinManagerService : IDisposable
     private readonly SkinRepository _repo;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
+    private readonly DispatcherQueue _dispatcher;
     private List<SkinDefinition> _skins = new();
     public IReadOnlyList<SkinDefinition> Skins => _skins;
     public event EventHandler? SkinsChanged;
@@ -32,6 +33,8 @@ public sealed class SkinManagerService : IDisposable
         _repo = repository;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<SkinManagerService>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SkinManagerService>.Instance;
+        _dispatcher = DispatcherQueue.GetForCurrentThread()
+            ?? throw new InvalidOperationException("SkinManagerService must be created on the WinUI dispatcher thread.");
     }
 
     public async Task InitializeAsync()
@@ -47,7 +50,7 @@ public sealed class SkinManagerService : IDisposable
         }
         if (changed) await PersistAsync(false);
         foreach (var skin in _skins.Where(s => s.Enabled)) OpenWindowFor(skin);
-        _timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _timer = _dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(SchedulerQuantumMs);
         _timer.Tick += (_, _) => TickDueWidgets();
         _timer.Start();
@@ -56,7 +59,7 @@ public sealed class SkinManagerService : IDisposable
     private void TickDueWidgets()
     {
         var now = _schedulerClock.ElapsedMilliseconds;
-        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        var dispatcher = _dispatcher;
         var snapshot = _open.ToList();
         var dueIds = _scheduler.GetDue(snapshot.Select(x => x.Value.ViewModel.Definition), now).Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (skinId, entry) in snapshot)
@@ -230,6 +233,13 @@ public sealed class SkinManagerService : IDisposable
                 placement.Opacity,
                 placement.Visible);
             applied++;
+
+            // World application can create several WinUI top-level windows in one dispatcher turn.
+            // Give WinUI a dispatcher turn between placements so each HWND gets created, shown and
+            // registered before the next widget is activated. This is especially important for a
+            // world containing many widgets: without the yield, Windows can visually settle only the
+            // last activation even though the composition model and _open registry contain every skin.
+            await YieldToDispatcherAsync();
         }
 
         // Anything currently visible but not part of this world is hidden. This is deliberately
@@ -319,9 +329,44 @@ public sealed class SkinManagerService : IDisposable
         window.Closed += (_, _) => _open.Remove(skin.Id);
         _open[skin.Id] = (window, viewModel);
         _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
-        window.Activate();
+
+        try
+        {
+            window.Activate();
+            // Explicit Show is intentional: unlike Activate(), it does not make the newly-created
+            // widget depend on activation/focus state to remain visible while a world is being
+            // composed. It is harmless for normal individual widget toggles and makes batch world
+            // application deterministic.
+            window.AppWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Widget {WidgetId} ({WidgetName}) was created but could not be shown during activation",
+                skin.Id,
+                skin.Name);
+        }
+
+        _logger.LogDebug(
+            "Widget window opened: {WidgetId} ({WidgetName}) at ({X:0.##},{Y:0.##}), size {Width:0.##}×{Height:0.##}; open windows={OpenCount}",
+            skin.Id,
+            skin.Name,
+            skin.X,
+            skin.Y,
+            skin.Width,
+            skin.Height,
+            _open.Count);
+
         if (_widgetsHidden) window.AppWindow.Hide();
         viewModel.RefreshMeasures(); viewModel.UpdateMeters();
+    }
+
+    private Task YieldToDispatcherAsync()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcher.TryEnqueue(() => completion.TrySetResult()))
+            completion.TrySetResult();
+        return completion.Task;
     }
 
     private async Task CloseWindowFor(SkinDefinition skin)
