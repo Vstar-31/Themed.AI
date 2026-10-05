@@ -14,10 +14,14 @@ public static class MeasureFactory
     /// future headless/test construction path); a VibeFinder measure built that way just can't
     /// use "$theme" — literal typed phrases still work exactly as before.
     /// </param>
-    public static IMeasure Create(MeasureDefinition definition, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
+    public static IMeasure Create(
+        MeasureDefinition definition,
+        ILogger? logger = null,
+        IActiveThemeProvider? activeThemeProvider = null,
+        Func<string, double?>? measureResolver = null)
     {
         logger?.LogDebug("MeasureFactory: creating {Type} measure \"{Name}\" (target: {Target})", definition.Type, definition.Name, string.IsNullOrEmpty(definition.Target) ? "(none)" : definition.Target);
-        var measure = CreateCore(definition, logger, activeThemeProvider);
+        var measure = CreateCore(definition, logger, activeThemeProvider, measureResolver);
         if (measure is UnknownMeasure)
         {
             // Previously silent — a skins.json with a typo'd or future-version MeasureType value
@@ -29,7 +33,11 @@ public static class MeasureFactory
         return measure;
     }
 
-    private static IMeasure CreateCore(MeasureDefinition definition, ILogger? logger, IActiveThemeProvider? activeThemeProvider) => definition.Type switch
+    private static IMeasure CreateCore(
+        MeasureDefinition definition,
+        ILogger? logger,
+        IActiveThemeProvider? activeThemeProvider,
+        Func<string, double?>? measureResolver) => definition.Type switch
     {
         MeasureType.Cpu         => new CpuMeasure(definition.Name, logger),
         MeasureType.CpuCore     => new CpuCoreMeasure(definition.Name, definition.Target, logger),
@@ -60,6 +68,7 @@ public static class MeasureFactory
         // never actually being produced.
         MeasureType.VibeTrackProgress => new VibeFinderMeasure(definition.Name, MeasureType.VibeTrackProgress, definition.Target, logger, activeThemeProvider),
         MeasureType.VibePlaybackState => new VibeFinderMeasure(definition.Name, MeasureType.VibePlaybackState, definition.Target, logger, activeThemeProvider),
+        MeasureType.Formula => new FormulaMeasure(definition.Name, definition.Expression, measureResolver ?? (_ => null), logger),
         _                       => new UnknownMeasure(definition.Name),
     };
 
