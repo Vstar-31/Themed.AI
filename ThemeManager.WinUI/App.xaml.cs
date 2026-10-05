@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Media;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
+using ThemeManager.Core.Skins;
 using ThemeManager.Core.Utilities;
 using ThemeManager.Integration;
 using ThemeManager.WinUI.Services;
