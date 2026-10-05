@@ -278,7 +278,7 @@ public sealed partial class SkinHostWindow : Window
             {
                 if (string.IsNullOrWhiteSpace(meterId)) continue;
                 if (groupByMeterId.ContainsKey(meterId))
-                    _logger.LogWarning("Widget "{Widget}": meter {MeterId} belongs to multiple groups; using the first group",
+                    _logger.LogWarning("Widget \"{Widget}\": meter {MeterId} belongs to multiple groups; using the first group",
                         _viewModel.Definition.Name, meterId);
                 else
                     groupByMeterId[meterId] = group;
@@ -478,7 +478,6 @@ public sealed partial class SkinHostWindow : Window
             Canvas.SetZIndex(element, meter.Definition.ZIndex);
             parent.Children.Add(element);
         }
-    }
     }
 
     private static TextBlock BuildStringVisual(StringMeterViewModel vm)
