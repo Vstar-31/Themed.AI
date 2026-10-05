@@ -287,6 +287,37 @@ public sealed partial class SkinEditorPage : Page
         }
     }
 
+    private void Group_PreviewPropertyChangedHandler(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (sender is not GroupEditorItem group || !_previewGroups.TryGetValue(group, out var canvas))
+            return;
+
+        Canvas.SetLeft(canvas, group.X);
+        Canvas.SetTop(canvas, group.Y);
+        canvas.Width = Math.Max(1, group.Width);
+        canvas.Height = Math.Max(1, group.Height);
+        canvas.Opacity = Math.Clamp(group.Opacity, 0, 1);
+        canvas.Clip = group.Clip
+            ? new RectangleGeometry
+            {
+                Rect = new Windows.Foundation.Rect(0, 0, Math.Max(1, group.Width), Math.Max(1, group.Height))
+            }
+            : null;
+
+        var transforms = new TransformGroup();
+        if (Math.Abs(group.ScaleX - 1) > 0.0001 || Math.Abs(group.ScaleY - 1) > 0.0001)
+            transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+        if (Math.Abs(group.Rotation) > 0.0001)
+            transforms.Children.Add(new RotateTransform
+            {
+                Angle = group.Rotation,
+                CenterX = group.Width / 2,
+                CenterY = group.Height / 2
+            });
+        canvas.RenderTransform = transforms.Children.Count == 0 ? null : transforms;
+        HighlightSelection();
+    }
+
     private static FrameworkElement BuildPreviewContent(MeterEditorItem meter)
     {
         if (meter.Kind == MeterKind.String)
@@ -480,6 +511,9 @@ public sealed partial class SkinEditorPage : Page
 
         foreach (var (meter, container) in _previewElements)
             container.BorderBrush = meter == ViewModel.SelectedMeter ? accent : none;
+
+        foreach (var (group, canvas) in _previewGroups)
+            canvas.Opacity = Math.Clamp(group.Opacity, 0, 1) * (group == ViewModel.SelectedGroup ? 0.98 : 1.0);
     }
 
     // ── Drag to reposition a meter within the preview (local Canvas coords — no AppWindow involved) ──
