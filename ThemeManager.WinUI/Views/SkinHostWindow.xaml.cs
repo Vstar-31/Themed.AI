@@ -268,6 +268,68 @@ public sealed partial class SkinHostWindow : Window
 
     private void BuildMeterVisuals()
     {
+        // Groups are real visual containers, not just metadata. This lets a set of independent
+        // meters share scale/rotation/opacity and optionally clip to a local rectangle.
+        var groups = _viewModel.Definition.Groups ?? new List<WidgetGroupDefinition>();
+        var groupByMeterId = new Dictionary<string, WidgetGroupDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups)
+        {
+            foreach (var meterId in group.MeterIds ?? new List<string>())
+            {
+                if (string.IsNullOrWhiteSpace(meterId)) continue;
+                if (groupByMeterId.ContainsKey(meterId))
+                    _logger.LogWarning("Widget "{Widget}": meter {MeterId} belongs to multiple groups; using the first group",
+                        _viewModel.Definition.Name, meterId);
+                else
+                    groupByMeterId[meterId] = group;
+            }
+        }
+
+        var groupCanvases = new Dictionary<string, Canvas>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups.OrderBy(g => g.ZIndexForOrdering(_viewModel.Definition.Meters)))
+        {
+            if (string.IsNullOrWhiteSpace(group.Id)) continue;
+            var canvas = new Canvas
+            {
+                Width = Math.Max(0, group.Width),
+                Height = Math.Max(0, group.Height),
+                Opacity = Math.Clamp(group.Opacity, 0, 1),
+                IsHitTestVisible = true,
+            };
+
+            if (group.Clip)
+            {
+                canvas.Clip = new RectangleGeometry
+                {
+                    Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, group.Width), Math.Max(0, group.Height))
+                };
+            }
+
+            var transforms = new TransformGroup();
+            if (Math.Abs(group.ScaleX - 1.0) > 0.0001 || Math.Abs(group.ScaleY - 1.0) > 0.0001)
+                transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+            if (Math.Abs(group.Rotation) > 0.0001)
+                transforms.Children.Add(new RotateTransform
+                {
+                    Angle = group.Rotation,
+                    CenterX = Math.Max(0, group.Width) / 2,
+                    CenterY = Math.Max(0, group.Height) / 2
+                });
+            if (transforms.Children.Count > 0)
+                canvas.RenderTransform = transforms;
+
+            Canvas.SetLeft(canvas, group.X);
+            Canvas.SetTop(canvas, group.Y);
+
+            var groupZ = group.MeterIds
+                .Select(id => _viewModel.Definition.Meters.FirstOrDefault(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.ZIndex ?? 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            Canvas.SetZIndex(canvas, groupZ);
+            RootCanvas.Children.Add(canvas);
+            groupCanvases[group.Id] = canvas;
+        }
+
         foreach (var meter in _viewModel.Meters.OrderBy(m => m.Definition.ZIndex).ThenBy(m => m.Definition.Id))
         {
             FrameworkElement element = meter switch
@@ -403,14 +465,20 @@ public sealed partial class SkinHostWindow : Window
                 ProtectedCursorProperty?.SetValue(element, null);
             };
 
+            var group = groupByMeterId.GetValueOrDefault(meter.Definition.Id);
+            var parent = group is not null && groupCanvases.TryGetValue(group.Id, out var groupCanvas)
+                ? groupCanvas
+                : RootCanvas;
+
             Canvas.SetLeft(element, meter.X);
             Canvas.SetTop(element, meter.Y);
             if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
                 element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
             element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
             Canvas.SetZIndex(element, meter.Definition.ZIndex);
-            RootCanvas.Children.Add(element);
+            parent.Children.Add(element);
         }
+    }
     }
 
     private static TextBlock BuildStringVisual(StringMeterViewModel vm)
@@ -1082,4 +1150,14 @@ public sealed partial class SkinHostWindow : Window
 
         menu.ShowAt(RootCanvas, new FlyoutShowOptions { Position = position });
     }
+}
+
+
+internal static class WidgetGroupOrderingExtensions
+{
+    public static int ZIndexForOrdering(this WidgetGroupDefinition group, IReadOnlyList<MeterDefinition> meters) =>
+        group.MeterIds
+            .Select(id => meters.FirstOrDefault(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.ZIndex ?? 0)
+            .DefaultIfEmpty(0)
+            .Min();
 }
