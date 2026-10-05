@@ -48,9 +48,51 @@ public sealed class MeterDefinition
     public string? WebEmbedUrl { get; set; }
 }
 
+
+/// <summary>
+/// A named composition container inside a widget. Meters remain independently addressable, while
+/// the group supplies a shared transform, opacity and optional clipping rectangle. Meter coordinates
+/// inside a group are local to the group's X/Y origin.
+/// </summary>
+public sealed class WidgetGroupDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = "Group";
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double Width { get; set; } = 200;
+    public double Height { get; set; } = 100;
+    public double ScaleX { get; set; } = 1.0;
+    public double ScaleY { get; set; } = 1.0;
+    public double Rotation { get; set; }
+    public double Opacity { get; set; } = 1.0;
+    public bool Clip { get; set; }
+    public List<string> MeterIds { get; set; } = new();
+    public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public WidgetGroupDefinition Clone(string? newId = null) => new()
+    {
+        Id = newId ?? Id,
+        Name = Name,
+        X = X,
+        Y = Y,
+        Width = Width,
+        Height = Height,
+        ScaleX = ScaleX,
+        ScaleY = ScaleY,
+        Rotation = Rotation,
+        Opacity = Opacity,
+        Clip = Clip,
+        MeterIds = MeterIds?.ToList() ?? new List<string>(),
+        Variables = Variables is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase)
+    };
+}
+
 public sealed class SkinDefinition
 {
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; } = 5;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
     public string Description { get; set; } = "";
@@ -69,6 +111,7 @@ public sealed class SkinDefinition
     public int UpdateIntervalMs { get; set; } = 1000;
     public List<MeasureDefinition> Measures { get; set; } = new();
     public List<MeterDefinition> Meters { get; set; } = new();
+    public List<WidgetGroupDefinition> Groups { get; set; } = new();
     public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -133,6 +176,9 @@ public sealed class SkinDefinition
                     SecondaryActionUrl = m.SecondaryActionUrl,
                     WebEmbedUrl = m.WebEmbedUrl
                 }).ToList(),
+            Groups = (Groups ?? new List<WidgetGroupDefinition>())
+                .Select(g => g.Clone())
+                .ToList(),
             Variables = Variables is null
                 ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase)
