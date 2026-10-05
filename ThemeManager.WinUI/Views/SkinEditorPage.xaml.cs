@@ -20,6 +20,7 @@ public sealed partial class SkinEditorPage : Page
     public SkinEditorViewModel ViewModel { get; }
 
     private readonly Dictionary<MeterEditorItem, Border> _previewElements = new();
+    private readonly Dictionary<GroupEditorItem, Canvas> _previewGroups = new();
     private bool _dragging;
     private MeterEditorItem? _dragTarget;
     private Windows.Foundation.Point _dragAnchor;
@@ -32,6 +33,7 @@ public sealed partial class SkinEditorPage : Page
         ViewModel = new SkinEditorViewModel(App.SkinManager);
 
         ViewModel.Meters.CollectionChanged += (_, _) => RebuildPreview();
+        ViewModel.Groups.CollectionChanged += (_, _) => RebuildPreview();
         ViewModel.Measures.CollectionChanged += (_, _) => RefreshMeasureComboItems();
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
     }
@@ -135,6 +137,38 @@ public sealed partial class SkinEditorPage : Page
         if (ViewModel.SelectedMeter is null) return;
         var selected = MeasureCombo.SelectedItem as string;
         ViewModel.SelectedMeter.MeasureName = (selected is null or "(static text)") ? "" : selected;
+    }
+
+
+    private void MetersList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MetersList.SelectedItem is MeterEditorItem item)
+            ViewModel.SelectedMeter = item;
+    }
+
+    private void GroupSelectedMeters_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.GroupMeters(MetersList.SelectedItems.OfType<MeterEditorItem>());
+        RefreshGroupSelection();
+    }
+
+    private void UngroupSelectedMeters_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.UngroupMeters(MetersList.SelectedItems.OfType<MeterEditorItem>());
+        RefreshGroupSelection();
+    }
+
+    private void RemoveGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is GroupEditorItem group)
+            ViewModel.RemoveGroup(group);
+        RefreshGroupSelection();
+    }
+
+    private void RefreshGroupSelection()
+    {
+        GroupsList.SelectedItem = ViewModel.SelectedGroup;
+        HighlightSelection();
     }
 
     // ── Meters ───────────────────────────────────────────────────────────────────
