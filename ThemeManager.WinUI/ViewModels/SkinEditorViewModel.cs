@@ -527,6 +527,10 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
         foreach (var group in Groups)
         {
+            var moving = Meters.Where(m => selectedIds.Contains(m.Definition.Id)).ToList();
+            foreach (var meter in moving.Where(m => group.Definition.MeterIds.Contains(m.Definition.Id, StringComparer.OrdinalIgnoreCase)))
+                BakeGroupTransform(meter, group.Definition);
+
             group.Definition.MeterIds.RemoveAll(id => selectedIds.Contains(id));
             group.RefreshCount(group.Definition.MeterIds.Count);
         }
@@ -578,7 +582,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
             if (moving.Count == 0) continue;
 
             foreach (var meter in Meters.Where(m => moving.Contains(m.Definition.Id)))
-                meter.MoveTo(meter.X + group.X, meter.Y + group.Y);
+                BakeGroupTransform(meter, group.Definition);
 
             group.Definition.MeterIds.RemoveAll(selectedIds.Contains);
             group.RefreshCount(group.Definition.MeterIds.Count);
@@ -594,6 +598,38 @@ public sealed class SkinEditorViewModel : ViewModelBase
         MarkDirty();
     }
 
+
+    private static void BakeGroupTransform(MeterEditorItem meter, WidgetGroupDefinition group)
+    {
+        double halfWidth = meter.Width * Math.Abs(group.ScaleX) / 2.0;
+        double halfHeight = meter.Height * Math.Abs(group.ScaleY) / 2.0;
+        double localCenterX = meter.X + meter.Width / 2.0;
+        double localCenterY = meter.Y + meter.Height / 2.0;
+        double groupCenterX = group.Width / 2.0;
+        double groupCenterY = group.Height / 2.0;
+
+        double scaledX = groupCenterX + (localCenterX - groupCenterX) * group.ScaleX;
+        double scaledY = groupCenterY + (localCenterY - groupCenterY) * group.ScaleY;
+
+        double radians = group.Rotation * Math.PI / 180.0;
+        double cos = Math.Cos(radians);
+        double sin = Math.Sin(radians);
+        double dx = scaledX - groupCenterX;
+        double dy = scaledY - groupCenterY;
+        double rotatedX = groupCenterX + dx * cos - dy * sin;
+        double rotatedY = groupCenterY + dx * sin + dy * cos;
+
+        double boundsHalfWidth = Math.Abs(cos) * halfWidth + Math.Abs(sin) * halfHeight;
+        double boundsHalfHeight = Math.Abs(sin) * halfWidth + Math.Abs(cos) * halfHeight;
+
+        meter.MoveTo(
+            group.X + rotatedX - boundsHalfWidth,
+            group.Y + rotatedY - boundsHalfHeight);
+        meter.Definition.Width = Math.Max(1, boundsHalfWidth * 2.0);
+        meter.Definition.Height = Math.Max(1, boundsHalfHeight * 2.0);
+        meter.Definition.Rotation += group.Rotation;
+    }
+
     private string NextGroupName()
     {
         int i = 1;
@@ -605,7 +641,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
     public void RemoveGroup(GroupEditorItem item)
     {
         foreach (var meter in Meters.Where(m => item.Definition.MeterIds.Contains(m.Definition.Id, StringComparer.OrdinalIgnoreCase)))
-            meter.MoveTo(meter.X + item.X, meter.Y + item.Y);
+            BakeGroupTransform(meter, item.Definition);
 
         _working.Groups.Remove(item.Definition);
         Groups.Remove(item);
