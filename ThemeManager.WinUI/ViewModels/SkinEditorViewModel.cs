@@ -253,6 +253,26 @@ public sealed class MeterEditorItem : ViewModelBase
         Y = Math.Max(0, y);
     }
 
+    internal void ApplyBakedGeometry(double x, double y, double width, double height, double rotation)
+    {
+        var newX = Math.Max(0, x);
+        var newY = Math.Max(0, y);
+        var newWidth = Math.Max(1, width);
+        var newHeight = Math.Max(1, height);
+
+        SetProperty(ref _x, newX);
+        SetProperty(ref _y, newY);
+        SetProperty(ref _width, newWidth);
+        SetProperty(ref _height, newHeight);
+
+        Definition.X = newX;
+        Definition.Y = newY;
+        Definition.Width = newWidth;
+        Definition.Height = newHeight;
+        Definition.Rotation = rotation;
+        _onChanged();
+    }
+
     internal void ApplyPreview(string text, double fraction)
     {
         PreviewText = text;
@@ -622,12 +642,12 @@ public sealed class SkinEditorViewModel : ViewModelBase
         double boundsHalfWidth = Math.Abs(cos) * halfWidth + Math.Abs(sin) * halfHeight;
         double boundsHalfHeight = Math.Abs(sin) * halfWidth + Math.Abs(cos) * halfHeight;
 
-        meter.MoveTo(
+        meter.ApplyBakedGeometry(
             group.X + rotatedX - boundsHalfWidth,
-            group.Y + rotatedY - boundsHalfHeight);
-        meter.Definition.Width = Math.Max(1, boundsHalfWidth * 2.0);
-        meter.Definition.Height = Math.Max(1, boundsHalfHeight * 2.0);
-        meter.Definition.Rotation += group.Rotation;
+            group.Y + rotatedY - boundsHalfHeight,
+            boundsHalfWidth * 2.0,
+            boundsHalfHeight * 2.0,
+            meter.Definition.Rotation + group.Rotation);
     }
 
     private string NextGroupName()
