@@ -4,7 +4,7 @@ public enum MeasureType
 {
     Cpu, CpuCore, Memory, DiskFree, DiskUsed, Time, Date, Uptime, NetworkDown, NetworkUp, Battery,
     MediaTitle, MediaArtist, MediaState, WeatherTemp, WeatherDesc, WeatherCity, WebJson,
-    VibeTrackTitle, VibeTrackArtist, VibeMood, VibeTrackProgress, VibePlaybackState
+    VibeTrackTitle, VibeTrackArtist, VibeMood, VibeTrackProgress, VibePlaybackState, Formula
 }
 
 public enum MeterKind
@@ -18,6 +18,8 @@ public sealed class MeasureDefinition
     public string Name { get; set; } = "";
     public MeasureType Type { get; set; }
     public string? Target { get; set; }
+    /// <summary>Safe arithmetic expression used when <see cref="Type"/> is Formula.</summary>
+    public string? Expression { get; set; }
 }
 
 public sealed class MeterDefinition
@@ -146,7 +148,8 @@ public sealed class SkinDefinition
                     Id = m.Id,
                     Name = m.Name,
                     Type = m.Type,
-                    Target = m.Target
+                    Target = m.Target,
+                    Expression = m.Expression
                 }).ToList(),
             Meters = (Meters ?? new List<MeterDefinition>())
                 .Select(m => new MeterDefinition
