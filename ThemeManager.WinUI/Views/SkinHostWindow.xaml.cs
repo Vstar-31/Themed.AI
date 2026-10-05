@@ -443,6 +443,18 @@ public sealed partial class SkinHostWindow : Window
                     }
                     else
                     {
+                        if (Uri.TryCreate(url, UriKind.Absolute, out var actionUri) &&
+                            App.PluginRegistry.TryGetActionPlugin(actionUri.Scheme, out var actionPlugin) &&
+                            actionPlugin is not null &&
+                            actionPlugin.CanHandle(actionUri))
+                        {
+                            _logger.LogDebug("Skin \"{Skin}\": dispatching plugin action {Scheme}:// for meter {MeterId}",
+                                _viewModel.Definition.Name, actionUri.Scheme, meter.Definition.Id);
+                            e.Handled = true;
+                            _ = ExecutePluginActionAsync(actionPlugin, url, meter.Definition.Id);
+                            return;
+                        }
+
                         _logger.LogDebug("Skin \"{Skin}\": launching external URL {Url}", _viewModel.Definition.Name, url);
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
                     }
@@ -477,6 +489,27 @@ public sealed partial class SkinHostWindow : Window
             element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
             Canvas.SetZIndex(element, meter.Definition.ZIndex);
             parent.Children.Add(element);
+        }
+    }
+
+    private async Task ExecutePluginActionAsync(IWidgetActionPlugin plugin, string actionUri, string meterId)
+    {
+        try
+        {
+            var uri = new Uri(actionUri, UriKind.Absolute);
+            var context = new WidgetActionContext(
+                _viewModel.Definition.Id,
+                meterId,
+                actionUri,
+                name => _viewModel.Definition.Variables.TryGetValue(name, out var value) ? value : null);
+
+            var handled = await plugin.ExecuteAsync(context);
+            if (!handled)
+                _logger.LogDebug("Plugin action {ActionUri} declined handling for skin \"{Skin}\"", actionUri, _viewModel.Definition.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Plugin action {ActionUri} failed for skin \"{Skin}\"", actionUri, _viewModel.Definition.Name);
         }
     }
 
