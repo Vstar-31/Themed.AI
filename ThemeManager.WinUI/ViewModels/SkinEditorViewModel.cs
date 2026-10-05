@@ -42,6 +42,7 @@ public sealed class MeasureEditorItem : ViewModelBase
     /// value (a drive path) or too personal to ship a preset for (weather city, VibeFinderAI
     /// credentials).</summary>
     public bool IsWebJson => Type == MeasureType.WebJson;
+    public bool IsFormula => Type == MeasureType.Formula;
 
     /// <summary>The quick-fill options for the presets ComboBox, shown only when <see cref="IsWebJson"/>.</summary>
     public static IReadOnlyList<WebJsonPreset> WebJsonPresetOptions => WebJsonPresets.All;
@@ -51,6 +52,13 @@ public sealed class MeasureEditorItem : ViewModelBase
     {
         get => _target;
         set { if (SetProperty(ref _target, value)) { Definition.Target = value; _onChanged(); } }
+    }
+
+    private string _expression;
+    public string Expression
+    {
+        get => _expression;
+        set { if (SetProperty(ref _expression, value)) { Definition.Expression = value; _onChanged(); } }
     }
 
     /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
@@ -77,6 +85,7 @@ public sealed class MeasureEditorItem : ViewModelBase
         _name = definition.Name;
         _type = definition.Type;
         _target = definition.Target ?? "";
+        _expression = definition.Expression ?? "";
     }
 }
 
@@ -323,6 +332,7 @@ internal static class MeterPreview
             MeasureType.VibeTrackTitle => (0.0, "Golden Hour"),
             MeasureType.VibeTrackArtist => (0.0, "JVKE"),
             MeasureType.VibeMood => (0.0, "cozy"),
+            MeasureType.Formula => (42.0, "42"),
             _ => (42.0, "42%"), // Cpu, Memory, DiskFree, DiskUsed
         };
 
