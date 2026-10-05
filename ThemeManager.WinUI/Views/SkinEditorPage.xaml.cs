@@ -190,23 +190,72 @@ public sealed partial class SkinEditorPage : Page
 
     private void RebuildPreview()
     {
-        // Unsubscribe from old elements before clearing to prevent memory leaks and redundant layout cycles
         foreach (var meter in _previewElements.Keys)
-        {
             meter.PropertyChanged -= Meter_PreviewPropertyChangedHandler;
-        }
+        foreach (var group in _previewGroups.Keys)
+            group.PropertyChanged -= Group_PreviewPropertyChangedHandler;
 
         PreviewCanvas.Children.Clear();
         _previewElements.Clear();
+        _previewGroups.Clear();
+
+        var groups = ViewModel.Groups.ToList();
+        var groupByMeterId = new Dictionary<string, GroupEditorItem>(StringComparer.OrdinalIgnoreCase);
+
+        // Groups are real preview containers too, so the editor uses the same local-coordinate
+        // semantics as the desktop host.
+        foreach (var group in groups)
+        {
+            foreach (var meterId in group.Definition.MeterIds)
+                if (!groupByMeterId.ContainsKey(meterId))
+                    groupByMeterId[meterId] = group;
+
+            var canvas = new Canvas
+            {
+                Width = Math.Max(1, group.Width),
+                Height = Math.Max(1, group.Height),
+                Opacity = Math.Clamp(group.Opacity, 0, 1),
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)),
+            };
+
+            if (group.Clip)
+            {
+                canvas.Clip = new RectangleGeometry
+                {
+                    Rect = new Windows.Foundation.Rect(0, 0, Math.Max(1, group.Width), Math.Max(1, group.Height))
+                };
+            }
+
+            var transforms = new TransformGroup();
+            if (Math.Abs(group.ScaleX - 1) > 0.0001 || Math.Abs(group.ScaleY - 1) > 0.0001)
+                transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+            if (Math.Abs(group.Rotation) > 0.0001)
+                transforms.Children.Add(new RotateTransform
+                {
+                    Angle = group.Rotation,
+                    CenterX = group.Width / 2,
+                    CenterY = group.Height / 2
+                });
+            if (transforms.Children.Count > 0)
+                canvas.RenderTransform = transforms;
+
+            Canvas.SetLeft(canvas, group.X);
+            Canvas.SetTop(canvas, group.Y);
+            PreviewCanvas.Children.Add(canvas);
+            _previewGroups[group] = canvas;
+            group.PropertyChanged += Group_PreviewPropertyChangedHandler;
+        }
 
         foreach (var meter in ViewModel.Meters)
         {
             var content = BuildPreviewContent(meter);
             var container = new Border
             {
+                Width = meter.Width,
+                Height = meter.Height,
                 Child = content,
                 BorderThickness = new Thickness(2),
-                BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)), // set for real by HighlightSelection()
+                BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)),
                 CornerRadius = new CornerRadius(4),
             };
 
@@ -216,10 +265,14 @@ public sealed partial class SkinEditorPage : Page
 
             Canvas.SetLeft(container, meter.X);
             Canvas.SetTop(container, meter.Y);
-            PreviewCanvas.Children.Add(container);
-            _previewElements[meter] = container;
 
-            // Use a dedicated handler method so we can unsubscribe later
+            var group = groupByMeterId.GetValueOrDefault(meter.Definition.Id);
+            if (group is not null && _previewGroups.TryGetValue(group, out var groupCanvas))
+                groupCanvas.Children.Add(container);
+            else
+                PreviewCanvas.Children.Add(container);
+
+            _previewElements[meter] = container;
             meter.PropertyChanged += Meter_PreviewPropertyChangedHandler;
         }
 
