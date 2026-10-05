@@ -18,7 +18,11 @@ public sealed class SkinHostViewModel : ViewModelBase
     private readonly List<IMeasure> _formulaMeasures = new();
     private readonly ILogger? _logger;
 
-    public SkinHostViewModel(SkinDefinition definition, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
+    public SkinHostViewModel(
+        SkinDefinition definition,
+        ILogger? logger = null,
+        IActiveThemeProvider? activeThemeProvider = null,
+        WidgetPluginRegistry? pluginRegistry = null)
     {
         Definition = definition;
         _logger = logger;
@@ -26,11 +30,11 @@ public sealed class SkinHostViewModel : ViewModelBase
         // ordering. Formula measures are then refreshed in their definition order, allowing simple
         // formula chains such as "Total = Cpu + Mem".
         foreach (var measureDef in definition.Measures.Where(m => m.Type != MeasureType.Formula))
-            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure);
+            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure, pluginRegistry);
 
         foreach (var measureDef in definition.Measures.Where(m => m.Type == MeasureType.Formula))
         {
-            var formula = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure);
+            var formula = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure, pluginRegistry);
             _measuresByName[measureDef.Name] = formula;
             _formulaMeasures.Add(formula);
         }
