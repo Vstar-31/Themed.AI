@@ -18,10 +18,22 @@ public static class MeasureFactory
         MeasureDefinition definition,
         ILogger? logger = null,
         IActiveThemeProvider? activeThemeProvider = null,
-        Func<string, double?>? measureResolver = null)
+        Func<string, double?>? measureResolver = null,
+        WidgetPluginRegistry? pluginRegistry = null)
     {
         logger?.LogDebug("MeasureFactory: creating {Type} measure \"{Name}\" (target: {Target})", definition.Type, definition.Name, string.IsNullOrEmpty(definition.Target) ? "(none)" : definition.Target);
-        var measure = CreateCore(definition, logger, activeThemeProvider, measureResolver);
+
+        IMeasure measure;
+        if (!string.IsNullOrWhiteSpace(definition.PluginType) &&
+            pluginRegistry?.TryCreateMeasure(definition.PluginType, definition, logger, out var pluginMeasure) == true)
+        {
+            measure = pluginMeasure;
+            logger?.LogDebug("MeasureFactory: custom plugin measure \"{Name}\" resolved via {PluginType}", definition.Name, definition.PluginType);
+        }
+        else
+        {
+            measure = CreateCore(definition, logger, activeThemeProvider, measureResolver);
+        }
         if (measure is UnknownMeasure)
         {
             // Previously silent — a skins.json with a typo'd or future-version MeasureType value
