@@ -80,6 +80,49 @@ public sealed class MeasureEditorItem : ViewModelBase
     }
 }
 
+
+public sealed class GroupEditorItem : ViewModelBase
+{
+    public WidgetGroupDefinition Definition { get; }
+    private readonly Action _onChanged;
+    private string _name;
+    private double _x, _y, _width, _height, _scaleX, _scaleY, _rotation, _opacity;
+    private bool _clip;
+    private int _meterCount;
+
+    public string Name { get => _name; set { if (SetProperty(ref _name, value)) { Definition.Name = value; _onChanged(); } } }
+    public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
+    public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
+    public double Width { get => _width; set { var v = Math.Max(1, value); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
+    public double Height { get => _height; set { var v = Math.Max(1, value); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
+    public double ScaleX { get => _scaleX; set { var v = Math.Max(0.01, value); if (SetProperty(ref _scaleX, v)) { Definition.ScaleX = v; _onChanged(); } } }
+    public double ScaleY { get => _scaleY; set { var v = Math.Max(0.01, value); if (SetProperty(ref _scaleY, v)) { Definition.ScaleY = v; _onChanged(); } } }
+    public double Rotation { get => _rotation; set { if (SetProperty(ref _rotation, value)) { Definition.Rotation = value; _onChanged(); } } }
+    public double Opacity { get => _opacity; set { var v = Math.Clamp(value, 0, 1); if (SetProperty(ref _opacity, v)) { Definition.Opacity = v; _onChanged(); } } }
+    public bool Clip { get => _clip; set { if (SetProperty(ref _clip, value)) { Definition.Clip = value; _onChanged(); } } }
+
+    public int MeterCount { get => _meterCount; private set => SetProperty(ref _meterCount, value); }
+
+    public GroupEditorItem(WidgetGroupDefinition definition, Action onChanged)
+    {
+        Definition = definition;
+        _onChanged = onChanged;
+        _name = definition.Name;
+        _x = definition.X;
+        _y = definition.Y;
+        _width = definition.Width;
+        _height = definition.Height;
+        _scaleX = definition.ScaleX;
+        _scaleY = definition.ScaleY;
+        _rotation = definition.Rotation;
+        _opacity = definition.Opacity;
+        _clip = definition.Clip;
+        MeterCount = definition.MeterIds?.Count ?? 0;
+    }
+
+    internal void RefreshCount(int count) => MeterCount = count;
+}
+
 /// <summary>Same wrapping approach as <see cref="MeasureEditorItem"/>, applied to a <see cref="MeterDefinition"/>.</summary>
 public sealed class MeterEditorItem : ViewModelBase
 {
@@ -291,6 +334,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public ObservableCollection<MeasureEditorItem> Measures { get; } = new();
     public ObservableCollection<MeterEditorItem> Meters { get; } = new();
+    public ObservableCollection<GroupEditorItem> Groups { get; } = new();
 
     private string _name = "";
     public string Name
@@ -345,6 +389,15 @@ public sealed class SkinEditorViewModel : ViewModelBase
     /// gives the XAML a plain bool to convert instead.</summary>
     public bool HasSelectedMeter => SelectedMeter is not null;
 
+    private GroupEditorItem? _selectedGroup;
+    public GroupEditorItem? SelectedGroup
+    {
+        get => _selectedGroup;
+        set { if (SetProperty(ref _selectedGroup, value)) OnPropertyChanged(nameof(HasSelectedGroup)); }
+    }
+
+    public bool HasSelectedGroup => SelectedGroup is not null;
+
     /// <summary>Every measure type, for the "Type" ComboBox in the Measures list.</summary>
     public static Array AllMeasureTypes { get; } = Enum.GetValues<MeasureType>();
 
@@ -365,7 +418,12 @@ public sealed class SkinEditorViewModel : ViewModelBase
         foreach (var m in skin.Meters)
             Meters.Add(new MeterEditorItem(m, MarkDirty));
 
+        Groups.Clear();
+        foreach (var group in skin.Groups ?? new List<WidgetGroupDefinition>())
+            Groups.Add(new GroupEditorItem(group, MarkDirty));
+
         SelectedMeter = Meters.FirstOrDefault();
+        SelectedGroup = Groups.FirstOrDefault();
         RecomputeAllPreviews();
         Dirty = false;
         OnPropertyChanged(string.Empty);
@@ -437,6 +495,109 @@ public sealed class SkinEditorViewModel : ViewModelBase
         Meters.Remove(item);
         if (SelectedMeter == item)
             SelectedMeter = Meters.FirstOrDefault();
+        MarkDirty();
+    }
+
+
+    // ── Composition groups ─────────────────────────────────────────────────────
+
+    public void GroupMeters(IEnumerable<MeterEditorItem> selectedMeters)
+    {
+        var selected = selectedMeters.Distinct().ToList();
+        if (selected.Count == 0)
+        {
+            StatusMessage = "Select at least one meter to create a group.";
+            return;
+        }
+
+        var selectedIds = selected.Select(m => m.Definition.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in Groups)
+        {
+            group.Definition.MeterIds.RemoveAll(id => selectedIds.Contains(id));
+            group.RefreshCount(group.Definition.MeterIds.Count);
+        }
+
+        double minX = selected.Min(m => m.X);
+        double minY = selected.Min(m => m.Y);
+        double maxX = selected.Max(m => m.X + m.Width);
+        double maxY = selected.Max(m => m.Y + m.Height);
+
+        var definition = new WidgetGroupDefinition
+        {
+            Name = NextGroupName(),
+            X = minX,
+            Y = minY,
+            Width = Math.Max(1, maxX - minX),
+            Height = Math.Max(1, maxY - minY),
+            MeterIds = selectedIds.ToList(),
+        };
+
+        foreach (var meter in selected)
+            meter.MoveTo(meter.X - minX, meter.Y - minY);
+
+        _working.Groups.Add(definition);
+        var item = new GroupEditorItem(definition, MarkDirty);
+        Groups.Add(item);
+        SelectedGroup = item;
+        MarkDirty();
+    }
+
+    public void UngroupMeters(IEnumerable<MeterEditorItem> selectedMeters)
+    {
+        var selectedIds = selectedMeters.Select(m => m.Definition.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (selectedIds.Count == 0 && SelectedGroup is { } selectedGroup)
+            selectedIds = selectedGroup.Definition.MeterIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (selectedIds.Count == 0)
+        {
+            StatusMessage = "Select meters or a group to ungroup.";
+            return;
+        }
+
+        foreach (var group in Groups.ToList())
+        {
+            var moving = group.Definition.MeterIds
+                .Where(selectedIds.Contains)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (moving.Count == 0) continue;
+
+            foreach (var meter in Meters.Where(m => moving.Contains(m.Definition.Id)))
+                meter.MoveTo(meter.X + group.X, meter.Y + group.Y);
+
+            group.Definition.MeterIds.RemoveAll(selectedIds.Contains);
+            group.RefreshCount(group.Definition.MeterIds.Count);
+
+            if (group.Definition.MeterIds.Count == 0)
+            {
+                _working.Groups.Remove(group.Definition);
+                Groups.Remove(group);
+                if (SelectedGroup == group) SelectedGroup = Groups.FirstOrDefault();
+            }
+        }
+
+        MarkDirty();
+    }
+
+    private string NextGroupName()
+    {
+        int i = 1;
+        while (Groups.Any(g => g.Name.Equals($"Group {i}", StringComparison.OrdinalIgnoreCase)))
+            i++;
+        return $"Group {i}";
+    }
+
+    public void RemoveGroup(GroupEditorItem item)
+    {
+        foreach (var meter in Meters.Where(m => item.Definition.MeterIds.Contains(m.Definition.Id, StringComparer.OrdinalIgnoreCase)))
+            meter.MoveTo(meter.X + item.X, meter.Y + item.Y);
+
+        _working.Groups.Remove(item.Definition);
+        Groups.Remove(item);
+        if (SelectedGroup == item) SelectedGroup = Groups.FirstOrDefault();
         MarkDirty();
     }
 
