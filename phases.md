@@ -423,7 +423,7 @@ runtime platform. The first implementation slice is now in the codebase:
 ### Next slices
 
 - [x] Visual containers/groups with shared transforms, clipping, opacity and persisted group variables. Groups are first-class containers; meters use local coordinates inside them, and runtime/editor render the same transforms.
-- [ ] Expression/formula measures and a safe variable/function evaluator.
+- [x] Expression/formula measures and a safe arithmetic/function evaluator. Formula measures can reference other live measures and are refreshed after base measures.
 - [ ] Plugin contracts for third-party measures, meters, and actions.
 - [ ] Skin package asset extraction and sandboxed asset paths.
 - [ ] State machines: hover/pressed/active/threshold states with transitions.
