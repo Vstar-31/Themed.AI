@@ -15,14 +15,25 @@ public sealed class SkinHostViewModel : ViewModelBase
     public System.Collections.Generic.IEnumerable<IMeasure> Measures => _measuresByName.Values;
 
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
+    private readonly List<IMeasure> _formulaMeasures = new();
     private readonly ILogger? _logger;
 
     public SkinHostViewModel(SkinDefinition definition, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
     {
         Definition = definition;
         _logger = logger;
-        foreach (var measureDef in definition.Measures)
-            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider);
+        // Build base measures first so every Formula measure can resolve them regardless of JSON
+        // ordering. Formula measures are then refreshed in their definition order, allowing simple
+        // formula chains such as "Total = Cpu + Mem".
+        foreach (var measureDef in definition.Measures.Where(m => m.Type != MeasureType.Formula))
+            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure);
+
+        foreach (var measureDef in definition.Measures.Where(m => m.Type == MeasureType.Formula))
+        {
+            var formula = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure);
+            _measuresByName[measureDef.Name] = formula;
+            _formulaMeasures.Add(formula);
+        }
         foreach (var meterDef in definition.Meters)
         {
             MeterViewModelBase vm = meterDef.Kind switch
@@ -38,16 +49,32 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
+    private double? ResolveMeasure(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        return _measuresByName.TryGetValue(name, out var measure) ? measure.Value : null;
+    }
+
     public void RefreshMeasures()
     {
         if (IsClosed) return;
-        foreach (var measure in _measuresByName.Values)
+        foreach (var measure in _measuresByName.Values.Where(m => !_formulaMeasures.Contains(m)))
         {
             try { measure.Refresh(); }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Skin \"{Skin}\": measure \"{Measure}\" ({MeasureType}) threw during Refresh()",
                     Definition.Name, measure.Name, measure.GetType().Name);
+            }
+        }
+
+        foreach (var formula in _formulaMeasures)
+        {
+            try { formula.Refresh(); }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Skin \"{Skin}\": formula measure \"{Measure}\" threw during Refresh()",
+                    Definition.Name, formula.Name);
             }
         }
     }
