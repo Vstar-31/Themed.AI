@@ -112,6 +112,14 @@
                                                 <TextBox Text="{x:Bind Target, Mode=TwoWay}"
                                                          PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
                                                          Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <TextBox Header="Formula expression"
+                                                         Text="{x:Bind Expression, Mode=TwoWay}"
+                                                         PlaceholderText="e.g. CpuUsage + MemUsage / 2"
+                                                         Visibility="{x:Bind IsFormula, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <TextBlock Text="Formula supports +, -, *, /, parentheses, and abs/min/max/round/floor/ceil/clamp. Reference other measure names directly."
+                                                           Style="{StaticResource CaptionStyle}"
+                                                           TextWrapping="Wrap"
+                                                           Visibility="{x:Bind IsFormula, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                                 <ComboBox ItemsSource="{x:Bind vm:MeasureEditorItem.WebJsonPresetOptions}"
                                                           DisplayMemberPath="Label"
                                                           PlaceholderText="Or pick a preset…"
