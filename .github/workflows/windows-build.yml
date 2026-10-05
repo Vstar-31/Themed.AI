@@ -9,6 +9,12 @@ on:
       - feature/windows-app-theming
   workflow_dispatch:
 
+# Widget/runtime work is committed in small slices; cancel stale builds so the newest branch state
+# gets the Windows compiler slot instead of queuing dozens of superseded runs.
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: windows-latest
