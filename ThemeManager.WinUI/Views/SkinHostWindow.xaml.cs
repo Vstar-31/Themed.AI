@@ -1,3 +1,4 @@
+using ThemeManager.Core.Skins;
 using System.Linq;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
