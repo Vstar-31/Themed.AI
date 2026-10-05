@@ -16,6 +16,7 @@ public sealed class SkinManagerService : IDisposable
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
     private readonly DispatcherQueue _dispatcher;
+    private readonly WidgetPluginRegistry? _pluginRegistry;
     private List<SkinDefinition> _skins = new();
     public IReadOnlyList<SkinDefinition> Skins => _skins;
     public event EventHandler? SkinsChanged;
@@ -28,10 +29,11 @@ public sealed class SkinManagerService : IDisposable
     private static readonly IReadOnlyDictionary<string, SkinDefinition> CanonicalDefaults =
         SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
-    public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
+    public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null, WidgetPluginRegistry? pluginRegistry = null)
     {
         _repo = repository;
         _loggerFactory = loggerFactory;
+        _pluginRegistry = pluginRegistry;
         _logger = loggerFactory?.CreateLogger<SkinManagerService>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SkinManagerService>.Instance;
         _dispatcher = DispatcherQueue.GetForCurrentThread()
             ?? throw new InvalidOperationException("SkinManagerService must be created on the WinUI dispatcher thread.");
@@ -319,7 +321,7 @@ public sealed class SkinManagerService : IDisposable
     private void OpenWindowFor(SkinDefinition skin)
     {
         if (_open.ContainsKey(skin.Id)) return;
-        var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>(), App.ThemeService);
+        var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>(), App.ThemeService, _pluginRegistry);
         var window = new SkinHostWindow(viewModel);
         window.PositionChanged += (x, y) => OnWindowMoved(skin, x, y);
         window.EditRequested += () => App.MainWindow.NavigateToSkinEditor(skin);
