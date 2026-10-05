@@ -20,6 +20,8 @@ public sealed class MeasureDefinition
     public string? Target { get; set; }
     /// <summary>Safe arithmetic expression used when <see cref="Type"/> is Formula.</summary>
     public string? Expression { get; set; }
+    /// <summary>Optional plugin capability id used when <see cref="Type"/> is supplied by an extension.</summary>
+    public string? PluginType { get; set; }
 }
 
 public sealed class MeterDefinition
@@ -48,6 +50,8 @@ public sealed class MeterDefinition
     public string? ActionUrl { get; set; }
     public string? SecondaryActionUrl { get; set; }
     public string? WebEmbedUrl { get; set; }
+    /// <summary>Optional plugin capability id used by custom meter runtimes.</summary>
+    public string? PluginType { get; set; }
 }
 
 
@@ -149,7 +153,8 @@ public sealed class SkinDefinition
                     Name = m.Name,
                     Type = m.Type,
                     Target = m.Target,
-                    Expression = m.Expression
+                    Expression = m.Expression,
+                    PluginType = m.PluginType
                 }).ToList(),
             Meters = (Meters ?? new List<MeterDefinition>())
                 .Select(m => new MeterDefinition
@@ -177,7 +182,8 @@ public sealed class SkinDefinition
                     ThresholdAppliesToText = m.ThresholdAppliesToText,
                     ActionUrl = m.ActionUrl,
                     SecondaryActionUrl = m.SecondaryActionUrl,
-                    WebEmbedUrl = m.WebEmbedUrl
+                    WebEmbedUrl = m.WebEmbedUrl,
+                    PluginType = m.PluginType
                 }).ToList(),
             Groups = (Groups ?? new List<WidgetGroupDefinition>())
                 .Select(g => g.Clone())
