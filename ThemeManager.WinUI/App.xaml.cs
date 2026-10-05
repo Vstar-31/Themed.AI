@@ -43,6 +43,9 @@ public partial class App : Application
 
     public static ILoggerFactory LoggerFactory { get; private set; } = null!;
 
+    /// <summary>Trusted in-process extension registry for custom widget measures, meters and actions.</summary>
+    public static WidgetPluginRegistry PluginRegistry { get; private set; } = null!;
+
     /// <summary>General app preferences, including the Phase 7 theme-automation schedule — see
     /// ThemeManager.Core.Services.AppSettings.</summary>
     public static AppSettings Settings { get; private set; } = null!;
@@ -90,6 +93,7 @@ public partial class App : Application
             .CreateLogger();
 
         LoggerFactory = new LoggerFactory().AddSerilog(Log.Logger);
+        PluginRegistry = new WidgetPluginRegistry();
         var logger = LoggerFactory.CreateLogger<App>();
         logger.LogInformation("Application Starting...");
 
@@ -142,7 +146,7 @@ public partial class App : Application
         // Widgets start up after the main window so its DispatcherQueue is definitely
         // running (SkinManagerService's tick timer needs one). A widget that was left
         // enabled last session reappears on the desktop right away, same as Rainmeter.
-        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory);
+        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory, PluginRegistry);
 
         Personalization = new PersonalizationOrchestrator(System.IO.Path.Combine(
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
