@@ -491,6 +491,18 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public void RemoveMeter(MeterEditorItem item)
     {
+        foreach (var group in Groups.ToList())
+        {
+            group.Definition.MeterIds.RemoveAll(id => id.Equals(item.Definition.Id, StringComparison.OrdinalIgnoreCase));
+            group.RefreshCount(group.Definition.MeterIds.Count);
+            if (group.Definition.MeterIds.Count == 0)
+            {
+                _working.Groups.Remove(group.Definition);
+                Groups.Remove(group);
+                if (SelectedGroup == group) SelectedGroup = Groups.FirstOrDefault();
+            }
+        }
+
         _working.Meters.Remove(item.Definition);
         Meters.Remove(item);
         if (SelectedMeter == item)
