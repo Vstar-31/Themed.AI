@@ -96,6 +96,14 @@ public partial class App : Application
         LoggerFactory = new LoggerFactory().AddSerilog(Log.Logger);
         PluginRegistry = new WidgetPluginRegistry();
         var logger = LoggerFactory.CreateLogger<App>();
+
+        // Optional local extensions: any trusted plugin DLL dropped in the app's Plugins folder is
+        // discovered before widgets start, so custom measures/actions are available immediately.
+        var pluginDirectory = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Plugins");
+        var pluginLoader = new WidgetPluginLoader(PluginRegistry, LoggerFactory.CreateLogger<WidgetPluginLoader>());
+        var loadedPluginCount = pluginLoader.LoadFromDirectory(pluginDirectory);
+        logger.LogInformation("Widget plugin bootstrap complete: {PluginCount} plugin(s) loaded from {PluginDirectory}",
+            loadedPluginCount, pluginDirectory);
         logger.LogInformation("Application Starting...");
 
         // These two are static classes shared across every VibeFinder widget instance (see their
