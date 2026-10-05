@@ -88,6 +88,18 @@ public static class WidgetDefinitionValidator
         foreach (var group in duplicateMeasures)
             issues.Add(new($"measures.{group.Key}", "Measure names must be unique and non-empty."));
 
+        foreach (var formula in skin.Measures.Where(m => m.Type == MeasureType.Formula))
+        {
+            if (string.IsNullOrWhiteSpace(formula.Expression))
+            {
+                issues.Add(new($"measures.{formula.Name}.expression", "Formula expression cannot be empty."));
+                continue;
+            }
+
+            if (!SafeExpressionEvaluator.TryEvaluate(formula.Expression, _ => 0, out _))
+                issues.Add(new($"measures.{formula.Name}.expression", "Formula expression has invalid syntax or unsupported functions."));
+        }
+
         var measureNames = skin.Measures
             .Select(m => m.Name)
             .Where(n => !string.IsNullOrWhiteSpace(n))
