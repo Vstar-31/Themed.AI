@@ -177,12 +177,8 @@ public sealed partial class StudioPage : Page
             await ApplySelectedWorldAsync();
     }
 
-    private static readonly string[] VibeWorldWidgetNames =
-    [
-        "VibeFinder Primary",
-        "VibeFinder Minimal",
-        "VibeFinder Playlist"
-    ];
+    private bool ShouldAutoApplyWorld(DesktopScene scene)
+        => _autoApplyAesthetic || scene.Behavior.ApplyAestheticOnSelection;
 
     private void SyncWorldControls()
     {
@@ -438,7 +434,7 @@ public sealed partial class StudioPage : Page
         UpdateAutoSwitchUi();
         UpdateSetActiveButtonState();
 
-        if ((_autoApplyAesthetic || _selected.Behavior.ApplyAestheticOnSelection) && !_sceneApplyBusy)
+        if (ShouldAutoApplyWorld(_selected) && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
         else
             SyncStudioState();
