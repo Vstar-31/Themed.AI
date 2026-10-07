@@ -10,6 +10,8 @@ namespace ThemeManager.WinUI.ViewModels;
 public sealed class SkinHostViewModel : ViewModelBase
 {
     public SkinDefinition Definition { get; }
+    // Compatibility shim for older widget-host call sites that treated the host as a wrapper.
+    public SkinHostViewModel ViewModel => this;
     public ObservableCollection<MeterViewModelBase> Meters { get; } = new();
     public bool IsClosed { get; set; }
     public System.Collections.Generic.IEnumerable<IMeasure> Measures => _measuresByName.Values;
