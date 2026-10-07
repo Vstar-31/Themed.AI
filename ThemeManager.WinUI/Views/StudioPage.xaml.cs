@@ -55,9 +55,6 @@ public sealed partial class StudioPage : Page
         App.SceneService.ScenesChanged += OnScenesChanged;
         App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
         App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
-        App.SceneService.ScenesChanged += OnScenesChanged;
-        App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
-        App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
     }
 
     private void ThemeService_ThemeChanged(object? sender, CozyTheme e) =>
