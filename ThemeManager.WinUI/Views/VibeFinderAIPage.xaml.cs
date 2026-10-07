@@ -1,3 +1,5 @@
+using ThemeManager.Core.Models;
+using ThemeManager.Core.Skins;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
