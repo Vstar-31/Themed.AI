@@ -534,7 +534,6 @@ public sealed class SkinManagerService : IDisposable
 
         _open.Clear();
         _scheduler.Clear();
-        _windowMutationGate.Dispose();
     }
 
     public void EnsureVibeFinderSkinsExist()
