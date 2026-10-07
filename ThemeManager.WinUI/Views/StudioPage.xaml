@@ -90,7 +90,7 @@
                         </ListView>
                         <Button x:Name="SetActiveWorldButton"
                                 Grid.Row="2"
-                                Content="Activate this world"
+                                Content="Mark as active (no visual apply)"
                                 HorizontalAlignment="Stretch"
                                 Margin="0,12,0,0"
                                 Padding="14,10"
@@ -117,18 +117,43 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <ToggleSwitch x:Name="AutoSwitchToggle"
-                                              Header="Vibe auto-switch"
-                                              IsOn="False"
-                                              Toggled="AutoSwitchToggle_Toggled"
-                                              VerticalAlignment="Center" />
-                                <TextBlock x:Name="AutoSwitchStatusText"
-                                           Grid.Column="1"
-                                           Text="Manual world selection only."
-                                           FontSize="12"
-                                           Foreground="{StaticResource TextMutedBrush}"
-                                           VerticalAlignment="Center"
-                                           TextWrapping="Wrap" />
+                                <StackPanel Grid.ColumnSpan="2" Spacing="10">
+                                    <Grid ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleSwitch x:Name="AutoApplyAestheticToggle"
+                                                      Header="Apply aesthetic on selection"
+                                                      IsOn="False"
+                                                      Toggled="AutoApplyAestheticToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="OFF = Studio stays a safe preview. ON = selecting a world applies its theme, wallpaper and widget layout."
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+                                    <Grid ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleSwitch x:Name="AutoSwitchToggle"
+                                                      Header="Vibe auto-switch"
+                                                      IsOn="False"
+                                                      Toggled="AutoSwitchToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock x:Name="AutoSwitchStatusText"
+                                                   Grid.Column="1"
+                                                   Text="Manual world selection only."
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+                                </StackPanel>
                             </Grid>
                         </StackPanel>
 
