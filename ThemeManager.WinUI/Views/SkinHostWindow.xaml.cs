@@ -226,10 +226,18 @@ public sealed partial class SkinHostWindow : Window
         else
         {
             var cardBrush = (SolidColorBrush)Application.Current.Resources["CardBackgroundBrush"];
+            var sideBrush = (SolidColorBrush)Application.Current.Resources["SidebarBackgroundBrush"];
             var borderBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"];
-            var color = cardBrush.Color;
-            CardBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(
-                (byte)(opacity * 255), color.R, color.G, color.B));
+            CardBorder.Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Windows.UI.Color.FromArgb((byte)Math.Clamp(opacity * 242, 0, 255), cardBrush.Color.R, cardBrush.Color.G, cardBrush.Color.B), Offset = 0.0 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb((byte)Math.Clamp(opacity * 214, 0, 255), sideBrush.Color.R, sideBrush.Color.G, sideBrush.Color.B), Offset = 1.0 },
+                }
+            };
             CardBorder.BorderBrush = borderBrush;
             CardBorder.BorderThickness = new Thickness(1);
         }
@@ -668,6 +676,39 @@ public sealed partial class SkinHostWindow : Window
         }
     }
 
+    private static Windows.UI.Color BlendColor(Windows.UI.Color a, Windows.UI.Color b, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return Windows.UI.Color.FromArgb(
+            (byte)Math.Round(a.A + (b.A - a.A) * amount),
+            (byte)Math.Round(a.R + (b.R - a.R) * amount),
+            (byte)Math.Round(a.G + (b.G - a.G) * amount),
+            (byte)Math.Round(a.B + (b.B - a.B) * amount));
+    }
+
+    private static Windows.UI.Color WithAlpha(Windows.UI.Color color, byte alpha) =>
+        Windows.UI.Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    /// <summary>
+    /// Shared soft-accent gradient used by the live widget renderer. The middle tone is blended
+    /// from the two theme accents so saturated palettes transition smoothly instead of banding.
+    /// </summary>
+    private static LinearGradientBrush CreateAccentSweep(SolidColorBrush primary, SolidColorBrush strong)
+    {
+        var middle = BlendColor(primary.Color, strong.Color, 0.38);
+        return new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = WithAlpha(primary.Color, 0xEA), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(middle, 0xF2), Offset = 0.52 },
+                new GradientStop { Color = WithAlpha(strong.Color, 0xDA), Offset = 1.0 },
+            },
+        };
+    }
+
     /// <summary>A track + fill pair wrapped in one Grid, so it can be positioned as a single element.</summary>
     private static Grid BuildBarVisual(BarMeterViewModel vm)
     {
@@ -684,16 +725,7 @@ public sealed partial class SkinHostWindow : Window
         // (not a hardcoded color pair) so it reads as "a nicer bar" under any palette, not just
         // the Cozy Café defaults — same reasoning as every other brush lookup in this file.
         var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
-        var gradientFill = new LinearGradientBrush
-        {
-            StartPoint = new Windows.Foundation.Point(0, 0),
-            EndPoint = new Windows.Foundation.Point(1, 0),
-            GradientStops =
-            {
-                new GradientStop { Color = normalBrush.Color, Offset = 0 },
-                new GradientStop { Color = strongBrush.Color, Offset = 1 },
-            },
-        };
+        var gradientFill = CreateAccentSweep(normalBrush, strongBrush);
 
         var fill = new Border
         {
@@ -731,12 +763,27 @@ public sealed partial class SkinHostWindow : Window
 
         // Tint is a low-alpha cut of the accent color itself, not a separate token, so it's
         // correct for any theme rather than just the Cozy Café defaults.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var chipGradient = new RadialGradientBrush
+        {
+            Center = new Windows.Foundation.Point(0.35, 0.28),
+            GradientOrigin = new Windows.Foundation.Point(0.35, 0.28),
+            RadiusX = 0.92,
+            RadiusY = 0.92,
+            GradientStops =
+            {
+                new GradientStop { Color = WithAlpha(normalBrush.Color, 0x34), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(BlendColor(normalBrush.Color, strongBrush.Color, 0.5), 0x1B), Offset = 0.55 },
+                new GradientStop { Color = WithAlpha(strongBrush.Color, 0x07), Offset = 1.0 },
+            }
+        };
+
         var chip = new Border
         {
             Width = vm.Width,
             Height = vm.Height,
             CornerRadius = new CornerRadius(Math.Min(vm.Width, vm.Height) * 0.25),
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B)),
+            Background = chipGradient,
         };
 
         var icon = new FontIcon
@@ -928,11 +975,12 @@ public sealed partial class SkinHostWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
         var arc = new Microsoft.UI.Xaml.Shapes.Path
         {
             Width = vm.Width,
             Height = vm.Height,
-            Stroke = normalBrush,
+            Stroke = CreateAccentSweep(normalBrush, strongBrush),
             StrokeThickness = thickness,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -983,7 +1031,7 @@ public sealed partial class SkinHostWindow : Window
             if (e.PropertyName == nameof(RingMeterViewModel.FillFraction))
                 Redraw();
             if (e.PropertyName == nameof(RingMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
-                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : CreateAccentSweep(normalBrush, strongBrush);
         };
 
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
@@ -1010,21 +1058,37 @@ public sealed partial class SkinHostWindow : Window
 
         // Fades from a translucent cut of the line's own color down to nothing, so it stays
         // correct for any accent color rather than a separately-maintained fill token.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var blended = BlendColor(normalBrush.Color, strongBrush.Color, 0.35);
+
         var areaFill = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(0, 1),
             GradientStops =
             {
-                new GradientStop { Color = Windows.UI.Color.FromArgb(0x55, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 0 },
-                new GradientStop { Color = Windows.UI.Color.FromArgb(0x00, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 1 },
+                new GradientStop { Color = WithAlpha(normalBrush.Color, 0x46), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(blended, 0x1E), Offset = 0.45 },
+                new GradientStop { Color = WithAlpha(strongBrush.Color, 0x00), Offset = 1.0 },
             },
         };
         var area = new Polygon { Fill = areaFill };
 
+        var lineGradient = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = normalBrush.Color, Offset = 0.0 },
+                new GradientStop { Color = blended, Offset = 0.52 },
+                new GradientStop { Color = strongBrush.Color, Offset = 1.0 },
+            },
+        };
+
         var line = new Polyline
         {
-            Stroke = normalBrush,
+            Stroke = lineGradient,
             StrokeThickness = 2,
             StrokeLineJoin = PenLineJoin.Round,
         };
