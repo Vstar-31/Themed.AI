@@ -18,6 +18,7 @@ public sealed partial class VibeFinderAIPage : Page
     private bool _embedReady;
     private bool _embedHasToken;
     private System.EventHandler<ThemeManager.Core.Models.CozyTheme>? _themeChangedHandler;
+    private System.EventHandler<DesktopScene?>? _activeSceneChangedHandler;
     private const string ActiveThemeSentinel = "$theme";
     private const int AutoFillTrackLimit = 50;
     private bool _dialogOpen;
@@ -106,6 +107,8 @@ public sealed partial class VibeFinderAIPage : Page
                 PushVibePromptAndTrackLimit();
         };
         App.ThemeService.ThemeChanged += _themeChangedHandler;
+        _activeSceneChangedHandler = (_, _) => DispatcherQueue.TryEnqueue(SyncWidgetTogglesFromActiveWorld);
+        App.SceneService.ActiveSceneChanged += _activeSceneChangedHandler;
     }
 
     private async void CoreWebView2_NavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
@@ -419,6 +422,8 @@ public sealed partial class VibeFinderAIPage : Page
 
         if (_themeChangedHandler is not null)
             App.ThemeService.ThemeChanged -= _themeChangedHandler;
+        if (_activeSceneChangedHandler is not null)
+            App.SceneService.ActiveSceneChanged -= _activeSceneChangedHandler;
 
         if (App.MainWindow?.IsVibeFinderPrewarmActive == true)
             App.MainWindow.RebindVibeFinderPrewarmBridge();
