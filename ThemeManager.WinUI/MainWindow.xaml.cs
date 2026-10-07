@@ -154,6 +154,14 @@ public sealed partial class MainWindow : Window
 
     public void RebindVibeFinderPrewarmBridge()
     {
+        // Never steal the bridge away from the visible VibeFinder page. The prewarm browser
+        // is only the fallback authority when the dedicated page is not open.
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("VibeFinder prewarm bridge: visible embed owns authority — rebind skipped");
+            return;
+        }
+
         var dispatch = DispatcherQueue;
         VibeFinderWebState.SendCommand = commandJson =>
         {
