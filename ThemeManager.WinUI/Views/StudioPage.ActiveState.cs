@@ -37,7 +37,7 @@ public sealed partial class StudioPage
             // Studio navigation itself must not change the desktop. Only rehydrate the
             // currently active world's native aesthetic when the user explicitly enabled
             // the Studio aesthetic toggle.
-            if (_autoApplyAesthetic)
+            if (App.SceneService.ActiveScene is { } active && ShouldAutoApplyWorld(active))
                 _ = RehydrateActiveWorldAsync();
         }
         finally
@@ -52,12 +52,12 @@ public sealed partial class StudioPage
 
         for (var attempt = 0; attempt < 20; attempt++)
         {
-            if (App.SceneService.ActiveScene is { } active)
+            if (App.SceneService.ActiveScene is { } current)
             {
                 try
                 {
-                    if (_autoApplyAesthetic)
-                        await ApplyWorldPaletteAsync(active);
+                    if (ShouldAutoApplyWorld(current))
+                        await ApplyWorldPaletteAsync(current);
 
                     if (DispatcherQueue.HasThreadAccess) Refresh();
                     else DispatcherQueue.TryEnqueue(Refresh);
