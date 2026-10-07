@@ -464,6 +464,11 @@ public sealed partial class SkinEditorPage : Page
         };
         var fillAccent = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
         var fillStrong = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var fillMiddle = Windows.UI.Color.FromArgb(
+            0xF0,
+            (byte)Math.Round(fillAccent.Color.R + (fillStrong.Color.R - fillAccent.Color.R) * 0.38),
+            (byte)Math.Round(fillAccent.Color.G + (fillStrong.Color.G - fillAccent.Color.G) * 0.38),
+            (byte)Math.Round(fillAccent.Color.B + (fillStrong.Color.B - fillAccent.Color.B) * 0.38));
         var fill = new Border
         {
             Width = meter.Width * meter.PreviewFraction,
@@ -476,8 +481,9 @@ public sealed partial class SkinEditorPage : Page
                 EndPoint = new Windows.Foundation.Point(1, 0),
                 GradientStops =
                 {
-                    new GradientStop { Color = fillAccent.Color, Offset = 0 },
-                    new GradientStop { Color = fillStrong.Color, Offset = 1 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0xEA, fillAccent.Color.R, fillAccent.Color.G, fillAccent.Color.B), Offset = 0.0 },
+                    new GradientStop { Color = fillMiddle, Offset = 0.52 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0xDA, fillStrong.Color.R, fillStrong.Color.G, fillStrong.Color.B), Offset = 1.0 },
                 },
             },
         };
