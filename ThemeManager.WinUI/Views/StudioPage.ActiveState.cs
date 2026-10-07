@@ -13,6 +13,9 @@ public sealed partial class StudioPage
         if (!_activeStateUiInstalled)
         {
             _activeStateUiInstalled = true;
+            App.SceneService.ScenesChanged += OnScenesChanged;
+            App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
+            App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
             App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
         }
 
@@ -80,6 +83,9 @@ public sealed partial class StudioPage
 
         if (_activeStateUiInstalled)
         {
+            App.SceneService.ScenesChanged -= OnScenesChanged;
+            App.SceneService.ActiveSceneChanged -= OnActiveSceneChanged;
+            App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
             App.SceneService.ActiveSceneChanged -= ActiveStateSceneChanged;
             _activeStateUiInstalled = false;
         }
