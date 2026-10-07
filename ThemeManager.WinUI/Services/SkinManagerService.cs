@@ -185,6 +185,33 @@ public sealed class SkinManagerService : IDisposable
             .OrderBy(p => p.ZIndex)
             .ToList();
 
+        // Worlds should contain one placement per widget. Older versions could leave behind
+        // orphaned GUIDs or duplicate VibeFinder placements during provisioning/rebuilds.
+        // Normalize those records before opening any windows so a world can never resurrect
+        // two copies of the same widget.
+        var cleanedPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
+        var seenPlacementKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var placement in scenePlacements)
+        {
+            var key = !string.IsNullOrWhiteSpace(placement.Definition?.Name) &&
+                      placement.Definition!.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase)
+                ? $"name:{placement.Definition.Name}"
+                : $"id:{placement.WidgetId}";
+
+            if (!seenPlacementKeys.Add(key))
+            {
+                _logger.LogWarning(
+                    "Desktop world ignored duplicate widget placement {WidgetId} ({WidgetName})",
+                    placement.WidgetId,
+                    placement.Definition?.Name ?? "(unknown)");
+                continue;
+            }
+
+            cleanedPlacements.Add(placement);
+        }
+
+        scenePlacements = cleanedPlacements;
+
         var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
         var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var applied = 0;
@@ -225,29 +252,10 @@ public sealed class SkinManagerService : IDisposable
             }
             else if (sceneIds.Contains(skin.Id))
             {
-                // A placement list is a composition, so the same widget definition can legitimately
-                // appear more than once. The old runtime keyed native windows solely by WidgetId, so
-                // a second placement merely moved the first window and only one copy remained visible.
-                // Materialize a separate instance from the placement snapshot for repeated ids.
-                if (placement.Definition is null)
-                {
-                    missing++;
-                    _logger.LogWarning(
-                        "Desktop world contains duplicate widget placement {WidgetId}, but no definition snapshot exists for the second instance",
-                        placement.WidgetId);
-                    continue;
-                }
-
-                var instanceId = Guid.NewGuid().ToString();
-                skin = placement.Definition.Clone(instanceId);
-                skin.Enabled = false;
-                _skins.Add(skin);
-                known[skin.Id] = skin;
-                placement.WidgetId = instanceId;
-
-                _logger.LogInformation(
-                    "Desktop world materialized repeated widget placement as instance {WidgetId} ({WidgetName})",
-                    skin.Id, skin.Name);
+                // Duplicate placements were normalized before this point; never materialize an
+                // automatic second widget instance.
+                missing++;
+                continue;
             }
 
             sceneIds.Add(skin.Id);
@@ -272,6 +280,20 @@ public sealed class SkinManagerService : IDisposable
         // stale widget around forever.
         foreach (var skin in _skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
             await ApplyScenePlacementCoreAsync(skin, skin.X, skin.Y, skin.Opacity, false);
+
+        // Persist a cleaned active-world composition when the caller passed the actual scene list.
+        if (placements is List<SceneWidgetPlacement> sourcePlacements &&
+            App.SceneService is not null)
+        {
+            var owner = App.SceneService.Scenes.FirstOrDefault(s =>
+                ReferenceEquals(s.Widgets, sourcePlacements));
+            if (owner is not null && sourcePlacements.Count != scenePlacements.Count)
+            {
+                sourcePlacements.Clear();
+                sourcePlacements.AddRange(scenePlacements);
+                await App.SceneService.UpsertAsync(owner);
+            }
+        }
 
         await PersistAsync(true);
 
@@ -360,6 +382,31 @@ public sealed class SkinManagerService : IDisposable
     }
 
     public async Task AddGeneratedSkinAsync(SkinDefinition skin) { _skins.Add(skin); await PersistAsync(true); }
+
+    /// <summary>
+    /// Persists measure/target changes without destroying the existing widget window.
+    /// </summary>
+    public async Task PersistSkinDataAsync(SkinDefinition skin)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            if (_open.TryGetValue(skin.Id, out var entry))
+            {
+                entry.ViewModel.ReloadMeasures();
+                entry.ViewModel.RefreshMeasures();
+                _dispatcher.TryEnqueue(entry.ViewModel.UpdateMeters);
+            }
+
+            await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
+    }
 
     public async Task SaveSkinAsync(SkinDefinition skin)
     {
