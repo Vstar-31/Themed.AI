@@ -13,6 +13,8 @@ public sealed partial class StudioPage : Page
     private string? _lastWallpaperPath;
     private bool _wallpaperBusy;
     private bool _sceneApplyBusy;
+    private bool _studioInitializing;
+    private bool _autoApplyAesthetic;
 
     // Display row for the WORLDS list. DesktopScene has no notion of "active" — that lives on
     // DesktopSceneService.ActiveScene — so we wrap each scene with a computed IsActive flag at
@@ -52,10 +54,17 @@ public sealed partial class StudioPage : Page
         InitializeComponent();
         Loaded += async (_, _) =>
         {
+            _studioInitializing = true;
+            _autoApplyAesthetic = LoadAutoApplyAestheticPreference();
+            AutoApplyAestheticToggle.IsOn = _autoApplyAesthetic;
+
             await App.SceneService.InitializeAsync();
             await App.StartWorldRuntimeAsync();
             await SeedStarterWorldsAsync();
             Refresh();
+
+            _studioInitializing = false;
+            SyncStudioState();
         };
         App.SceneService.ScenesChanged += OnScenesChanged;
         App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
@@ -98,15 +107,21 @@ public sealed partial class StudioPage : Page
             })
             .ToList();
 
-        var scene = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
-        if (scene is not null) Select(scene, false);
+        var scene = _selected is not null
+            ? App.SceneService.Scenes.FirstOrDefault(x => x.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase))
+            : App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
+        if (scene is not null)
+            Select(scene, false);
     }
 
-    private void Select(DesktopScene scene, bool activate = true)
+    private void Select(DesktopScene scene, bool activate = false)
     {
         _selected = scene;
         if (activate) App.SceneService.SetActiveScene(scene);
         ActiveSceneName.Text = scene.Name;
+        WorldStateLabel.Text = App.SceneService.ActiveScene?.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase) == true
+            ? "ACTIVE WORLD"
+            : "SELECTED WORLD";
         var vibe = VibeSnapshotHub.Current;
         var track = string.IsNullOrWhiteSpace(vibe.TrackTitle) ? "No track" : $"{vibe.TrackTitle} · {vibe.Artist}";
         ActiveSceneMeta.Text = $"{scene.Description} · {scene.Widgets.Count} widgets · {scene.Effects.Count} effects · {vibe.Mood} · {track}";
@@ -123,6 +138,112 @@ public sealed partial class StudioPage : Page
     private void AddDetail(string label, string value)
     {
         SceneDetails.Children.Add(new TextBlock { Text = $"{label}  ·  {value}", FontSize = 13, Opacity = 0.72 });
+    }
+
+    private static bool LoadAutoApplyAestheticPreference()
+    {
+        try
+        {
+            return Windows.Storage.ApplicationData.Current.LocalSettings.Values.TryGetValue(
+                "Studio.AutoApplyAesthetic", out var value) && value is bool enabled && enabled;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void SaveAutoApplyAestheticPreference(bool enabled)
+    {
+        try
+        {
+            Windows.Storage.ApplicationData.Current.LocalSettings.Values["Studio.AutoApplyAesthetic"] = enabled;
+        }
+        catch
+        {
+            // Preference failure must never affect Studio navigation or world switching.
+        }
+    }
+
+    private void SyncStudioState()
+    {
+        if (_selected is null) return;
+        AutoSwitchToggle.IsOn = _selected.Behavior.AutoSwitch;
+        AutoApplyAestheticToggle.IsOn = _autoApplyAesthetic;
+        ApplyStatus.Text = App.SceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true
+            ? "This world is active. Browsing is safe; applying is explicit."
+            : "Preview only — the desktop will not change until you apply this world.";
+    }
+
+    private void StudioPage_ActiveStateLoaded(object sender, RoutedEventArgs e) => SyncStudioState();
+
+    private async void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var active = App.SceneService.ActiveScene;
+            if (active is not null && App.SkinManager is not null)
+                await SaveCurrentSceneLayoutAsync(active);
+        }
+        catch (Exception ex)
+        {
+            App.LoggerFactory.CreateLogger<StudioPage>().LogDebug(ex, "Studio: failed to persist active world layout on unload");
+        }
+    }
+
+    private void AutoApplyAestheticToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_studioInitializing) return;
+        _autoApplyAesthetic = AutoApplyAestheticToggle.IsOn;
+        SaveAutoApplyAestheticPreference(_autoApplyAesthetic);
+        ApplyStatus.Text = _autoApplyAesthetic
+            ? "Aesthetic apply is ON — selecting a world applies its theme, wallpaper and layout."
+            : "Aesthetic apply is OFF — Studio is preview-only until you press Apply to desktop.";
+    }
+
+    private async void AutoSwitchToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_studioInitializing || _selected is null) return;
+        _selected.Behavior.AutoSwitch = AutoSwitchToggle.IsOn;
+        await App.SceneService.UpsertAsync(_selected);
+        AutoSwitchStatusText.Text = AutoSwitchToggle.IsOn
+            ? "VibeFinder may switch to a matching world automatically."
+            : "Manual world selection only.";
+    }
+
+    private void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+        App.SceneService.SetActiveScene(_selected);
+        SyncStudioState();
+    }
+
+    private async Task SaveCurrentSceneLayoutAsync(DesktopScene scene)
+    {
+        if (App.SkinManager is null) return;
+
+        var byId = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var changed = false;
+
+        foreach (var placement in scene.Widgets)
+        {
+            if (!byId.TryGetValue(placement.WidgetId, out var skin)) continue;
+
+            if (placement.X != skin.X ||
+                placement.Y != skin.Y ||
+                Math.Abs(placement.Opacity - skin.Opacity) > 0.001 ||
+                placement.Visible != skin.Enabled)
+                changed = true;
+
+            placement.X = skin.X;
+            placement.Y = skin.Y;
+            placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
+            placement.Visible = skin.Enabled;
+            placement.Definition = skin.Clone(skin.Id);
+        }
+
+        if (changed)
+            await App.SceneService.UpsertAsync(scene);
     }
 
     private void UpdateWallpaperStatus()
@@ -231,9 +352,21 @@ public sealed partial class StudioPage : Page
 
     private async void ApplyScene_Click(object sender, RoutedEventArgs e) => await ApplySelectedWorldAsync();
 
-    private void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ScenesList.SelectedItem is WorldListItem item) Select(item.Scene);
+        if (ScenesList.SelectedItem is not WorldListItem item) return;
+
+        // Save the outgoing world's current positions before optionally moving into the selected world.
+        var outgoing = App.SceneService.ActiveScene;
+        if (outgoing is not null && !outgoing.Id.Equals(item.Scene.Id, StringComparison.OrdinalIgnoreCase))
+            await SaveCurrentSceneLayoutAsync(outgoing);
+
+        Select(item.Scene, false);
+
+        if (_autoApplyAesthetic && !_sceneApplyBusy)
+            await ApplySelectedWorldAsync();
+        else
+            SyncStudioState();
     }
 
     private async void SaveCurrentLayout_Click(object sender, RoutedEventArgs e)
@@ -448,6 +581,10 @@ public sealed partial class StudioPage : Page
         try
         {
             ApplyStatus.Text = $"Applying {_selected.Name}…";
+
+            var previous = App.SceneService.ActiveScene;
+            if (previous is not null && !previous.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase))
+                await SaveCurrentSceneLayoutAsync(previous);
 
             var themes = await App.ThemeRepository.LoadAllAsync();
             var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
