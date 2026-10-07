@@ -318,13 +318,17 @@ public sealed partial class VibeFinderAIPage : Page
     {
         if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is null) return;
         string rawPrompt = PromptBox.Text?.Trim() ?? "";
-        string vibeText = string.Equals(rawPrompt, ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase)
+        string rawText = rawPrompt.Trim();
+        string vibeText = string.Equals(rawText, ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase)
             ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
-            : rawPrompt;
+            : rawText;
         if (string.IsNullOrWhiteSpace(vibeText)) return;
         try
         {
-            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText }));
+            // Keep the visible VibeFinder prompt faithful to the saved setting. "$theme" is
+            // a user-facing sentinel; only the analysis payload should contain its resolved
+            // theme description.
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit }));
             if (triggerRun)
                 ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit }));
