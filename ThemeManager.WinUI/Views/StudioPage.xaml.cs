@@ -168,8 +168,12 @@ public sealed partial class StudioPage : Page
     private void SyncStudioState()
     {
         if (_selected is null) return;
+
+        _studioInitializing = true;
         AutoSwitchToggle.IsOn = _selected.Behavior.AutoSwitch;
         AutoApplyAestheticToggle.IsOn = _autoApplyAesthetic;
+        _studioInitializing = false;
+
         ApplyStatus.Text = App.SceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true
             ? "This world is active. Browsing is safe; applying is explicit."
             : "Preview only — the desktop will not change until you apply this world.";
