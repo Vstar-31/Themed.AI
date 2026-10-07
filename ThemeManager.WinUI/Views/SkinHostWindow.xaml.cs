@@ -388,10 +388,14 @@ public sealed partial class SkinHostWindow : Window
                     {
                         var command = url.Substring(mediaPrefix.Length);
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
-                        bool webEmbedActive = ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null;
+                        bool webEmbedActive =
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive;
 
-                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webEmbedActive={WebActive})",
-                            _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive);
+                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webEmbedActive={WebActive}, visibleEmbed={VisibleEmbed}, playerActive={PlayerActive})",
+                            _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive,
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive,
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive);
 
                         if (command.Equals("playpause", StringComparison.OrdinalIgnoreCase))
                         {
