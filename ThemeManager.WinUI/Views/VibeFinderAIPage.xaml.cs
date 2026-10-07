@@ -148,14 +148,31 @@ public sealed partial class VibeFinderAIPage : Page
         }
     }
 
-    private void WidgetToggle_Toggled(object sender, RoutedEventArgs e)
+    private async void WidgetToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_isInitializing) return;
-        if (sender is ToggleSwitch toggle && toggle.Tag is string skinName)
+        if (sender is not ToggleSwitch toggle || toggle.Tag is not string skinName) return;
+
+        var skin = _skinManager.Skins.FirstOrDefault(s => s.Name == skinName);
+        if (skin is null || skin.Enabled == toggle.IsOn) return;
+
+        try
         {
-            var skin = _skinManager.Skins.FirstOrDefault(s => s.Name == skinName);
-            if (skin != null && skin.Enabled != toggle.IsOn)
-                _ = _skinManager.SetEnabledAsync(skin, toggle.IsOn);
+            toggle.IsEnabled = false;
+            await _skinManager.SetEnabledAsync(skin, toggle.IsOn);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "VibeFinderAIPage: widget toggle failed for {SkinName}", skinName);
+            // Restore the UI to the real persisted state if teardown/open failed.
+            toggle.IsOn = skin.Enabled;
+            StatusText.Text = $"Could not change {skinName}: {ex.Message}";
+            StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red);
+            StatusText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            toggle.IsEnabled = true;
         }
     }
 
