@@ -195,14 +195,19 @@ public sealed partial class StudioPage : Page
         }
     }
 
-    private void AutoApplyAestheticToggle_Toggled(object sender, RoutedEventArgs e)
+    private async void AutoApplyAestheticToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_studioInitializing) return;
+
         _autoApplyAesthetic = AutoApplyAestheticToggle.IsOn;
         SaveAutoApplyAestheticPreference(_autoApplyAesthetic);
+
         ApplyStatus.Text = _autoApplyAesthetic
             ? "Aesthetic apply is ON — selecting a world applies its theme, wallpaper and layout."
             : "Aesthetic apply is OFF — Studio is preview-only until you press Apply to desktop.";
+
+        if (_autoApplyAesthetic && _selected is not null && !_sceneApplyBusy)
+            await ApplySelectedWorldAsync();
     }
 
     private async void AutoSwitchToggle_Toggled(object sender, RoutedEventArgs e)
