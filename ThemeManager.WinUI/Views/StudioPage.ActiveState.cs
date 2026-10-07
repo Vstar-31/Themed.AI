@@ -48,7 +48,7 @@ public sealed partial class StudioPage
     }
     private async Task RehydrateActiveWorldAsync()
     {
-        if (!_autoApplyAesthetic) return;
+        if (App.SceneService.ActiveScene is not { } active || !ShouldAutoApplyWorld(active)) return;
 
         for (var attempt = 0; attempt < 20; attempt++)
         {
@@ -96,7 +96,7 @@ public sealed partial class StudioPage
     {
         if (DispatcherQueue.HasThreadAccess) UpdateSetActiveButtonState();
         else DispatcherQueue.TryEnqueue(UpdateSetActiveButtonState);
-        if (scene is not null && _autoApplyAesthetic && !_sceneApplyBusy)
+        if (scene is not null && ShouldAutoApplyWorld(scene) && !_sceneApplyBusy)
             await ApplyWorldPaletteAsync(scene);
     }
 
