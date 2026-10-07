@@ -36,7 +36,8 @@ public sealed class SkinHostViewModel : ViewModelBase
         _pluginRegistry = pluginRegistry;
         // Build base measures first so every Formula measure can resolve them regardless of JSON
         // ordering. Formula measures are then refreshed in their definition order, allowing simple
-        // formula chains such as "Total = Cpu + Mem".        BuildMeasures();
+        // formula chains such as "Total = Cpu + Mem".
+        BuildMeasures();
         foreach (var meterDef in definition.Meters)
         {
             MeterViewModelBase vm = meterDef.Kind switch
@@ -125,12 +126,13 @@ public sealed class SkinHostViewModel : ViewModelBase
         {
             if (IsClosed) return;
             foreach (var meter in Meters)
-        {
-            try { meter.Tick(_measuresByName); }
-            catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Skin \"{Skin}\": meter \"{Meter}\" ({MeterType}) threw during Tick()",
-                    Definition.Name, meter.LogLabel, meter.GetType().Name);
+                try { meter.Tick(_measuresByName); }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Skin \"{Skin}\": meter \"{Meter}\" ({MeterType}) threw during Tick()",
+                        Definition.Name, meter.LogLabel, meter.GetType().Name);
+                }
             }
         }
     }
@@ -144,12 +146,13 @@ public sealed class SkinHostViewModel : ViewModelBase
             if (Interlocked.Exchange(ref _measuresDisposed, 1) != 0) return;
 
             foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
-        {
-            try { disposable.Dispose(); }
-            catch (Exception ex)
             {
-                _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" failed during disposal",
-                    Definition.Name, disposable.GetType().Name);
+                try { disposable.Dispose(); }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" failed during disposal",
+                        Definition.Name, disposable.GetType().Name);
+                }
             }
         }
     }
