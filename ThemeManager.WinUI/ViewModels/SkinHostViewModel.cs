@@ -17,6 +17,7 @@ public sealed class SkinHostViewModel : ViewModelBase
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
     private readonly List<IMeasure> _formulaMeasures = new();
     private readonly ILogger? _logger;
+    private int _measuresDisposed;
 
     public SkinHostViewModel(
         SkinDefinition definition,
@@ -101,6 +102,8 @@ public sealed class SkinHostViewModel : ViewModelBase
     public void DisposeMeasures()
     {
         IsClosed = true;
+        if (Interlocked.Exchange(ref _measuresDisposed, 1) != 0) return;
+
         foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
         {
             try { disposable.Dispose(); }
