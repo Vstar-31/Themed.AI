@@ -82,7 +82,7 @@ public sealed partial class VibeFinderAIPage : Page
         _skinManager.EnsureVibeFinderSkinsExist();
         SyncWidgetTogglesFromActiveWorld();
 
-        var vibeSkin = skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
+        var vibeSkin = _skinManager.Skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
         if (vibeSkin != null)
         {
             var measure = vibeSkin.Measures.FirstOrDefault(m =>
