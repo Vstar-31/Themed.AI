@@ -21,6 +21,7 @@ public sealed class SkinHostViewModel : ViewModelBase
     private readonly ILogger? _logger;
     private readonly IActiveThemeProvider? _activeThemeProvider;
     private readonly WidgetPluginRegistry? _pluginRegistry;
+    private readonly object _measureGate = new();
     private int _measuresDisposed;
 
     public SkinHostViewModel(
@@ -69,17 +70,20 @@ public sealed class SkinHostViewModel : ViewModelBase
     /// <summary>Rebuilds measure instances after a target/credential change without recreating the native widget window.</summary>
     public void ReloadMeasures()
     {
-        if (IsClosed) return;
-        foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+        lock (_measureGate)
         {
-            try { disposable.Dispose(); }
-            catch (Exception ex) { _logger?.LogDebug(ex, "Skin \"{Skin}\": measure disposal during reload failed", Definition.Name); }
-        }
+            if (IsClosed) return;
+            foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+            {
+                try { disposable.Dispose(); }
+                catch (Exception ex) { _logger?.LogDebug(ex, "Skin \"{Skin}\": measure disposal during reload failed", Definition.Name); }
+            }
 
-        _measuresByName.Clear();
-        _formulaMeasures.Clear();
-        Interlocked.Exchange(ref _measuresDisposed, 0);
-        BuildMeasures();
+            _measuresByName.Clear();
+            _formulaMeasures.Clear();
+            Interlocked.Exchange(ref _measuresDisposed, 0);
+            BuildMeasures();
+        }
     }
 
     private double? ResolveMeasure(string name)
@@ -90,8 +94,10 @@ public sealed class SkinHostViewModel : ViewModelBase
 
     public void RefreshMeasures()
     {
-        if (IsClosed) return;
-        foreach (var measure in _measuresByName.Values.Where(m => !_formulaMeasures.Contains(m)))
+        lock (_measureGate)
+        {
+            if (IsClosed) return;
+            foreach (var measure in _measuresByName.Values.Where(m => !_formulaMeasures.Contains(m)))
         {
             try { measure.Refresh(); }
             catch (Exception ex)
@@ -101,21 +107,24 @@ public sealed class SkinHostViewModel : ViewModelBase
             }
         }
 
-        foreach (var formula in _formulaMeasures)
-        {
-            try { formula.Refresh(); }
-            catch (Exception ex)
+            foreach (var formula in _formulaMeasures)
             {
-                _logger?.LogWarning(ex, "Skin \"{Skin}\": formula measure \"{Measure}\" threw during Refresh()",
-                    Definition.Name, formula.Name);
+                try { formula.Refresh(); }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Skin \"{Skin}\": formula measure \"{Measure}\" threw during Refresh()",
+                        Definition.Name, formula.Name);
+                }
             }
         }
     }
 
     public void UpdateMeters()
     {
-        if (IsClosed) return;
-        foreach (var meter in Meters)
+        lock (_measureGate)
+        {
+            if (IsClosed) return;
+            foreach (var meter in Meters)
         {
             try { meter.Tick(_measuresByName); }
             catch (Exception ex)
@@ -129,10 +138,12 @@ public sealed class SkinHostViewModel : ViewModelBase
     /// <summary>Disposes all measure-owned resources. Safe to call after IsClosed was already set.</summary>
     public void DisposeMeasures()
     {
-        IsClosed = true;
-        if (Interlocked.Exchange(ref _measuresDisposed, 1) != 0) return;
+        lock (_measureGate)
+        {
+            IsClosed = true;
+            if (Interlocked.Exchange(ref _measuresDisposed, 1) != 0) return;
 
-        foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+            foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
         {
             try { disposable.Dispose(); }
             catch (Exception ex)
