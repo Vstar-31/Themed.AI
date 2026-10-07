@@ -153,6 +153,52 @@
                                                    VerticalAlignment="Center"
                                                    TextWrapping="Wrap" />
                                     </Grid>
+                                    <Grid ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleSwitch x:Name="SelectedWorldAestheticToggle"
+                                                      Header="Auto-apply this world"
+                                                      IsOn="False"
+                                                      Toggled="SelectedWorldAestheticToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="This world can opt into automatic aesthetic application even when the global Studio switch is OFF."
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+                                    <Separator Margin="0,3,0,0" />
+                                    <TextBlock Text="VIBE FINDER WIDGETS IN THIS WORLD"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleSwitch x:Name="WorldVibePrimaryToggle"
+                                                      Header="Primary"
+                                                      Tag="VibeFinder Primary"
+                                                      Toggled="WorldVibeWidgetToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="WorldVibeMinimalToggle"
+                                                      Grid.Column="1"
+                                                      Header="Minimal"
+                                                      Tag="VibeFinder Minimal"
+                                                      Toggled="WorldVibeWidgetToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="WorldVibePlaylistToggle"
+                                                      Grid.Column="2"
+                                                      Header="Playlist"
+                                                      Tag="VibeFinder Playlist"
+                                                      Toggled="WorldVibeWidgetToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                    </Grid>
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
