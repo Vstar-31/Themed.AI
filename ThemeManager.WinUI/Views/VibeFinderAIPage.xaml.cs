@@ -23,6 +23,7 @@ public sealed partial class VibeFinderAIPage : Page
     public VibeFinderAIPage()
     {
         this.InitializeComponent();
+        ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
@@ -53,7 +54,7 @@ public sealed partial class VibeFinderAIPage : Page
                     PushVibePromptAndTrackLimit(triggerRun: hasToken);
                     return;
                 }
-                ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json);
+                ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json, fromVisibleEmbed: true);
             };
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = (cmd) =>
             {
@@ -336,6 +337,8 @@ public sealed partial class VibeFinderAIPage : Page
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
+        ThemeManager.Integration.Skins.VibeFinderWebState.ReleaseVisibleEmbed();
+
         if (_themeChangedHandler is not null)
             App.ThemeService.ThemeChanged -= _themeChangedHandler;
 
