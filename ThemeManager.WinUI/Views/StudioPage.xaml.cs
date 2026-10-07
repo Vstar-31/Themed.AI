@@ -465,6 +465,7 @@ public sealed partial class StudioPage : Page
         ReactToVibeFinder = source.ReactToVibeFinder,
         ReactToWeather = source.ReactToWeather,
         AutoSwitch = source.AutoSwitch,
+        ApplyAestheticOnSelection = source.ApplyAestheticOnSelection,
         TransitionSeconds = source.TransitionSeconds,
         MotionIntensity = source.MotionIntensity,
         AudioSensitivity = source.AudioSensitivity
