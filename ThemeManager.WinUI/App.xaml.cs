@@ -78,6 +78,7 @@ public partial class App : Application
         InitializeComponent();
         ThemeRepository = new ThemeRepository();
         ThemeService = new ThemeService(ThemeRepository);
+        ThemeSyncModule.Initialize();
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
