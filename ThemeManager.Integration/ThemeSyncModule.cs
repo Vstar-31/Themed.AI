@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Services;
 
@@ -8,13 +7,18 @@ namespace ThemeManager.Integration;
 /// Bridges Themed.AI theme changes into Windows' native application/system appearance.
 /// Registered at module load so every active-theme path gets the same synchronization.
 /// </summary>
-internal static class ThemeSyncModule
+public static class ThemeSyncModule
 {
     private static readonly SemaphoreSlim ApplyGate = new(1, 1);
+    private static int _initialized;
 
-    [ModuleInitializer]
-    internal static void Initialize()
+    /// <summary>
+    /// Registers the process-wide theme bridge explicitly from the application startup path.
+    /// Library module initializers are intentionally avoided so analyzers do not flag CA2255.
+    /// </summary>
+    public static void Initialize()
     {
+        if (Interlocked.Exchange(ref _initialized, 1) != 0) return;
         ThemeChangeHub.ThemeChanged += OnThemeChanged;
     }
 
