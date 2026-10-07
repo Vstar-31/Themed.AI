@@ -19,6 +19,8 @@ public sealed class SkinHostViewModel : ViewModelBase
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
     private readonly List<IMeasure> _formulaMeasures = new();
     private readonly ILogger? _logger;
+    private readonly IActiveThemeProvider? _activeThemeProvider;
+    private readonly WidgetPluginRegistry? _pluginRegistry;
     private int _measuresDisposed;
 
     public SkinHostViewModel(
@@ -29,18 +31,11 @@ public sealed class SkinHostViewModel : ViewModelBase
     {
         Definition = definition;
         _logger = logger;
+        _activeThemeProvider = activeThemeProvider;
+        _pluginRegistry = pluginRegistry;
         // Build base measures first so every Formula measure can resolve them regardless of JSON
         // ordering. Formula measures are then refreshed in their definition order, allowing simple
-        // formula chains such as "Total = Cpu + Mem".
-        foreach (var measureDef in definition.Measures.Where(m => m.Type != MeasureType.Formula))
-            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure, pluginRegistry);
-
-        foreach (var measureDef in definition.Measures.Where(m => m.Type == MeasureType.Formula))
-        {
-            var formula = MeasureFactory.Create(measureDef, logger, activeThemeProvider, ResolveMeasure, pluginRegistry);
-            _measuresByName[measureDef.Name] = formula;
-            _formulaMeasures.Add(formula);
-        }
+        // formula chains such as "Total = Cpu + Mem".        BuildMeasures();
         foreach (var meterDef in definition.Meters)
         {
             MeterViewModelBase vm = meterDef.Kind switch
@@ -54,6 +49,37 @@ public sealed class SkinHostViewModel : ViewModelBase
             };
             Meters.Add(vm);
         }
+    }
+
+    private void BuildMeasures()
+    {
+        foreach (var measureDef in Definition.Measures.Where(m => m.Type != MeasureType.Formula))
+            _measuresByName[measureDef.Name] = MeasureFactory.Create(
+                measureDef, _logger, _activeThemeProvider, ResolveMeasure, _pluginRegistry);
+
+        foreach (var measureDef in Definition.Measures.Where(m => m.Type == MeasureType.Formula))
+        {
+            var formula = MeasureFactory.Create(
+                measureDef, _logger, _activeThemeProvider, ResolveMeasure, _pluginRegistry);
+            _measuresByName[measureDef.Name] = formula;
+            _formulaMeasures.Add(formula);
+        }
+    }
+
+    /// <summary>Rebuilds measure instances after a target/credential change without recreating the native widget window.</summary>
+    public void ReloadMeasures()
+    {
+        if (IsClosed) return;
+        foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+        {
+            try { disposable.Dispose(); }
+            catch (Exception ex) { _logger?.LogDebug(ex, "Skin \"{Skin}\": measure disposal during reload failed", Definition.Name); }
+        }
+
+        _measuresByName.Clear();
+        _formulaMeasures.Clear();
+        Interlocked.Exchange(ref _measuresDisposed, 0);
+        BuildMeasures();
     }
 
     private double? ResolveMeasure(string name)
