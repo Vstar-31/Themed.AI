@@ -77,13 +77,7 @@ public sealed partial class VibeFinderAIPage : Page
         };
 
         _skinManager.EnsureVibeFinderSkinsExist();
-        var skins = _skinManager.Skins;
-        var primary = skins.FirstOrDefault(s => s.Name == "VibeFinder Primary");
-        if (primary != null) TogglePrimary.IsOn = primary.Enabled;
-        var minimal = skins.FirstOrDefault(s => s.Name == "VibeFinder Minimal");
-        if (minimal != null) ToggleMinimal.IsOn = minimal.Enabled;
-        var playlist = skins.FirstOrDefault(s => s.Name == "VibeFinder Playlist");
-        if (playlist != null) TogglePlaylist.IsOn = playlist.Enabled;
+        SyncWidgetTogglesFromActiveWorld();
 
         var vibeSkin = skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
         if (vibeSkin != null)
@@ -148,24 +142,85 @@ public sealed partial class VibeFinderAIPage : Page
         }
     }
 
+    private void SyncWidgetTogglesFromActiveWorld()
+    {
+        _isInitializing = true;
+        try
+        {
+            var activeScene = App.SceneService?.ActiveScene;
+            var primary = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals("VibeFinder Primary", StringComparison.OrdinalIgnoreCase));
+            var minimal = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals("VibeFinder Minimal", StringComparison.OrdinalIgnoreCase));
+            var playlist = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals("VibeFinder Playlist", StringComparison.OrdinalIgnoreCase));
+
+            TogglePrimary.IsOn = GetEffectiveWidgetEnabled(activeScene, primary);
+            ToggleMinimal.IsOn = GetEffectiveWidgetEnabled(activeScene, minimal);
+            TogglePlaylist.IsOn = GetEffectiveWidgetEnabled(activeScene, playlist);
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+    }
+
+    private static bool GetEffectiveWidgetEnabled(DesktopScene? scene, SkinDefinition? skin)
+    {
+        if (skin is null) return false;
+        var placement = scene?.Widgets.FirstOrDefault(p =>
+            p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+        return placement?.Visible ?? skin.Enabled;
+    }
+
+    private static void EnsureScenePlacement(DesktopScene scene, SkinDefinition skin)
+    {
+        if (scene.Widgets.Any(p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        scene.Widgets.Add(new SceneWidgetPlacement
+        {
+            WidgetId = skin.Id,
+            X = skin.X,
+            Y = skin.Y,
+            Scale = 1.0,
+            Rotation = 0,
+            Opacity = Math.Clamp(skin.Opacity, 0, 1),
+            ZIndex = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(p => p.ZIndex) + 1,
+            Visible = false,
+            Monitor = "Primary",
+            Definition = skin.Clone()
+        });
+    }
+
     private async void WidgetToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_isInitializing) return;
         if (sender is not ToggleSwitch toggle || toggle.Tag is not string skinName) return;
 
-        var skin = _skinManager.Skins.FirstOrDefault(s => s.Name == skinName);
-        if (skin is null || skin.Enabled == toggle.IsOn) return;
+        var skin = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals(skinName, StringComparison.OrdinalIgnoreCase));
+        if (skin is null) return;
 
         try
         {
             toggle.IsEnabled = false;
+
+            var activeScene = App.SceneService?.ActiveScene;
+            if (activeScene is not null)
+            {
+                EnsureScenePlacement(activeScene, skin);
+                var placement = activeScene.Widgets.First(p =>
+                    p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+                placement.Visible = toggle.IsOn;
+                placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
+                placement.Definition = skin.Clone(skin.Id);
+                await App.SceneService.UpsertAsync(activeScene);
+            }
+
             await _skinManager.SetEnabledAsync(skin, toggle.IsOn);
+            SyncWidgetTogglesFromActiveWorld();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "VibeFinderAIPage: widget toggle failed for {SkinName}", skinName);
-            // Restore the UI to the real persisted state if teardown/open failed.
-            toggle.IsOn = skin.Enabled;
+            SyncWidgetTogglesFromActiveWorld();
             StatusText.Text = $"Could not change {skinName}: {ex.Message}";
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red);
             StatusText.Visibility = Visibility.Visible;
@@ -231,7 +286,7 @@ public sealed partial class VibeFinderAIPage : Page
         foreach (var skin in vibeSkins)
         {
             _logger.LogDebug("VibeFinderAIPage: persisting VibeFinder skin {SkinName} sequentially", skin.Name);
-            await _skinManager.SaveSkinAsync(skin);
+            await _skinManager.PersistSkinDataAsync(skin);
         }
         _logger.LogInformation("VibeFinderAIPage: VibeFinder credentials persisted for {SkinCount} skin(s) without concurrent rebuilds", vibeSkins.Count);
     }
