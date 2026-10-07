@@ -15,6 +15,7 @@ public sealed partial class StudioPage : Page
     private bool _sceneApplyBusy;
     private bool _studioInitializing;
     private bool _autoApplyAesthetic;
+    private bool _worldControlsUpdating;
 
     // Display row for the WORLDS list. DesktopScene has no notion of "active" — that lives on
     // DesktopSceneService.ActiveScene — so we wrap each scene with a computed IsActive flag at
@@ -157,6 +158,8 @@ public sealed partial class StudioPage : Page
         ApplyStatus.Text = App.SceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true
             ? "This world is active. Browsing is safe; applying is explicit."
             : "Preview only — the desktop will not change until you apply this world.";
+
+        SyncWorldControls();
     }
 
     private async void AutoApplyAestheticToggle_Toggled(object sender, RoutedEventArgs e)
@@ -172,6 +175,119 @@ public sealed partial class StudioPage : Page
 
         if (_autoApplyAesthetic && _selected is not null && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
+    }
+
+    private static readonly string[] VibeWorldWidgetNames =
+    [
+        "VibeFinder Primary",
+        "VibeFinder Minimal",
+        "VibeFinder Playlist"
+    ];
+
+    private void SyncWorldControls()
+    {
+        if (_selected is null) return;
+
+        _worldControlsUpdating = true;
+        try
+        {
+            SelectedWorldAestheticToggle.IsOn = _selected.Behavior.ApplyAestheticOnSelection;
+
+            WorldVibePrimaryToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Primary");
+            WorldVibeMinimalToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Minimal");
+            WorldVibePlaylistToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Playlist");
+        }
+        finally
+        {
+            _worldControlsUpdating = false;
+        }
+    }
+
+    private bool IsWorldWidgetVisible(DesktopScene scene, string widgetName)
+    {
+        var skin = App.SkinManager?.Skins.FirstOrDefault(s =>
+            s.Name.Equals(widgetName, StringComparison.OrdinalIgnoreCase));
+        if (skin is null) return false;
+
+        var placement = scene.Widgets.FirstOrDefault(p =>
+            p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+
+        return placement?.Visible == true;
+    }
+
+    private static void EnsureWorldWidgetPlacement(DesktopScene scene, SkinDefinition skin)
+    {
+        if (scene.Widgets.Any(p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        scene.Widgets.Add(new SceneWidgetPlacement
+        {
+            WidgetId = skin.Id,
+            X = skin.X,
+            Y = skin.Y,
+            Scale = 1.0,
+            Rotation = 0,
+            Opacity = Math.Clamp(skin.Opacity, 0, 1),
+            ZIndex = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(p => p.ZIndex) + 1,
+            Visible = false,
+            Monitor = "Primary",
+            Definition = skin.Clone()
+        });
+    }
+
+    private async void SelectedWorldAestheticToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_worldControlsUpdating || _selected is null) return;
+
+        _selected.Behavior.ApplyAestheticOnSelection = SelectedWorldAestheticToggle.IsOn;
+        await App.SceneService.UpsertAsync(_selected);
+
+        ApplyStatus.Text = SelectedWorldAestheticToggle.IsOn
+            ? $"{_selected.Name}: automatic aesthetic apply enabled."
+            : $"{_selected.Name}: automatic aesthetic apply disabled.";
+
+        if (SelectedWorldAestheticToggle.IsOn && !_sceneApplyBusy)
+            await ApplySelectedWorldAsync();
+    }
+
+    private async void WorldVibeWidgetToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_worldControlsUpdating || _selected is null) return;
+        if (sender is not ToggleSwitch toggle || toggle.Tag is not string widgetName) return;
+
+        var skin = App.SkinManager?.Skins.FirstOrDefault(s =>
+            s.Name.Equals(widgetName, StringComparison.OrdinalIgnoreCase));
+        if (skin is null) return;
+
+        try
+        {
+            toggle.IsEnabled = false;
+            EnsureWorldWidgetPlacement(_selected, skin);
+
+            var placement = _selected.Widgets.First(p =>
+                p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+            placement.Visible = toggle.IsOn;
+            placement.Opacity = Math.Clamp(placement.Opacity, 0, 1);
+            placement.Definition ??= skin.Clone(skin.Id);
+
+            await App.SceneService.UpsertAsync(_selected);
+
+            if (App.SceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true)
+                await App.SkinManager.SetEnabledAsync(skin, toggle.IsOn);
+
+            ApplyStatus.Text = toggle.IsOn
+                ? $"{widgetName} enabled for {_selected.Name}."
+                : $"{widgetName} disabled for {_selected.Name}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyStatus.Text = $"Could not change {widgetName}: {ex.Message}";
+            SyncWorldControls();
+        }
+        finally
+        {
+            toggle.IsEnabled = true;
+        }
     }
 
     private async Task SaveCurrentSceneLayoutAsync(DesktopScene scene)
@@ -322,7 +438,7 @@ public sealed partial class StudioPage : Page
         UpdateAutoSwitchUi();
         UpdateSetActiveButtonState();
 
-        if (_autoApplyAesthetic && !_sceneApplyBusy)
+        if ((_autoApplyAesthetic || _selected.Behavior.ApplyAestheticOnSelection) && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
         else
             SyncStudioState();
