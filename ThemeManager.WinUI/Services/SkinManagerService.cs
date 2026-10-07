@@ -25,6 +25,7 @@ public sealed class SkinManagerService : IDisposable
     private readonly Stopwatch _schedulerClock = Stopwatch.StartNew();
     private readonly WidgetTickScheduler _scheduler = new();
     private bool _widgetsHidden;
+    private readonly SemaphoreSlim _windowMutationGate = new(1, 1);
     private const int SchedulerQuantumMs = 50;
     private static readonly IReadOnlyDictionary<string, SkinDefinition> CanonicalDefaults =
         SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
@@ -83,9 +84,28 @@ public sealed class SkinManagerService : IDisposable
 
     public async Task SetEnabledAsync(SkinDefinition skin, bool enabled)
     {
-        skin.Enabled = enabled;
-        if (enabled) OpenWindowFor(skin); else await CloseWindowFor(skin);
-        await PersistAsync(true);
+        ArgumentNullException.ThrowIfNull(skin);
+
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            if (skin.Enabled == enabled)
+            {
+                await SyncActiveScenePlacementAsync(skin);
+                return;
+            }
+
+            skin.Enabled = enabled;
+            if (enabled) OpenWindowFor(skin);
+            else await CloseWindowFor(skin);
+
+            await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
     }
 
     public async Task SetOpacityAsync(SkinDefinition skin, double opacity)
@@ -157,7 +177,10 @@ public sealed class SkinManagerService : IDisposable
     {
         ArgumentNullException.ThrowIfNull(placements);
 
-        var scenePlacements = placements
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            var scenePlacements = placements
             .Where(p => !string.IsNullOrWhiteSpace(p.WidgetId))
             .OrderBy(p => p.ZIndex)
             .ToList();
@@ -258,7 +281,12 @@ public sealed class SkinManagerService : IDisposable
             missing,
             scenePlacements.Count);
 
-        return (applied, missing);
+            return (applied, missing);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
     }
 
     private async Task ApplyScenePlacementCoreAsync(SkinDefinition skin, double x, double y, double opacity, bool enabled)
@@ -288,8 +316,35 @@ public sealed class SkinManagerService : IDisposable
 
     private async void OnWindowMoved(SkinDefinition skin, double x, double y)
     {
-        skin.X = x; skin.Y = y;
-        await PersistAsync(false);
+        try
+        {
+            skin.X = x;
+            skin.Y = y;
+            await PersistAsync(false);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to remember widget {SkinId} position in the active desktop world", skin.Id);
+        }
+    }
+
+    private async Task SyncActiveScenePlacementAsync(SkinDefinition skin)
+    {
+        var scene = App.SceneService?.ActiveScene;
+        if (scene is null) return;
+
+        var placement = scene.Widgets.FirstOrDefault(
+            p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+        if (placement is null) return;
+
+        placement.X = skin.X;
+        placement.Y = skin.Y;
+        placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
+        placement.Visible = skin.Enabled;
+        placement.Definition = skin.Clone(skin.Id);
+
+        await App.SceneService.UpsertAsync(scene);
     }
 
     public void ToggleAllWidgetsVisibility()
@@ -308,14 +363,51 @@ public sealed class SkinManagerService : IDisposable
 
     public async Task SaveSkinAsync(SkinDefinition skin)
     {
-        if (_open.ContainsKey(skin.Id)) { await CloseWindowFor(skin); if (skin.Enabled) OpenWindowFor(skin); }
-        else if (skin.Enabled) OpenWindowFor(skin);
-        await PersistAsync(true);
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            if (_open.ContainsKey(skin.Id))
+            {
+                await CloseWindowFor(skin);
+                if (skin.Enabled) OpenWindowFor(skin);
+            }
+            else if (skin.Enabled)
+            {
+                OpenWindowFor(skin);
+            }
+
+            await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
     }
 
     public async Task DeleteSkinAsync(SkinDefinition skin)
     {
-        await CloseWindowFor(skin); _skins.RemoveAll(s => s.Id == skin.Id); await PersistAsync(true);
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            await CloseWindowFor(skin);
+            _skins.RemoveAll(s => s.Id == skin.Id);
+
+            var scene = App.SceneService.ActiveScene;
+            var placement = scene?.Widgets.FirstOrDefault(p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+            if (placement is not null)
+                scene!.Widgets.Remove(placement);
+            if (scene is not null)
+                await App.SceneService.UpsertAsync(scene);
+
+            await PersistAsync(true);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
     }
 
     private void OpenWindowFor(SkinDefinition skin)
@@ -328,7 +420,14 @@ public sealed class SkinManagerService : IDisposable
         window.LockToggleRequested += () => _ = SetLockedAsync(skin, !skin.Locked);
         window.ResetPositionRequested += () => _ = ResetPositionAsync(skin);
         window.DisableRequested += () => _ = SetEnabledAsync(skin, false);
-        window.Closed += (_, _) => _open.Remove(skin.Id);
+        window.Closed += (_, _) =>
+        {
+            if (_open.TryGetValue(skin.Id, out var current) && ReferenceEquals(current.Window, window))
+            {
+                _open.Remove(skin.Id);
+                _scheduler.Remove(skin.Id);
+            }
+        };
         _open[skin.Id] = (window, viewModel);
         _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
 
@@ -374,10 +473,38 @@ public sealed class SkinManagerService : IDisposable
     private async Task CloseWindowFor(SkinDefinition skin)
     {
         if (!_open.TryGetValue(skin.Id, out var entry)) return;
-        _open.Remove(skin.Id); _scheduler.Remove(skin.Id); entry.ViewModel.IsClosed = true;
-        entry.Window.AppWindow.Hide(); entry.Window.PrepareForClose();
-        if (skin.DesktopLayer) await Task.Delay(150);
-        try { entry.Window.Close(); } catch (Exception ex) { _logger.LogWarning(ex, "Widget window failed to close cleanly for skin {SkinId} ({SkinName})", skin.Id, skin.Name); }
+
+        _open.Remove(skin.Id);
+        _scheduler.Remove(skin.Id);
+
+        // Stop measure-owned background work before destroying the HWND. This is particularly
+        // important for VibeFinder widgets, whose recommendation/login tasks outlive a single
+        // visual frame. Closing one of several VibeFinder instances must not leave its measure
+        // objects racing the remaining windows.
+        entry.ViewModel.DisposeMeasures();
+
+        try { entry.Window.AppWindow.Hide(); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Widget {SkinId}: hide during teardown failed", skin.Id); }
+
+        entry.Window.PrepareForClose();
+
+        // Desktop-layer windows need a small native settle time after detachment before Close().
+        if (skin.DesktopLayer)
+            await Task.Delay(150);
+
+        await YieldToDispatcherAsync();
+
+        try
+        {
+            entry.Window.Close();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Widget window failed to close cleanly for skin {SkinId} ({SkinName})",
+                skin.Id,
+                skin.Name);
+        }
     }
 
     private async Task PersistAsync(bool notifyListChanged)
@@ -393,7 +520,11 @@ public sealed class SkinManagerService : IDisposable
     {
         _timer?.Stop();
         foreach (var (window, _) in _open.Values) { window.PrepareForClose(); try { window.Close(); } catch (Exception ex) { _logger.LogWarning(ex, "A widget window failed to close cleanly during shutdown"); } }
-        _open.Clear(); _scheduler.Clear();
+        foreach (var (_, entry) in _open.Values)
+            entry.ViewModel.DisposeMeasures();
+        _open.Clear();
+        _scheduler.Clear();
+        _windowMutationGate.Dispose();
     }
 
     public void EnsureVibeFinderSkinsExist()
@@ -415,9 +546,27 @@ public sealed class SkinManagerService : IDisposable
             }
             else
             {
-                var enabled = skin.Enabled; var x = skin.X; var y = skin.Y; var opacity = skin.Opacity; var aot = skin.AlwaysOnTop; var locked = skin.Locked; var layer = skin.DesktopLayer;
+                var needsRebuild = !skin.Variables.TryGetValue("designVersion", out var version) ||
+                                   !string.Equals(version, DefaultWidgetCatalog.DesignVersion, StringComparison.Ordinal);
+                if (!needsRebuild) continue;
+
+                var enabled = skin.Enabled;
+                var x = skin.X;
+                var y = skin.Y;
+                var opacity = skin.Opacity;
+                var aot = skin.AlwaysOnTop;
+                var locked = skin.Locked;
+                var layer = skin.DesktopLayer;
+
                 DefaultWidgetCatalog.RebuildVibeFinder(skin);
-                skin.Enabled = enabled; skin.X = x; skin.Y = y; skin.Opacity = opacity; skin.AlwaysOnTop = aot; skin.Locked = locked; skin.DesktopLayer = layer;
+
+                skin.Enabled = enabled;
+                skin.X = x;
+                skin.Y = y;
+                skin.Opacity = opacity;
+                skin.AlwaysOnTop = aot;
+                skin.Locked = locked;
+                skin.DesktopLayer = layer;
                 changed = true;
             }
         }
