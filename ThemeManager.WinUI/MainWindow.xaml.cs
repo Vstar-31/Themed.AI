@@ -204,16 +204,19 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        string vibeText = string.Equals(rawPrompt.Trim(), ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase)
+        string rawText = rawPrompt.Trim();
+        string vibeText = string.Equals(rawText, ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase)
             ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
-            : rawPrompt.Trim();
+            : rawText;
 
         if (string.IsNullOrWhiteSpace(vibeText)) return;
 
         try
         {
             var core = VibeFinderPrewarmWebView.CoreWebView2;
-            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText }));
+            // Mirror the saved prompt in the web UI while keeping the resolved theme phrase
+            // for the actual analysis request.
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
             core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setTrackLimit", value = VibeTrackLimit }));
             core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = VibeTrackLimit }));
             _logger.LogDebug("VibeFinder prewarm: pushed prompt and triggered analysis for {User}", user);
