@@ -52,29 +52,12 @@ public sealed partial class StudioPage : Page
     public StudioPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) =>
-        {
-            _studioInitializing = true;
-            _autoApplyAesthetic = LoadAutoApplyAestheticPreference();
-            AutoApplyAestheticToggle.IsOn = _autoApplyAesthetic;
-
-            await App.SceneService.InitializeAsync();
-            await App.StartWorldRuntimeAsync();
-            await SeedStarterWorldsAsync();
-            Refresh();
-
-            _studioInitializing = false;
-            SyncStudioState();
-        };
         App.SceneService.ScenesChanged += OnScenesChanged;
         App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
         App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
-        Unloaded += (_, _) =>
-        {
-            App.SceneService.ScenesChanged -= OnScenesChanged;
-            App.SceneService.ActiveSceneChanged -= OnActiveSceneChanged;
-            App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
-        };
+        App.SceneService.ScenesChanged += OnScenesChanged;
+        App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
+        App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
     }
 
     private void ThemeService_ThemeChanged(object? sender, CozyTheme e) =>
@@ -179,22 +162,6 @@ public sealed partial class StudioPage : Page
             : "Preview only — the desktop will not change until you apply this world.";
     }
 
-    private void StudioPage_ActiveStateLoaded(object sender, RoutedEventArgs e) => SyncStudioState();
-
-    private async void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var active = App.SceneService.ActiveScene;
-            if (active is not null && App.SkinManager is not null)
-                await SaveCurrentSceneLayoutAsync(active);
-        }
-        catch (Exception ex)
-        {
-            App.LoggerFactory.CreateLogger<StudioPage>().LogDebug(ex, "Studio: failed to persist active world layout on unload");
-        }
-    }
-
     private async void AutoApplyAestheticToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_studioInitializing) return;
@@ -208,23 +175,6 @@ public sealed partial class StudioPage : Page
 
         if (_autoApplyAesthetic && _selected is not null && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
-    }
-
-    private async void AutoSwitchToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_studioInitializing || _selected is null) return;
-        _selected.Behavior.AutoSwitch = AutoSwitchToggle.IsOn;
-        await App.SceneService.UpsertAsync(_selected);
-        AutoSwitchStatusText.Text = AutoSwitchToggle.IsOn
-            ? "VibeFinder may switch to a matching world automatically."
-            : "Manual world selection only.";
-    }
-
-    private void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is null) return;
-        App.SceneService.SetActiveScene(_selected);
-        SyncStudioState();
     }
 
     private async Task SaveCurrentSceneLayoutAsync(DesktopScene scene)
@@ -371,6 +321,9 @@ public sealed partial class StudioPage : Page
             await SaveCurrentSceneLayoutAsync(outgoing);
 
         Select(item.Scene, false);
+
+        UpdateAutoSwitchUi();
+        UpdateSetActiveButtonState();
 
         if (_autoApplyAesthetic && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
