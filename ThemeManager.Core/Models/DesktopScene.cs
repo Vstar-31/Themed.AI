@@ -58,6 +58,14 @@ public sealed class SceneBehavior
     public bool ReactToVibeFinder { get; set; } = true;
     public bool ReactToWeather { get; set; }
     public bool AutoSwitch { get; set; }
+
+    /// <summary>
+    /// When enabled in Desktop Studio, selecting this scene immediately applies its visual
+    /// aesthetic (theme, wallpaper and widget composition). Disabled by default so merely
+    /// browsing Studio never changes the desktop.
+    /// </summary>
+    public bool ApplyAestheticOnSelection { get; set; }
+
     public double TransitionSeconds { get; set; } = 0.8;
     public double MotionIntensity { get; set; } = 0.35;
     public double AudioSensitivity { get; set; } = 0.65;
