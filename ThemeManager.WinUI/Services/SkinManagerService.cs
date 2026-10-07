@@ -214,6 +214,7 @@ public sealed class SkinManagerService : IDisposable
 
         var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
         var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var successfulPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
         var applied = 0;
         var missing = 0;
 
@@ -241,7 +242,7 @@ public sealed class SkinManagerService : IDisposable
                 {
                     missing++;
                     _logger.LogWarning(
-                        "Desktop world placement {WidgetId} has no live or recoverable widget definition; skipping it",
+                        "Desktop world removed orphaned placement {WidgetId} with no live or recoverable widget definition",
                         placement.WidgetId);
                     continue;
                 }
@@ -265,6 +266,7 @@ public sealed class SkinManagerService : IDisposable
                 placement.Y,
                 placement.Opacity,
                 placement.Visible);
+            successfulPlacements.Add(placement);
             applied++;
 
             // World application can create several WinUI top-level windows in one dispatcher turn.
@@ -287,10 +289,10 @@ public sealed class SkinManagerService : IDisposable
         {
             var owner = App.SceneService.Scenes.FirstOrDefault(s =>
                 ReferenceEquals(s.Widgets, sourcePlacements));
-            if (owner is not null && sourcePlacements.Count != scenePlacements.Count)
+            if (owner is not null && sourcePlacements.Count != successfulPlacements.Count)
             {
                 sourcePlacements.Clear();
-                sourcePlacements.AddRange(scenePlacements);
+                sourcePlacements.AddRange(successfulPlacements);
                 await App.SceneService.UpsertAsync(owner);
             }
         }
