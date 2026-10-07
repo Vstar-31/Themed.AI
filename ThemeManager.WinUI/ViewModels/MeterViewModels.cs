@@ -335,7 +335,12 @@ public sealed class IconMeterViewModel : MeterViewModelBase
             // arrive on a different refresh tick, so don't let a stale "PLAYING" value keep the
             // Pause glyph visible after playback has actually stopped.
             if (string.Equals(_measureName, "VibeState", StringComparison.OrdinalIgnoreCase))
-                Glyph = VibeFinderWebState.IsPlaying ? "\uE769" : "\uE768"; // Pause : Play
+            {
+                var playing = VibeFinderWebState.IsPlayerActive
+                    ? VibeFinderWebState.IsPlaying
+                    : VibeFinderPreviewPlayer.IsPlaying;
+                Glyph = playing ? "\uE769" : "\uE768"; // Pause : Play
+            }
             else if (measure.Text == "PLAYING")
                 Glyph = "\uE769"; // Pause icon
             else if (measure.Text == "PAUSED")
