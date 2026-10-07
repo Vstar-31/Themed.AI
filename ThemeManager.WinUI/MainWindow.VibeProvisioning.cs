@@ -33,23 +33,17 @@ public sealed partial class MainWindow
         if (playlistWidget is not null && credentialedWidget is not null && !ReferenceEquals(playlistWidget, credentialedWidget))
         {
             CopyTargetToVibeMeasures(credentialedWidget, playlistWidget);
-            await App.SkinManager.SaveSkinAsync(playlistWidget);
+            await App.SkinManager.PersistSkinDataAsync(playlistWidget);
             _logger.LogInformation("VibeFinder provisioning: copied saved VibeFinder target into Playlist widget");
         }
 
-        var vibeWidget = playlistWidget ?? credentialedWidget ?? App.SkinManager.Skins.FirstOrDefault(s =>
-            s.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase));
-
-        if (vibeWidget is not null && !vibeWidget.Enabled)
-        {
-            await App.SkinManager.SetEnabledAsync(vibeWidget, true);
-            _logger.LogInformation("VibeFinder provisioning: enabled {WidgetName} for desktop integration", vibeWidget.Name);
-        }
-
+        // VFAI widgets are user-controlled. Provisioning must never silently enable a widget,
+        // add it to every Studio world, or apply the active world. Those operations belong to
+        // the user's VFAI/Studio controls and were the source of duplicate windows and world
+        // preferences being overwritten on startup.
         EnsureVibeFinderPrewarm();
 
         await App.SceneService.InitializeAsync();
-        await EnsureVibeFinderPlacementAsync(vibeWidget);
     }
 
     private SkinDefinition? FindCredentialedWidget()
@@ -98,70 +92,6 @@ public sealed partial class MainWindow
             if (measure.Type is MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood)
                 measure.Target = target;
         }
-    }
-
-    private async Task EnsureVibeFinderPlacementAsync(SkinDefinition? vibeWidget)
-    {
-        if (vibeWidget is null || App.SceneService.Scenes.Count == 0) return;
-
-        var widgetsById = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var scene in App.SceneService.Scenes.ToList())
-        {
-            var sceneChanged = false;
-            var placement = scene.Widgets.FirstOrDefault(w =>
-                w.WidgetId.Equals(vibeWidget.Id, StringComparison.OrdinalIgnoreCase));
-
-            if (placement is null)
-            {
-                var nextZ = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(w => w.ZIndex) + 1;
-                scene.Widgets.Add(new SceneWidgetPlacement
-                {
-                    WidgetId = vibeWidget.Id,
-                    X = 40,
-                    Y = 360,
-                    Scale = 1.0,
-                    Rotation = 0,
-                    Opacity = 0.94,
-                    ZIndex = nextZ,
-                    Visible = true,
-                    Monitor = "Primary",
-                    Definition = vibeWidget.Clone()
-                });
-                scene.Behavior.ReactToVibeFinder = true;
-                sceneChanged = true;
-            }
-            else if (placement.Definition is null)
-            {
-                placement.Definition = vibeWidget.Clone();
-                sceneChanged = true;
-            }
-
-            // Repair snapshots for every other legacy placement that still exists in the current
-            // widget library. After this pass, worlds no longer depend on skins.json retaining every
-            // historical definition.
-            foreach (var widgetPlacement in scene.Widgets)
-            {
-                if (widgetPlacement.Definition is not null) continue;
-                if (!widgetsById.TryGetValue(widgetPlacement.WidgetId, out var currentWidget)) continue;
-                widgetPlacement.Definition = currentWidget.Clone();
-                sceneChanged = true;
-            }
-
-            if (sceneChanged)
-                await App.SceneService.UpsertAsync(scene);
-        }
-
-        if (App.SceneService.ActiveScene is { } active)
-        {
-            var result = await App.SkinManager!.ApplySceneAsync(active.Widgets);
-            _logger.LogInformation(
-                "VibeFinder provisioning: rehydrated active world with {AppliedCount} widgets ({MissingCount} missing definitions)",
-                result.Applied,
-                result.Missing);
-        }
-
-        _logger.LogInformation("VibeFinder provisioning: ensured widget {WidgetId} is part of {SceneCount} desktop worlds", vibeWidget.Id, App.SceneService.Scenes.Count);
     }
 
     private void OnProvisioningThemeChanged(object? sender, CozyTheme theme)
