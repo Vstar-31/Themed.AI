@@ -17,9 +17,15 @@ public static class VibeFinderWebState
     private static ILogger _logger = NullLogger.Instance;
     private static Action<string>? _sendCommand;
     private static long _stateVersion;
+
+    // Only one web embed is allowed to be authoritative for playback/results at a time.
+    // The visible VibeFinderAIPage wins over the zero-size prewarm WebView; without this
+    // gate the two React instances can race and make widgets jump between two playlists.
+    private static int _visibleEmbedActive;
     private static CancellationTokenSource? _nativeFallbackCts;
 
     public static bool IsActive { get; private set; }
+    public static bool IsVisibleEmbedActive => Volatile.Read(ref _visibleEmbedActive) != 0;
     public static bool IsPlaying { get; private set; }
     public static string Title { get; private set; } = "—";
     public static string Artist { get; private set; } = "—";
@@ -53,7 +59,21 @@ public static class VibeFinderWebState
 
     public static void Initialize(ILogger logger) => _logger = logger;
 
-    public static void HandleMessage(string messageJson)
+    public static void ClaimVisibleEmbed()
+    {
+        Interlocked.Exchange(ref _visibleEmbedActive, 1);
+        _logger.LogDebug("VibeFinderWebState: visible embed claimed playback/results authority");
+    }
+
+    public static void ReleaseVisibleEmbed()
+    {
+        Interlocked.Exchange(ref _visibleEmbedActive, 0);
+        _logger.LogDebug("VibeFinderWebState: visible embed released playback/results authority");
+    }
+
+    public static void HandleMessage(string messageJson) => HandleMessage(messageJson, false);
+
+    public static void HandleMessage(string messageJson, bool fromVisibleEmbed)
     {
         try
         {
@@ -61,6 +81,17 @@ public static class VibeFinderWebState
             var root = doc.RootElement;
             if (!root.TryGetProperty("type", out var typeEl)) return;
             var type = typeEl.GetString();
+
+            // The hidden prewarm browser remains alive for widget-only use, but once the
+            // full VibeFinder page is open its analysis/playback messages are stale by
+            // definition relative to what the user is looking at.
+            if (!fromVisibleEmbed && IsVisibleEmbedActive &&
+                type is "VIBEFINDER_RESULTS" or "VIBEFINDER_STATE" or "VIBEFINDER_ANALYSIS_COMPLETE" or "VIBEFINDER_PLAYBACK_RESET" or "VIBEFINDER_PROFILE")
+            {
+                _logger.LogTrace("VibeFinderWebState: ignored {Type} from hidden prewarm embed while visible embed is authoritative", type);
+                return;
+            }
+
             if (type == "VIBEFINDER_RESULTS") { HandleResults(root); return; }
             if (type == "VIBEFINDER_STATE") { HandlePlayerState(root); return; }
             if (type == "VIBEFINDER_ANALYSIS_COMPLETE") { HandleAnalysisComplete(root); return; }
@@ -175,7 +206,12 @@ public static class VibeFinderWebState
         CancelNativeFallback();
         IsActive = true;
         IsPlayerActive = true;
-        if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False) IsPlaying = play.GetBoolean();
+        if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            IsPlaying = play.GetBoolean();
+            if (IsPlaying)
+                VibeFinderPreviewPlayer.Stop();
+        }
         if (root.TryGetProperty("title", out var title)) Title = title.GetString() ?? "—";
         if (root.TryGetProperty("artist", out var artist)) Artist = artist.GetString() ?? "—";
         if (root.TryGetProperty("coverArt", out var cover)) CoverArt = cover.GetString();
