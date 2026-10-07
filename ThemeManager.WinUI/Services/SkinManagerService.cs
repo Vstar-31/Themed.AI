@@ -519,9 +519,19 @@ public sealed class SkinManagerService : IDisposable
     public void Dispose()
     {
         _timer?.Stop();
-        foreach (var (window, _) in _open.Values) { window.PrepareForClose(); try { window.Close(); } catch (Exception ex) { _logger.LogWarning(ex, "A widget window failed to close cleanly during shutdown"); } }
+
         foreach (var (_, entry) in _open.Values)
             entry.ViewModel.DisposeMeasures();
+
+        foreach (var (window, _) in _open.Values)
+        {
+            try { window.PrepareForClose(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Widget teardown preparation failed during shutdown"); }
+
+            try { window.Close(); }
+            catch (Exception ex) { _logger.LogWarning(ex, "A widget window failed to close cleanly during shutdown"); }
+        }
+
         _open.Clear();
         _scheduler.Clear();
         _windowMutationGate.Dispose();
