@@ -178,7 +178,7 @@ public sealed partial class StudioPage : Page
     }
 
     private bool ShouldAutoApplyWorld(DesktopScene scene)
-        => _autoApplyAesthetic || scene.Behavior.ApplyAestheticOnSelection;
+        => scene.Behavior.ApplyAestheticOnSelection ?? _autoApplyAesthetic;
 
     private void SyncWorldControls()
     {
@@ -187,7 +187,7 @@ public sealed partial class StudioPage : Page
         _worldControlsUpdating = true;
         try
         {
-            SelectedWorldAestheticToggle.IsOn = _selected.Behavior.ApplyAestheticOnSelection;
+            SelectedWorldAestheticToggle.IsOn = _selected.Behavior.ApplyAestheticOnSelection ?? _autoApplyAesthetic;
 
             WorldVibePrimaryToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Primary");
             WorldVibeMinimalToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Minimal");
