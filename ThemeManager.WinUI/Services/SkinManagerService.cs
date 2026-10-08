@@ -230,6 +230,7 @@ public sealed class SkinManagerService : IDisposable
                     "Desktop world ignored duplicate widget placement {WidgetId} ({WidgetName})",
                     placement.WidgetId,
                     placement.Definition?.Name ?? "(unknown)");
+                sceneWasMutated = true;
                 continue;
             }
 
@@ -241,6 +242,7 @@ public sealed class SkinManagerService : IDisposable
         var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
         var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var successfulPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
+        var sceneWasMutated = false;
         var applied = 0;
         var missing = 0;
 
@@ -265,6 +267,7 @@ public sealed class SkinManagerService : IDisposable
                         var oldWidgetId = placement.WidgetId;
                         skin = liveVibe;
                         placement.WidgetId = liveVibe.Id;
+                        sceneWasMutated = true;
                         _logger.LogInformation(
                             "Desktop world rebound legacy widget placement {OldWidgetId} to canonical {WidgetId} ({WidgetName})",
                             oldWidgetId, skin.Id, skin.Name);
@@ -289,6 +292,7 @@ public sealed class SkinManagerService : IDisposable
                 else
                 {
                     missing++;
+                    sceneWasMutated = true;
                     _logger.LogWarning(
                         "Desktop world removed orphaned placement {WidgetId} with no live or recoverable widget definition",
                         placement.WidgetId);
@@ -337,7 +341,7 @@ public sealed class SkinManagerService : IDisposable
         {
             var owner = App.SceneService.Scenes.FirstOrDefault(s =>
                 ReferenceEquals(s.Widgets, sourcePlacements));
-            if (owner is not null && sourcePlacements.Count != successfulPlacements.Count)
+            if (owner is not null && sceneWasMutated)
             {
                 sourcePlacements.Clear();
                 sourcePlacements.AddRange(successfulPlacements);
