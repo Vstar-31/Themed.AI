@@ -209,8 +209,9 @@ public sealed partial class VibeFinderAIPage : Page
         {
             toggle.IsEnabled = false;
 
-            var activeScene = App.SceneService?.ActiveScene;
-            if (activeScene is not null)
+            var sceneService = App.SceneService;
+            var activeScene = sceneService?.ActiveScene;
+            if (activeScene is not null && sceneService is not null)
             {
                 EnsureScenePlacement(activeScene, skin);
                 var placement = activeScene.Widgets.First(p =>
@@ -218,7 +219,7 @@ public sealed partial class VibeFinderAIPage : Page
                 placement.Visible = toggle.IsOn;
                 placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
                 placement.Definition = skin.Clone(skin.Id);
-                await App.SceneService.UpsertAsync(activeScene);
+                await sceneService.UpsertAsync(activeScene);
             }
 
             await _skinManager.SetEnabledAsync(skin, toggle.IsOn);
