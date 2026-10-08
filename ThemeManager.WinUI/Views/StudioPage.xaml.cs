@@ -268,8 +268,11 @@ public sealed partial class StudioPage : Page
 
             await App.SceneService.UpsertAsync(_selected);
 
-            if (App.SceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true)
-                await App.SkinManager.SetEnabledAsync(skin, toggle.IsOn);
+            var sceneService = App.SceneService;
+            var skinManager = App.SkinManager;
+            if (sceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true &&
+                skinManager is not null)
+                await skinManager.SetEnabledAsync(skin, toggle.IsOn);
 
             ApplyStatus.Text = toggle.IsOn
                 ? $"{widgetName} enabled for {_selected.Name}."
@@ -434,7 +437,8 @@ public sealed partial class StudioPage : Page
         UpdateAutoSwitchUi();
         UpdateSetActiveButtonState();
 
-        if (ShouldAutoApplyWorld(_selected) && !_sceneApplyBusy)
+        var selected = _selected;
+        if (selected is not null && ShouldAutoApplyWorld(selected) && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
         else
             SyncStudioState();
