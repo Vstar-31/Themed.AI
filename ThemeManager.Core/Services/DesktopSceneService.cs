@@ -7,6 +7,7 @@ public sealed class DesktopSceneService
     private readonly DesktopSceneRepository _repository;
     private List<DesktopScene> _scenes = new();
     private bool _initialized;
+    private readonly SemaphoreSlim _initializeGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     public IReadOnlyList<DesktopScene> Scenes => _scenes;
@@ -19,17 +20,29 @@ public sealed class DesktopSceneService
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (_initialized) return;
-        _scenes = await _repository.LoadAllAsync(cancellationToken);
-        _initialized = true;
 
-        var activeId = await _repository.LoadActiveSceneIdAsync(cancellationToken);
-        var restored = !string.IsNullOrWhiteSpace(activeId)
-            ? _scenes.FirstOrDefault(s => s.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
-            : null;
+        await _initializeGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_initialized) return;
 
-        ActiveScene = restored ?? _scenes.FirstOrDefault();
-        ScenesChanged?.Invoke(this, EventArgs.Empty);
-        ActiveSceneChanged?.Invoke(this, ActiveScene);
+            _scenes = await _repository.LoadAllAsync(cancellationToken);
+
+            var activeId = await _repository.LoadActiveSceneIdAsync(cancellationToken);
+            var restored = !string.IsNullOrWhiteSpace(activeId)
+                ? _scenes.FirstOrDefault(s => s.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            ActiveScene = restored ?? _scenes.FirstOrDefault();
+            _initialized = true;
+
+            ScenesChanged?.Invoke(this, EventArgs.Empty);
+            ActiveSceneChanged?.Invoke(this, ActiveScene);
+        }
+        finally
+        {
+            _initializeGate.Release();
+        }
     }
 
     public async Task UpsertAsync(DesktopScene scene, CancellationToken cancellationToken = default)
