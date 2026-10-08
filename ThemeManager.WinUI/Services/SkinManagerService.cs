@@ -250,10 +250,31 @@ public sealed class SkinManagerService : IDisposable
             {
                 if (placement.Definition is not null)
                 {
-                    skin = placement.Definition.Clone(placement.WidgetId);
-                    _logger.LogInformation(
-                        "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
-                        skin.Id, skin.Name);
+                    // Legacy worlds may contain an old random WidgetId while the snapshot still
+                    // identifies the canonical VibeFinder widget by name. Rebind it to the live
+                    // definition instead of creating a second native widget instance.
+                    var snapshotName = placement.Definition.Name?.Trim();
+                    var liveVibe = !string.IsNullOrWhiteSpace(snapshotName) &&
+                                   IsVibeFinderSkin(placement.Definition)
+                        ? _skins.FirstOrDefault(s =>
+                            s.Name.Equals(snapshotName, StringComparison.OrdinalIgnoreCase))
+                        : null;
+
+                    if (liveVibe is not null)
+                    {
+                        skin = liveVibe;
+                        placement.WidgetId = liveVibe.Id;
+                        _logger.LogInformation(
+                            "Desktop world rebound legacy widget placement {OldWidgetId} to canonical {WidgetId} ({WidgetName})",
+                            placement.WidgetId, skin.Id, skin.Name);
+                    }
+                    else
+                    {
+                        skin = placement.Definition.Clone(placement.WidgetId);
+                        _logger.LogInformation(
+                            "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
+                            skin.Id, skin.Name);
+                    }
                 }
                 else if (CanonicalDefaults.TryGetValue(placement.WidgetId, out var canonical))
                 {
