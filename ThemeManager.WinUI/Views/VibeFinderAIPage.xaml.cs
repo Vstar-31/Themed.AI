@@ -59,23 +59,7 @@ public sealed partial class VibeFinderAIPage : Page
                 }
                 ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json, fromVisibleEmbed: true);
             };
-            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = (cmd) =>
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    try
-                    {
-                        var core = VibeFinderWebView.CoreWebView2;
-                        if (core is null) return;
-                        core.PostWebMessageAsJson(cmd);
-                        _logger.LogTrace("VibeFinderAIPage: posted command to embed: {Command}", cmd);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "VibeFinderAIPage: failed to post command to embed: {Command}", cmd);
-                    }
-                });
-            };
+            BindVisibleEmbedBridge();
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
 
@@ -120,6 +104,7 @@ public sealed partial class VibeFinderAIPage : Page
         }
         var uri = sender.Source;
         if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+        BindVisibleEmbedBridge();
         _logger.LogDebug("VibeFinderAIPage: navigation completed for {Uri}", uri);
         string user = UsernameBox.Text?.Trim() ?? "";
         string pass = PasswordBox.Password ?? "";
@@ -145,6 +130,40 @@ public sealed partial class VibeFinderAIPage : Page
         {
             _logger.LogWarning(ex, "VibeFinderAIPage: auto-login script injection failed for user \"{User}\" — WebView2 may have been torn down during navigation", user);
         }
+    }
+
+    private void BindVisibleEmbedBridge()
+    {
+        if (VibeFinderWebView.CoreWebView2 is null)
+        {
+            _logger.LogTrace("VibeFinderAIPage: visible embed bridge bind skipped — CoreWebView2 is not initialized");
+            return;
+        }
+
+        ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = commandJson =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    var core = VibeFinderWebView.CoreWebView2;
+                    if (core is null)
+                    {
+                        _logger.LogDebug("VibeFinderAIPage: command dropped because CoreWebView2 is unavailable");
+                        return;
+                    }
+
+                    core.PostWebMessageAsJson(commandJson);
+                    _logger.LogTrace("VibeFinderAIPage: posted command to embed: {Command}", commandJson);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinderAIPage: failed to post command to embed: {Command}", commandJson);
+                }
+            });
+        };
+
+        _logger.LogDebug("VibeFinderAIPage: visible embed bridge bound");
     }
 
     private void SyncWidgetTogglesFromActiveWorld()
