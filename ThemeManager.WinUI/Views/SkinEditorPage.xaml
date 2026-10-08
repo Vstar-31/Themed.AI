@@ -112,6 +112,14 @@
                                                 <TextBox Text="{x:Bind Target, Mode=TwoWay}"
                                                          PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
                                                          Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <TextBox Header="Formula expression"
+                                                         Text="{x:Bind Expression, Mode=TwoWay}"
+                                                         PlaceholderText="e.g. CpuUsage + MemUsage / 2"
+                                                         Visibility="{x:Bind IsFormula, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <TextBlock Text="Formula supports +, -, *, /, parentheses, and abs/min/max/round/floor/ceil/clamp. Reference other measure names directly."
+                                                           Style="{StaticResource CaptionStyle}"
+                                                           TextWrapping="Wrap"
+                                                           Visibility="{x:Bind IsFormula, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                                 <ComboBox ItemsSource="{x:Bind vm:MeasureEditorItem.WebJsonPresetOptions}"
                                                           DisplayMemberPath="Label"
                                                           PlaceholderText="Or pick a preset…"
@@ -147,9 +155,11 @@
                                 <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
 
-                            <ListView ItemsSource="{x:Bind ViewModel.Meters}"
+                            <ListView x:Name="MetersList"
+                                      ItemsSource="{x:Bind ViewModel.Meters}"
                                       SelectedItem="{x:Bind ViewModel.SelectedMeter, Mode=TwoWay}"
-                                      SelectionMode="Single">
+                                      SelectionMode="Multiple"
+                                      SelectionChanged="MetersList_SelectionChanged">
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="vm:MeterEditorItem">
                                         <Grid Padding="4,2">
@@ -180,6 +190,79 @@
                                 <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
                                 <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+
+                    <!-- Composition groups -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Groups" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBlock Text="Select several meters above, then group them. Groups share position, scale, rotation, opacity and optional clipping."
+                                       Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Group selected" Click="GroupSelectedMeters_Click" />
+                                <Button Content="Ungroup selected" Click="UngroupSelectedMeters_Click" />
+                            </StackPanel>
+
+                            <ListView x:Name="GroupsList"
+                                      ItemsSource="{x:Bind ViewModel.Groups}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedGroup, Mode=TwoWay}"
+                                      SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GroupEditorItem">
+                                        <Grid Padding="4,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{x:Bind MeterCount, Mode=OneWay}"
+                                                           Style="{StaticResource CaptionStyle}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="✕" Tag="{x:Bind}"
+                                                    Style="{StaticResource GhostButtonStyle}"
+                                                    Click="RemoveGroupButton_Click" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Selected group properties -->
+                    <Border Style="{StaticResource CardStyle}"
+                            Visibility="{x:Bind ViewModel.HasSelectedGroup, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Selected group" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBox Header="Name" Text="{x:Bind ViewModel.SelectedGroup.Name, Mode=TwoWay}" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumberBox Header="X" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.X, Mode=TwoWay}" />
+                                <NumberBox Header="Y" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Y, Mode=TwoWay}" />
+                                <NumberBox Header="Width" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Width, Mode=TwoWay}" />
+                                <NumberBox Header="Height" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Height, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumberBox Header="Scale X" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.ScaleX, Mode=TwoWay}" />
+                                <NumberBox Header="Scale Y" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.ScaleY, Mode=TwoWay}" />
+                                <NumberBox Header="Rotation" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Rotation, Mode=TwoWay}" />
+                                <NumberBox Header="Opacity" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Opacity, Mode=TwoWay}"
+                                           Minimum="0" Maximum="1" />
+                            </StackPanel>
+
+                            <CheckBox Content="Clip children to group bounds"
+                                      IsChecked="{x:Bind ViewModel.SelectedGroup.Clip, Mode=TwoWay}" />
                         </StackPanel>
                     </Border>
 

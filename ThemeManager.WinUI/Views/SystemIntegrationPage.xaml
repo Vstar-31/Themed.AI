@@ -8,17 +8,15 @@
                   VerticalScrollBarVisibility="Auto">
         <StackPanel MaxWidth="680" Spacing="20">
 
-            <!-- Page header -->
             <StackPanel Spacing="4" Margin="{StaticResource SectionMargin}">
                 <TextBlock Text="System Integration"
                            FontSize="{StaticResource FontSizeDisplay}"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Read and optionally push your theme to Windows."
+                <TextBlock Text="Let Themed.AI carry its visual language into Windows itself."
                            Style="{StaticResource CaptionStyle}" />
             </StackPanel>
 
-            <!-- Current system snapshot card -->
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="14">
                     <TextBlock Text="Current System State"
@@ -72,11 +70,21 @@
                 </StackPanel>
             </Border>
 
-            <!-- Standard integrations -->
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Standard Integration"
+                    <TextBlock Text="Windows Appearance"
                                Style="{StaticResource SectionHeaderStyle}" />
+
+                    <StackPanel Spacing="2">
+                        <ToggleSwitch x:Name="WindowsAppsToggle"
+                                      Header="Sync Windows app appearance"
+                                      Style="{StaticResource CozyToggleStyle}"
+                                      IsOn="{x:Bind ViewModel.ActiveThemeApplyWindowsApps, Mode=TwoWay}" />
+                        <TextBlock Style="{StaticResource CaptionStyle}"
+                                   Text="Switches supported Windows apps, including File Explorer, between Light and Dark mode to match this theme's palette."
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0" />
+                    </StackPanel>
 
                     <StackPanel Spacing="2">
                         <ToggleSwitch x:Name="WallpaperToggle"
@@ -100,13 +108,9 @@
                 </StackPanel>
             </Border>
 
-            <!-- Advanced / at your own risk -->
             <Border Style="{StaticResource CardStyle}"
                     BorderBrush="#E8A87C">
-
                 <StackPanel Spacing="16">
-
-                    <!-- Warning banner -->
                     <Border Background="#FFF3E0"
                             CornerRadius="{StaticResource CornerRadiusSmall}"
                             Padding="14,10,14,10">
@@ -118,25 +122,20 @@
                             <TextBlock FontSize="12"
                                        Foreground="#7A4F00"
                                        TextWrapping="Wrap">
-                                The options below write to DWM registry keys to change Windows'
-                                colorisation accent. A sign-out or Explorer restart may be required.
-                                Themed.AI cannot guarantee compatibility with every Windows build.
-                                Always back up your registry before proceeding.
+                                The advanced controls below write Windows personalization values such as
+                                the DWM accent. A sign-out or Explorer refresh can occasionally be needed.
                             </TextBlock>
                         </StackPanel>
                     </Border>
 
-                    <!-- Enable advanced toggle -->
                     <ToggleSwitch x:Name="AdvancedToggle"
                                   Header="Enable advanced system tweaks"
                                   Style="{StaticResource CozyToggleStyle}"
                                   IsOn="{x:Bind ViewModel.AdvancedEnabled, Mode=TwoWay}" />
 
-                    <!-- Advanced controls (disabled until toggle is on) -->
                     <ContentControl IsEnabled="{x:Bind ViewModel.AdvancedEnabled, Mode=OneWay}">
                         <StackPanel Spacing="12"
                                     Opacity="{x:Bind ViewModel.AdvancedEnabledOpacity, Mode=OneWay}">
-
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Apply accent primary color to Windows"
                                            FontSize="{StaticResource FontSizeBody}"
@@ -149,7 +148,6 @@
                                 <Button Content="Apply Accent to Windows"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Click="ApplyAccentButton_Click" />
-
                                 <Button Content="Reset to Windows Default"
                                         Style="{StaticResource DangerButtonStyle}"
                                         Click="ResetAccentButton_Click" />
@@ -159,7 +157,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Status message -->
             <Border Background="{StaticResource SidebarBackgroundBrush}"
                     CornerRadius="{StaticResource CornerRadiusSmall}"
                     Padding="16,10,16,10">

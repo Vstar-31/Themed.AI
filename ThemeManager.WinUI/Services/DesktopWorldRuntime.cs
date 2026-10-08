@@ -65,8 +65,8 @@ public sealed class DesktopWorldRuntime : IDisposable
         var warmth = signal.HasSignal ? atmosphere.Warmth : 0.5;
 
         var profile = VibeFinderWebState.Profile;
-        if (profile.Signals >= 2 && !string.IsNullOrWhiteSpace(profile.TopMood))
-            mood = profile.TopMood!;
+        if (profile is { Signals: >= 2 } && !string.IsNullOrWhiteSpace(profile.TopMood))
+            mood = profile.TopMood;
 
         VibeSnapshotHub.Publish(new VibeSnapshot(
             mood,

@@ -17,10 +17,7 @@ public sealed partial class ThemesPage : Page
 
         ThemesRepeater.ElementPrepared += ThemesRepeater_ElementPrepared;
 
-        Unloaded += (_, _) =>
-        {
-            ViewModel.Dispose();
-        };
+        Unloaded += (_, _) => ViewModel.Dispose();
     }
 
     private void ThemesRepeater_ElementPrepared(
@@ -40,8 +37,7 @@ public sealed partial class ThemesPage : Page
 
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            if (VisualTreeHelper.GetChild(root, i) is Grid strip &&
-                Grid.GetRow(strip) == 0)
+            if (VisualTreeHelper.GetChild(root, i) is Grid strip && Grid.GetRow(strip) == 0)
             {
                 string[] colors =
                 [
@@ -70,21 +66,16 @@ public sealed partial class ThemesPage : Page
             Frame.Navigate(typeof(ThemeEditorPage), ViewModel.SelectedTheme);
     }
 
-    private async void SetActiveButton_Click(object sender, RoutedEventArgs e)
+    private void SetActiveButton_Click(object sender, RoutedEventArgs e)
     {
         var theme = (sender as FrameworkElement)?.Tag as CozyTheme;
         if (theme is null) return;
 
+        // ThemeService is the single source of truth. Its ThemeChanged/ThemeChangeHub
+        // pipeline updates Themed.AI resources and, on the Windows integration branch,
+        // synchronizes native Windows application appearance and accent.
         ViewModel.SetAsActive(theme);
         ViewModel.RefreshThemesList();
-
-        // AccentPrimary is the theme's main interactive color — now that
-        // ColorizationColorBalance=100 renders it exactly, this is correct.
-        string safeAccent = CozyTheme.NormalizeHex(theme.AccentPrimary);
-        await App.SystemIntegrator.ApplyAccentColorAsync(safeAccent);
-
-        if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
-            await App.SystemIntegrator.ApplyWallpaperAsync(theme.WallpaperPath);
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using ThemeManager.Core.Services;
 using ThemeManager.WinUI.ViewModels;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -28,23 +29,16 @@ public sealed partial class SystemIntegrationPage : Page
             UpdateSystemInfoUI();
         };
 
-        // Dispose the VM when navigating away so its ThemeChanged subscription
-        // doesn't linger and trigger stale accent applies.
         Unloaded += (_, _) => ViewModel.Dispose();
     }
-
-    // ── System info UI update ─────────────────────────────────────────────────
 
     private void UpdateSystemInfoUI()
     {
         ModeText.Text = ViewModel.IsLightMode ? "Light" : "Dark";
         AccentHexText.Text = ViewModel.CurrentAccentHex;
         BuildText.Text = ViewModel.WindowsBuild;
-
         AccentSwatch.Background = new SolidColorBrush(App.HexToColor(ViewModel.CurrentAccentHex));
     }
-
-    // ── Button handlers ───────────────────────────────────────────────────────
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
@@ -64,8 +58,6 @@ public sealed partial class SystemIntegrationPage : Page
         picker.FileTypeFilter.Add(".png");
         picker.FileTypeFilter.Add(".bmp");
 
-        // Use the static App.MainWindow — Window.Current is always null
-        // in packaged WinUI 3 apps and must never be used for HWND retrieval.
         var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
         InitializeWithWindow.Initialize(picker, hwnd);
 
@@ -79,9 +71,19 @@ public sealed partial class SystemIntegrationPage : Page
 
     private async void ApplyThemeButton_Click(object sender, RoutedEventArgs e)
     {
+        // Re-publish the current theme so every platform integration, including Windows
+        // application/system appearance, re-applies even when Windows was changed externally.
+        ThemeChangeHub.Publish(App.ThemeService.ActiveTheme);
+
         var theme = App.ThemeService.ActiveTheme;
         if (theme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(theme.WallpaperPath))
             await ViewModel.ApplyWallpaperAsync(theme.WallpaperPath);
+
+        await ViewModel.RefreshSystemInfoAsync();
+        UpdateSystemInfoUI();
+        ViewModel.StatusMessage = theme.ApplyToWindowsApps
+            ? "Themed.AI appearance re-applied to supported Windows apps."
+            : "Windows app appearance sync is disabled for this theme.";
     }
 
     private async void ApplyAccentButton_Click(object sender, RoutedEventArgs e)

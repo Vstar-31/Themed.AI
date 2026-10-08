@@ -8,14 +8,12 @@ namespace ThemeManager.Core.Models;
 /// </summary>
 public sealed class CozyTheme
 {
-    // ── Identity ────────────────────────────────────────────────────────────
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "Untitled Theme";
     public string Description { get; set; } = string.Empty;
     public DateTimeOffset LastModified { get; set; } = DateTimeOffset.UtcNow;
     public bool IsBuiltIn { get; set; } = false;
 
-    // ── Palette ─────────────────────────────────────────────────────────────
     public string BackgroundBase { get; set; } = CozyDefaults.Linen;
     public string BackgroundAlt { get; set; } = CozyDefaults.Khaki;
     public string Surface { get; set; } = CozyDefaults.Camel;
@@ -25,16 +23,14 @@ public sealed class CozyTheme
     public string TextMuted { get; set; } = CozyDefaults.TextMuted;
     public string BorderSubtle { get; set; } = CozyDefaults.BorderSubtle;
 
-    // ── Geometry ────────────────────────────────────────────────────────────
     public double CornerRadiusScale { get; set; } = 1.0;
     public double DensityScale { get; set; } = 1.0;
 
-    // ── System integration prefs ─────────────────────────────────────────────
-    public bool ApplyToSystemAccent { get; set; } = false;
+    public bool ApplyToWindowsApps { get; set; } = true;
+    public bool ApplyToSystemAccent { get; set; } = true;
     public bool ApplyToWallpaper { get; set; } = false;
     public string? WallpaperPath { get; set; } = null;
 
-    // ── Extensibility ────────────────────────────────────────────────────────
     public Dictionary<string, string> CustomTokens { get; set; } = new();
 
     public CozyTheme Duplicate()
@@ -60,6 +56,10 @@ public sealed class CozyTheme
         BorderSubtle = CozyDefaults.BorderSubtle;
         CornerRadiusScale = 1.0;
         DensityScale = 1.0;
+        ApplyToWindowsApps = true;
+        ApplyToSystemAccent = true;
+        ApplyToWallpaper = false;
+        WallpaperPath = null;
         LastModified = DateTimeOffset.UtcNow;
     }
 
@@ -102,7 +102,8 @@ public static class CozyDefaults
         BorderSubtle = BorderSubtle,
         CornerRadiusScale = 1.0,
         DensityScale = 1.0,
-        ApplyToSystemAccent = false,
+        ApplyToWindowsApps = true,
+        ApplyToSystemAccent = true,
         ApplyToWallpaper = false,
     };
 }

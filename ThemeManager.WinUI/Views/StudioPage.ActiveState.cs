@@ -1,5 +1,5 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using ThemeManager.Core.Models;
 
 namespace ThemeManager.WinUI.Views;
@@ -11,26 +11,54 @@ public sealed partial class StudioPage
 
     private async void StudioPage_ActiveStateLoaded(object sender, RoutedEventArgs e)
     {
-        if (_activeStateUiInstalled) return;
-        _activeStateUiInstalled = true;
-        ScenesList.SelectionMode = ListViewSelectionMode.None;
-        ScenesList.IsItemClickEnabled = true;
-        ScenesList.ItemClick += ScenesList_ItemClickForPreview;
-        App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
-        UpdateSetActiveButtonState();
-        UpdateAutoSwitchUi();
-        _ = RehydrateActiveWorldAsync();
-    }
+        if (!_activeStateUiInstalled)
+        {
+            _activeStateUiInstalled = true;
+            App.SceneService.ScenesChanged += OnScenesChanged;
+            App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
+            App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
+            App.SceneService.ActiveSceneChanged += ActiveStateSceneChanged;
+        }
 
+        _studioInitializing = true;
+        try
+        {
+            _autoApplyAesthetic = LoadAutoApplyAestheticPreference();
+            AutoApplyAestheticToggle.IsOn = _autoApplyAesthetic;
+
+            await App.SceneService.InitializeAsync();
+            await App.StartWorldRuntimeAsync();
+            await SeedStarterWorldsAsync();
+            Refresh();
+
+            UpdateSetActiveButtonState();
+            UpdateAutoSwitchUi();
+
+            // Studio navigation itself must not change the desktop. Only rehydrate the
+            // currently active world's native aesthetic when the user explicitly enabled
+            // the Studio aesthetic toggle.
+            if (App.SceneService.ActiveScene is { } active && ShouldAutoApplyWorld(active))
+                _ = RehydrateActiveWorldAsync();
+        }
+        finally
+        {
+            _studioInitializing = false;
+            SyncStudioState();
+        }
+    }
     private async Task RehydrateActiveWorldAsync()
     {
+        if (App.SceneService.ActiveScene is not { } active || !ShouldAutoApplyWorld(active)) return;
+
         for (var attempt = 0; attempt < 20; attempt++)
         {
-            if (App.SceneService.ActiveScene is { } active)
+            if (App.SceneService.ActiveScene is { } current)
             {
                 try
                 {
-                    await ApplyWorldPaletteAsync(active);
+                    if (ShouldAutoApplyWorld(current))
+                        await ApplyWorldPaletteAsync(current);
+
                     if (DispatcherQueue.HasThreadAccess) Refresh();
                     else DispatcherQueue.TryEnqueue(Refresh);
                 }
@@ -41,20 +69,35 @@ public sealed partial class StudioPage
         }
     }
 
-    private void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
+    private async void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
     {
-        if (!_activeStateUiInstalled) return;
-        ScenesList.ItemClick -= ScenesList_ItemClickForPreview;
-        App.SceneService.ActiveSceneChanged -= ActiveStateSceneChanged;
-        _activeStateUiInstalled = false;
+        try
+        {
+            var active = App.SceneService.ActiveScene;
+            if (active is not null && App.SkinManager is not null)
+                await SaveCurrentSceneLayoutAsync(active);
+        }
+        catch (Exception ex)
+        {
+            App.LoggerFactory.CreateLogger<StudioPage>().LogDebug(ex, "Studio: failed to persist active world layout on unload");
+        }
+
+        if (_activeStateUiInstalled)
+        {
+            App.SceneService.ScenesChanged -= OnScenesChanged;
+            App.SceneService.ActiveSceneChanged -= OnActiveSceneChanged;
+            App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
+            App.SceneService.ActiveSceneChanged -= ActiveStateSceneChanged;
+            _activeStateUiInstalled = false;
+        }
     }
 
     private async void ActiveStateSceneChanged(object? sender, DesktopScene? scene)
     {
         if (DispatcherQueue.HasThreadAccess) UpdateSetActiveButtonState();
         else DispatcherQueue.TryEnqueue(UpdateSetActiveButtonState);
-        UpdateAutoSwitchUi();
-        if (scene is not null) await ApplyWorldPaletteAsync(scene);
+        if (scene is not null && ShouldAutoApplyWorld(scene) && !_sceneApplyBusy)
+            await ApplyWorldPaletteAsync(scene);
     }
 
     private void UpdateAutoSwitchUi()
@@ -74,7 +117,7 @@ public sealed partial class StudioPage
 
     private async void AutoSwitchToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_autoSwitchUiUpdating || _selected is null || !_selected.Behavior.ReactToVibeFinder) return;
+        if (_autoSwitchUiUpdating || _studioInitializing || _selected is null || !_selected.Behavior.ReactToVibeFinder) return;
         _selected.Behavior.AutoSwitch = AutoSwitchToggle.IsOn;
         await App.SceneService.UpsertAsync(_selected);
         AutoSwitchStatusText.Text = AutoSwitchToggle.IsOn
@@ -133,16 +176,31 @@ public sealed partial class StudioPage
         }
 
         App.ThemeService.SetActiveTheme(worldTheme);
+
+        // Map the world's palette to the native Windows Light/Dark app + system mode so supported
+        // Windows apps such as File Explorer follow the same visual direction.
+        await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(worldTheme.BackgroundBase));
         await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(worldTheme.AccentPrimary));
     }
 
-    private async void ScenesList_ItemClickForPreview(object sender, ItemClickEventArgs e)
+    private static bool IsLightPalette(string hex)
     {
-        if (e.ClickedItem is not WorldListItem item) return;
-        Select(item.Scene, false);
-        await ApplySelectedWorldAsync();
-        UpdateAutoSwitchUi();
-        UpdateSetActiveButtonState();
+        try
+        {
+            var c = App.HexToColor(CozyTheme.NormalizeHex(hex));
+            static double Linear(byte channel)
+            {
+                double v = channel / 255.0;
+                return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+            }
+
+            double luminance = 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+            return luminance >= 0.42;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private void UpdateSetActiveButtonState()
@@ -154,15 +212,19 @@ public sealed partial class StudioPage
         SetActiveWorldButton.IsEnabled = _selected is not null && !active;
     }
 
-    private async void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
+    private void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null)
         {
             ApplyStatus.Text = "Select a world first.";
             return;
         }
-        await ApplySelectedWorldAsync();
+
+        // This action only changes which world is marked active. Visual application remains
+        // explicit (Apply to desktop) or is controlled by the aesthetic toggle.
+        App.SceneService.SetActiveScene(_selected);
         UpdateAutoSwitchUi();
         UpdateSetActiveButtonState();
+        SyncStudioState();
     }
 }

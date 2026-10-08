@@ -16,6 +16,12 @@ public interface ISystemThemeIntegrator
     /// </summary>
     Task<bool> ApplyAccentColorAsync(string hexColor);
 
+    /// <summary>
+    /// Applies the Windows application and system Light/Dark preference so native apps that follow
+    /// Windows' color-mode contract (including File Explorer) can follow the active Themed.AI world.
+    /// </summary>
+    Task<bool> ApplyWindowsThemeAsync(bool isLightMode);
+
     /// <summary>Sets the desktop wallpaper using the standard SystemParametersInfo API.</summary>
     Task<bool> ApplyWallpaperAsync(string imagePath);
 

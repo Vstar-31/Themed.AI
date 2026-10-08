@@ -31,6 +31,27 @@ public sealed partial class MainWindow : Window
         ConfigureTitleBar();
         ContentFrame.Navigate(typeof(ThemesPage));
         SetActiveNav(NavThemes);
+
+        // WinUI 3 Window has no XAML Loaded event. Start the provisioning pipeline from the
+        // constructor; the pipeline itself waits asynchronously for SkinManagerService.
+        _ = InitializeVibeProvisioningAsync();
+
+        // Keep the hidden VibeFinder session in lock-step with the active Themed.AI world.
+        // ThemeService commits a theme only once at the end of a crossfade, so this does not
+        // trigger one analysis per interpolation frame.
+        App.ThemeService.ThemeChanged += MainWindow_ThemeChanged;
+        Closed += (_, _) => App.ThemeService.ThemeChanged -= MainWindow_ThemeChanged;
+    }
+
+    private void MainWindow_ThemeChanged(object? sender, ThemeManager.Core.Models.CozyTheme theme)
+    {
+        if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+            _logger.LogInformation("VibeFinder theme sync: refreshing playlist for \"{Theme}\"", theme.Name);
+            PushVibePromptAndTrackLimit();
+        });
     }
 
     public bool IsVibeFinderPrewarmActive =>
@@ -133,20 +154,31 @@ public sealed partial class MainWindow : Window
 
     public void RebindVibeFinderPrewarmBridge()
     {
-        var core = VibeFinderPrewarmWebView.CoreWebView2;
-        if (core is null) return;
+        // Never steal the bridge away from the visible VibeFinder page. The prewarm browser
+        // is only the fallback authority when the dedicated page is not open.
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("VibeFinder prewarm bridge: visible embed owns authority — rebind skipped");
+            return;
+        }
 
+        var dispatch = DispatcherQueue;
         VibeFinderWebState.SendCommand = commandJson =>
         {
-            try
+            dispatch.TryEnqueue(() =>
             {
-                core.PostWebMessageAsJson(commandJson);
-                _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "VibeFinder prewarm bridge: failed to post command {Command}", commandJson);
-            }
+                try
+                {
+                    var core = VibeFinderPrewarmWebView.CoreWebView2;
+                    if (core is null) return;
+                    core.PostWebMessageAsJson(commandJson);
+                    _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinder prewarm bridge: failed to post command {Command}", commandJson);
+                }
+            });
         };
     }
 
@@ -172,16 +204,19 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        string vibeText = string.Equals(rawPrompt.Trim(), ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase)
+        string rawText = rawPrompt.Trim();
+        string vibeText = string.Equals(rawText, ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase)
             ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
-            : rawPrompt.Trim();
+            : rawText;
 
         if (string.IsNullOrWhiteSpace(vibeText)) return;
 
         try
         {
             var core = VibeFinderPrewarmWebView.CoreWebView2;
-            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText }));
+            // Mirror the saved prompt in the web UI while keeping the resolved theme phrase
+            // for the actual analysis request.
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
             core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setTrackLimit", value = VibeTrackLimit }));
             core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = VibeTrackLimit }));
             _logger.LogDebug("VibeFinder prewarm: pushed prompt and triggered analysis for {User}", user);

@@ -20,6 +20,7 @@ public sealed partial class SkinEditorPage : Page
     public SkinEditorViewModel ViewModel { get; }
 
     private readonly Dictionary<MeterEditorItem, Border> _previewElements = new();
+    private readonly Dictionary<GroupEditorItem, Canvas> _previewGroups = new();
     private bool _dragging;
     private MeterEditorItem? _dragTarget;
     private Windows.Foundation.Point _dragAnchor;
@@ -32,6 +33,7 @@ public sealed partial class SkinEditorPage : Page
         ViewModel = new SkinEditorViewModel(App.SkinManager);
 
         ViewModel.Meters.CollectionChanged += (_, _) => RebuildPreview();
+        ViewModel.Groups.CollectionChanged += (_, _) => RebuildPreview();
         ViewModel.Measures.CollectionChanged += (_, _) => RefreshMeasureComboItems();
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
     }
@@ -137,6 +139,38 @@ public sealed partial class SkinEditorPage : Page
         ViewModel.SelectedMeter.MeasureName = (selected is null or "(static text)") ? "" : selected;
     }
 
+
+    private void MetersList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MetersList.SelectedItem is MeterEditorItem item)
+            ViewModel.SelectedMeter = item;
+    }
+
+    private void GroupSelectedMeters_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.GroupMeters(MetersList.SelectedItems.OfType<MeterEditorItem>());
+        RefreshGroupSelection();
+    }
+
+    private void UngroupSelectedMeters_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.UngroupMeters(MetersList.SelectedItems.OfType<MeterEditorItem>());
+        RefreshGroupSelection();
+    }
+
+    private void RemoveGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is GroupEditorItem group)
+            ViewModel.RemoveGroup(group);
+        RefreshGroupSelection();
+    }
+
+    private void RefreshGroupSelection()
+    {
+        GroupsList.SelectedItem = ViewModel.SelectedGroup;
+        HighlightSelection();
+    }
+
     // ── Meters ───────────────────────────────────────────────────────────────────
 
     private void AddStringMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.String);
@@ -156,23 +190,72 @@ public sealed partial class SkinEditorPage : Page
 
     private void RebuildPreview()
     {
-        // Unsubscribe from old elements before clearing to prevent memory leaks and redundant layout cycles
         foreach (var meter in _previewElements.Keys)
-        {
             meter.PropertyChanged -= Meter_PreviewPropertyChangedHandler;
-        }
+        foreach (var group in _previewGroups.Keys)
+            group.PropertyChanged -= Group_PreviewPropertyChangedHandler;
 
         PreviewCanvas.Children.Clear();
         _previewElements.Clear();
+        _previewGroups.Clear();
+
+        var groups = ViewModel.Groups.ToList();
+        var groupByMeterId = new Dictionary<string, GroupEditorItem>(StringComparer.OrdinalIgnoreCase);
+
+        // Groups are real preview containers too, so the editor uses the same local-coordinate
+        // semantics as the desktop host.
+        foreach (var group in groups)
+        {
+            foreach (var meterId in group.Definition.MeterIds)
+                if (!groupByMeterId.ContainsKey(meterId))
+                    groupByMeterId[meterId] = group;
+
+            var canvas = new Canvas
+            {
+                Width = Math.Max(1, group.Width),
+                Height = Math.Max(1, group.Height),
+                Opacity = Math.Clamp(group.Opacity, 0, 1),
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)),
+            };
+
+            if (group.Clip)
+            {
+                canvas.Clip = new RectangleGeometry
+                {
+                    Rect = new Windows.Foundation.Rect(0, 0, Math.Max(1, group.Width), Math.Max(1, group.Height))
+                };
+            }
+
+            var transforms = new TransformGroup();
+            if (Math.Abs(group.ScaleX - 1) > 0.0001 || Math.Abs(group.ScaleY - 1) > 0.0001)
+                transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+            if (Math.Abs(group.Rotation) > 0.0001)
+                transforms.Children.Add(new RotateTransform
+                {
+                    Angle = group.Rotation,
+                    CenterX = group.Width / 2,
+                    CenterY = group.Height / 2
+                });
+            if (transforms.Children.Count > 0)
+                canvas.RenderTransform = transforms;
+
+            Canvas.SetLeft(canvas, group.X);
+            Canvas.SetTop(canvas, group.Y);
+            PreviewCanvas.Children.Add(canvas);
+            _previewGroups[group] = canvas;
+            group.PropertyChanged += Group_PreviewPropertyChangedHandler;
+        }
 
         foreach (var meter in ViewModel.Meters)
         {
             var content = BuildPreviewContent(meter);
             var container = new Border
             {
+                Width = meter.Width,
+                Height = meter.Height,
                 Child = content,
                 BorderThickness = new Thickness(2),
-                BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)), // set for real by HighlightSelection()
+                BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)),
                 CornerRadius = new CornerRadius(4),
             };
 
@@ -182,10 +265,14 @@ public sealed partial class SkinEditorPage : Page
 
             Canvas.SetLeft(container, meter.X);
             Canvas.SetTop(container, meter.Y);
-            PreviewCanvas.Children.Add(container);
-            _previewElements[meter] = container;
 
-            // Use a dedicated handler method so we can unsubscribe later
+            var group = groupByMeterId.GetValueOrDefault(meter.Definition.Id);
+            if (group is not null && _previewGroups.TryGetValue(group, out var groupCanvas))
+                groupCanvas.Children.Add(container);
+            else
+                PreviewCanvas.Children.Add(container);
+
+            _previewElements[meter] = container;
             meter.PropertyChanged += Meter_PreviewPropertyChangedHandler;
         }
 
@@ -198,6 +285,37 @@ public sealed partial class SkinEditorPage : Page
         {
             Meter_PreviewPropertyChanged(meter, container, args.PropertyName);
         }
+    }
+
+    private void Group_PreviewPropertyChangedHandler(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (sender is not GroupEditorItem group || !_previewGroups.TryGetValue(group, out var canvas))
+            return;
+
+        Canvas.SetLeft(canvas, group.X);
+        Canvas.SetTop(canvas, group.Y);
+        canvas.Width = Math.Max(1, group.Width);
+        canvas.Height = Math.Max(1, group.Height);
+        canvas.Opacity = Math.Clamp(group.Opacity, 0, 1);
+        canvas.Clip = group.Clip
+            ? new RectangleGeometry
+            {
+                Rect = new Windows.Foundation.Rect(0, 0, Math.Max(1, group.Width), Math.Max(1, group.Height))
+            }
+            : null;
+
+        var transforms = new TransformGroup();
+        if (Math.Abs(group.ScaleX - 1) > 0.0001 || Math.Abs(group.ScaleY - 1) > 0.0001)
+            transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+        if (Math.Abs(group.Rotation) > 0.0001)
+            transforms.Children.Add(new RotateTransform
+            {
+                Angle = group.Rotation,
+                CenterX = group.Width / 2,
+                CenterY = group.Height / 2
+            });
+        canvas.RenderTransform = transforms.Children.Count == 0 ? null : transforms;
+        HighlightSelection();
     }
 
     private static FrameworkElement BuildPreviewContent(MeterEditorItem meter)
@@ -346,6 +464,11 @@ public sealed partial class SkinEditorPage : Page
         };
         var fillAccent = (SolidColorBrush)Application.Current.Resources["PrimaryAccentBrush"];
         var fillStrong = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var fillMiddle = Windows.UI.Color.FromArgb(
+            0xF0,
+            (byte)Math.Round(fillAccent.Color.R + (fillStrong.Color.R - fillAccent.Color.R) * 0.38),
+            (byte)Math.Round(fillAccent.Color.G + (fillStrong.Color.G - fillAccent.Color.G) * 0.38),
+            (byte)Math.Round(fillAccent.Color.B + (fillStrong.Color.B - fillAccent.Color.B) * 0.38));
         var fill = new Border
         {
             Width = meter.Width * meter.PreviewFraction,
@@ -358,8 +481,9 @@ public sealed partial class SkinEditorPage : Page
                 EndPoint = new Windows.Foundation.Point(1, 0),
                 GradientStops =
                 {
-                    new GradientStop { Color = fillAccent.Color, Offset = 0 },
-                    new GradientStop { Color = fillStrong.Color, Offset = 1 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0xEA, fillAccent.Color.R, fillAccent.Color.G, fillAccent.Color.B), Offset = 0.0 },
+                    new GradientStop { Color = fillMiddle, Offset = 0.52 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0xDA, fillStrong.Color.R, fillStrong.Color.G, fillStrong.Color.B), Offset = 1.0 },
                 },
             },
         };
@@ -393,6 +517,9 @@ public sealed partial class SkinEditorPage : Page
 
         foreach (var (meter, container) in _previewElements)
             container.BorderBrush = meter == ViewModel.SelectedMeter ? accent : none;
+
+        foreach (var (group, canvas) in _previewGroups)
+            canvas.Opacity = Math.Clamp(group.Opacity, 0, 1) * (group == ViewModel.SelectedGroup ? 0.98 : 1.0);
     }
 
     // ── Drag to reposition a meter within the preview (local Canvas coords — no AppWindow involved) ──

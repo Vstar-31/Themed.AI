@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ThemeManager.Core.Models;
@@ -18,15 +17,21 @@ public static class VibeFinderWebState
     private static ILogger _logger = NullLogger.Instance;
     private static Action<string>? _sendCommand;
     private static long _stateVersion;
-    private static int _commandGeneration;
+
+    // Only one web embed is allowed to be authoritative for playback/results at a time.
+    // The visible VibeFinderAIPage wins over the zero-size prewarm WebView; without this
+    // gate the two React instances can race and make widgets jump between two playlists.
+    private static int _visibleEmbedActive;
     private static CancellationTokenSource? _nativeFallbackCts;
 
     public static bool IsActive { get; private set; }
+    public static bool IsVisibleEmbedActive => Volatile.Read(ref _visibleEmbedActive) != 0;
     public static bool IsPlaying { get; private set; }
     public static string Title { get; private set; } = "—";
     public static string Artist { get; private set; } = "—";
     public static string? CoverArt { get; private set; }
     public static string? PreviewUrl { get; private set; }
+    public static string? DominantVibe { get; private set; }
     public static double CurrentTime { get; private set; }
     public static double Duration { get; private set; }
     public static double Progress => Duration > 0 ? Math.Clamp(CurrentTime / Duration, 0, 1) : 0;
@@ -54,7 +59,21 @@ public static class VibeFinderWebState
 
     public static void Initialize(ILogger logger) => _logger = logger;
 
-    public static void HandleMessage(string messageJson)
+    public static void ClaimVisibleEmbed()
+    {
+        Interlocked.Exchange(ref _visibleEmbedActive, 1);
+        _logger.LogDebug("VibeFinderWebState: visible embed claimed playback/results authority");
+    }
+
+    public static void ReleaseVisibleEmbed()
+    {
+        Interlocked.Exchange(ref _visibleEmbedActive, 0);
+        _logger.LogDebug("VibeFinderWebState: visible embed released playback/results authority");
+    }
+
+    public static void HandleMessage(string messageJson) => HandleMessage(messageJson, false);
+
+    public static void HandleMessage(string messageJson, bool fromVisibleEmbed)
     {
         try
         {
@@ -62,8 +81,21 @@ public static class VibeFinderWebState
             var root = doc.RootElement;
             if (!root.TryGetProperty("type", out var typeEl)) return;
             var type = typeEl.GetString();
+
+            // The hidden prewarm browser remains alive for widget-only use, but once the
+            // full VibeFinder page is open its analysis/playback messages are stale by
+            // definition relative to what the user is looking at.
+            if (!fromVisibleEmbed && IsVisibleEmbedActive &&
+                type is "VIBEFINDER_RESULTS" or "VIBEFINDER_STATE" or "VIBEFINDER_ANALYSIS_COMPLETE" or "VIBEFINDER_PLAYBACK_RESET" or "VIBEFINDER_PROFILE")
+            {
+                _logger.LogTrace("VibeFinderWebState: ignored {Type} from hidden prewarm embed while visible embed is authoritative", type);
+                return;
+            }
+
             if (type == "VIBEFINDER_RESULTS") { HandleResults(root); return; }
             if (type == "VIBEFINDER_STATE") { HandlePlayerState(root); return; }
+            if (type == "VIBEFINDER_ANALYSIS_COMPLETE") { HandleAnalysisComplete(root); return; }
+            if (type == "VIBEFINDER_PLAYBACK_RESET") { HandlePlaybackReset(); return; }
             if (type == "VIBEFINDER_PROFILE") { HandleProfile(root); return; }
         }
         catch (JsonException ex)
@@ -123,6 +155,27 @@ public static class VibeFinderWebState
         return result;
     }
 
+    private static void HandleAnalysisComplete(JsonElement root)
+    {
+        if (root.TryGetProperty("vibe", out var vibeEl) && vibeEl.ValueKind == JsonValueKind.String)
+            DominantVibe = vibeEl.GetString();
+
+        Interlocked.Increment(ref _stateVersion);
+        StateChanged?.Invoke(null, EventArgs.Empty);
+    }
+
+    private static void HandlePlaybackReset()
+    {
+        CancelNativeFallback();
+        VibeFinderPreviewPlayer.Stop();
+        IsPlaying = false;
+        IsPlayerActive = false;
+        CurrentTime = 0;
+        Duration = 0;
+        Interlocked.Increment(ref _stateVersion);
+        StateChanged?.Invoke(null, EventArgs.Empty);
+    }
+
     private static void HandleResults(JsonElement root)
     {
         if (!root.TryGetProperty("tracks", out var tracksEl) || tracksEl.ValueKind != JsonValueKind.Array) return;
@@ -138,7 +191,9 @@ public static class VibeFinderWebState
             });
         }
         if (newTracks.Count == 0) return;
+        // Never let an old native preview survive a fresh web result set.
         CancelNativeFallback();
+        VibeFinderPreviewPlayer.Stop();
         _tracks = newTracks;
         CurrentIndex = 0;
         IsActive = true;
@@ -151,7 +206,12 @@ public static class VibeFinderWebState
         CancelNativeFallback();
         IsActive = true;
         IsPlayerActive = true;
-        if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False) IsPlaying = play.GetBoolean();
+        if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            IsPlaying = play.GetBoolean();
+            if (IsPlaying)
+                VibeFinderPreviewPlayer.Stop();
+        }
         if (root.TryGetProperty("title", out var title)) Title = title.GetString() ?? "—";
         if (root.TryGetProperty("artist", out var artist)) Artist = artist.GetString() ?? "—";
         if (root.TryGetProperty("coverArt", out var cover)) CoverArt = cover.GetString();
@@ -202,54 +262,36 @@ public static class VibeFinderWebState
     {
         var sender = _sendCommand;
         if (sender is null) return;
+
         string? command = null;
         try
         {
             using var doc = JsonDocument.Parse(commandJson);
             if (doc.RootElement.TryGetProperty("command", out var commandEl)) command = commandEl.GetString();
         }
-        catch (JsonException ex) { _logger.LogWarning(ex, "VibeFinderWebState: command JSON malformed; passing through unchanged"); }
-        if (command is not ("playpause" or "next" or "prev")) { sender(commandJson); return; }
-        var beforeVersion = Volatile.Read(ref _stateVersion);
-        var beforePlaying = IsPlaying;
-        var beforeTitle = Title;
-        var generation = Interlocked.Increment(ref _commandGeneration);
-        try { sender(commandJson); }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "VibeFinderWebState: web playback command {Command} threw; using native fallback", command);
-            StartNativeFallback(command, beforePlaying);
-            return;
+            _logger.LogWarning(ex, "VibeFinderWebState: command JSON malformed; passing through unchanged");
         }
-        _ = MonitorPlaybackCommandAsync(command!, beforeVersion, beforePlaying, beforeTitle, generation);
-    }
 
-    private static async Task MonitorPlaybackCommandAsync(string command, long beforeVersion, bool beforePlaying, string beforeTitle, int generation)
-    {
         try
         {
-            await Task.Delay(900).ConfigureAwait(false);
-            if (generation != Volatile.Read(ref _commandGeneration)) return;
-            var changed = Volatile.Read(ref _stateVersion) != beforeVersion;
-            var playingChanged = IsPlaying != beforePlaying;
-            var trackChanged = !string.Equals(Title, beforeTitle, StringComparison.OrdinalIgnoreCase);
-            if (changed && (command == "playpause" ? playingChanged : trackChanged)) return;
-            if (command == "playpause" && beforePlaying)
-            {
-                _sendCommand?.Invoke("{\"command\":\"playpause\"}");
-                await Task.Delay(600).ConfigureAwait(false);
-                return;
-            }
-            StartNativeFallback(command, beforePlaying);
+            // When a real WebView2 bridge exists, it is the single playback authority.
+            // Do not launch a native fallback merely because the browser state update is delayed.
+            sender(commandJson);
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "VibeFinderWebState: playback command monitor aborted"); }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "VibeFinderWebState: web playback command {Command} threw; using native fallback", command ?? "unknown");
+            if (command is "playpause" or "next" or "prev")
+                StartNativeFallback(command, IsPlaying);
+        }
     }
 
     private static void StartNativeFallback(string command, bool beforePlaying)
     {
         if (_tracks.Count == 0) return;
         CancelNativeFallback();
-        var generation = Volatile.Read(ref _commandGeneration);
         if (command == "next") CurrentIndex = (CurrentIndex + 1) % _tracks.Count;
         else if (command == "prev") CurrentIndex = (CurrentIndex - 1 + _tracks.Count) % _tracks.Count;
         var track = _tracks[Math.Clamp(CurrentIndex, 0, _tracks.Count - 1)];
@@ -261,21 +303,27 @@ public static class VibeFinderWebState
         Duration = 0;
         IsActive = true;
         IsPlayerActive = true;
-        if (command == "playpause" && beforePlaying) return;
+        if (command == "playpause" && beforePlaying)
+        {
+            VibeFinderPreviewPlayer.Stop();
+            IsPlaying = false;
+            StateChanged?.Invoke(null, EventArgs.Empty);
+            return;
+        }
         VibeFinderPreviewPlayer.Play(track.PreviewUrl);
         IsPlaying = VibeFinderPreviewPlayer.IsPlaying;
         Duration = VibeFinderPreviewPlayer.Duration;
         StateChanged?.Invoke(null, EventArgs.Empty);
         var cts = new CancellationTokenSource();
         _nativeFallbackCts = cts;
-        _ = MonitorNativeFallbackAsync(generation, cts.Token);
+        _ = MonitorNativeFallbackAsync(cts.Token);
     }
 
-    private static async Task MonitorNativeFallbackAsync(int generation, CancellationToken token)
+    private static async Task MonitorNativeFallbackAsync(CancellationToken token)
     {
         try
         {
-            while (!token.IsCancellationRequested && generation == Volatile.Read(ref _commandGeneration))
+            while (!token.IsCancellationRequested)
             {
                 await Task.Delay(500, token).ConfigureAwait(false);
                 if (token.IsCancellationRequested) break;
@@ -325,13 +373,13 @@ public static class VibeFinderWebState
     public static void Detach()
     {
         CancelNativeFallback();
+        VibeFinderPreviewPlayer.Stop();
         IsActive = false;
         IsPlayerActive = false;
         _sendCommand = null;
         _tracks = new List<TrackInfo>();
         CurrentIndex = 0;
         Profile = VibePersonalizationProfile.Empty;
-        Interlocked.Increment(ref _commandGeneration);
         Interlocked.Increment(ref _stateVersion);
         StateChanged?.Invoke(null, EventArgs.Empty);
     }

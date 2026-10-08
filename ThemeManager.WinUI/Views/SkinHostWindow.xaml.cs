@@ -1,3 +1,4 @@
+using ThemeManager.Core.Skins;
 using System.Linq;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
@@ -8,6 +9,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Microsoft.Extensions.Logging;
 using Windows.Graphics;
@@ -224,10 +226,18 @@ public sealed partial class SkinHostWindow : Window
         else
         {
             var cardBrush = (SolidColorBrush)Application.Current.Resources["CardBackgroundBrush"];
+            var sideBrush = (SolidColorBrush)Application.Current.Resources["SidebarBackgroundBrush"];
             var borderBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"];
-            var color = cardBrush.Color;
-            CardBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(
-                (byte)(opacity * 255), color.R, color.G, color.B));
+            CardBorder.Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Windows.UI.Color.FromArgb((byte)Math.Clamp(opacity * 242, 0, 255), cardBrush.Color.R, cardBrush.Color.G, cardBrush.Color.B), Offset = 0.0 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb((byte)Math.Clamp(opacity * 214, 0, 255), sideBrush.Color.R, sideBrush.Color.G, sideBrush.Color.B), Offset = 1.0 },
+                }
+            };
             CardBorder.BorderBrush = borderBrush;
             CardBorder.BorderThickness = new Thickness(1);
         }
@@ -267,6 +277,68 @@ public sealed partial class SkinHostWindow : Window
 
     private void BuildMeterVisuals()
     {
+        // Groups are real visual containers, not just metadata. This lets a set of independent
+        // meters share scale/rotation/opacity and optionally clip to a local rectangle.
+        var groups = _viewModel.Definition.Groups ?? new List<WidgetGroupDefinition>();
+        var groupByMeterId = new Dictionary<string, WidgetGroupDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups)
+        {
+            foreach (var meterId in group.MeterIds ?? new List<string>())
+            {
+                if (string.IsNullOrWhiteSpace(meterId)) continue;
+                if (groupByMeterId.ContainsKey(meterId))
+                    _logger.LogWarning("Widget \"{Widget}\": meter {MeterId} belongs to multiple groups; using the first group",
+                        _viewModel.Definition.Name, meterId);
+                else
+                    groupByMeterId[meterId] = group;
+            }
+        }
+
+        var groupCanvases = new Dictionary<string, Canvas>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups.OrderBy(g => g.ZIndexForOrdering(_viewModel.Definition.Meters)))
+        {
+            if (string.IsNullOrWhiteSpace(group.Id)) continue;
+            var canvas = new Canvas
+            {
+                Width = Math.Max(0, group.Width),
+                Height = Math.Max(0, group.Height),
+                Opacity = Math.Clamp(group.Opacity, 0, 1),
+                IsHitTestVisible = true,
+            };
+
+            if (group.Clip)
+            {
+                canvas.Clip = new RectangleGeometry
+                {
+                    Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, group.Width), Math.Max(0, group.Height))
+                };
+            }
+
+            var transforms = new TransformGroup();
+            if (Math.Abs(group.ScaleX - 1.0) > 0.0001 || Math.Abs(group.ScaleY - 1.0) > 0.0001)
+                transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+            if (Math.Abs(group.Rotation) > 0.0001)
+                transforms.Children.Add(new RotateTransform
+                {
+                    Angle = group.Rotation,
+                    CenterX = Math.Max(0, group.Width) / 2,
+                    CenterY = Math.Max(0, group.Height) / 2
+                });
+            if (transforms.Children.Count > 0)
+                canvas.RenderTransform = transforms;
+
+            Canvas.SetLeft(canvas, group.X);
+            Canvas.SetTop(canvas, group.Y);
+
+            var groupZ = group.MeterIds
+                .Select(id => _viewModel.Definition.Meters.FirstOrDefault(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.ZIndex ?? 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            Canvas.SetZIndex(canvas, groupZ);
+            RootCanvas.Children.Add(canvas);
+            groupCanvases[group.Id] = canvas;
+        }
+
         foreach (var meter in _viewModel.Meters.OrderBy(m => m.Definition.ZIndex).ThenBy(m => m.Definition.Id))
         {
             FrameworkElement element = meter switch
@@ -324,10 +396,14 @@ public sealed partial class SkinHostWindow : Window
                     {
                         var command = url.Substring(mediaPrefix.Length);
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
-                        bool webEmbedActive = ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null;
+                        bool webEmbedActive =
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
 
-                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webEmbedActive={WebActive})",
-                            _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive);
+                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webBridgeActive={WebActive}, visibleEmbed={VisibleEmbed}, playerActive={PlayerActive})",
+                            _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive,
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive,
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive);
 
                         if (command.Equals("playpause", StringComparison.OrdinalIgnoreCase))
                         {
@@ -380,6 +456,18 @@ public sealed partial class SkinHostWindow : Window
                     }
                     else
                     {
+                        if (Uri.TryCreate(url, UriKind.Absolute, out var actionUri) &&
+                            App.PluginRegistry.TryGetActionPlugin(actionUri.Scheme, out var actionPlugin) &&
+                            actionPlugin is not null &&
+                            actionPlugin.CanHandle(actionUri))
+                        {
+                            _logger.LogDebug("Skin \"{Skin}\": dispatching plugin action {Scheme}:// for meter {MeterId}",
+                                _viewModel.Definition.Name, actionUri.Scheme, meter.Definition.Id);
+                            e.Handled = true;
+                            _ = ExecutePluginActionAsync(actionPlugin, url, meter.Definition.Id);
+                            return;
+                        }
+
                         _logger.LogDebug("Skin \"{Skin}\": launching external URL {Url}", _viewModel.Definition.Name, url);
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
                     }
@@ -402,13 +490,39 @@ public sealed partial class SkinHostWindow : Window
                 ProtectedCursorProperty?.SetValue(element, null);
             };
 
+            var group = groupByMeterId.GetValueOrDefault(meter.Definition.Id);
+            var parent = group is not null && groupCanvases.TryGetValue(group.Id, out var groupCanvas)
+                ? groupCanvas
+                : RootCanvas;
+
             Canvas.SetLeft(element, meter.X);
             Canvas.SetTop(element, meter.Y);
             if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
                 element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
             element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
             Canvas.SetZIndex(element, meter.Definition.ZIndex);
-            RootCanvas.Children.Add(element);
+            parent.Children.Add(element);
+        }
+    }
+
+    private async Task ExecutePluginActionAsync(IWidgetActionPlugin plugin, string actionUri, string meterId)
+    {
+        try
+        {
+            var uri = new Uri(actionUri, UriKind.Absolute);
+            var context = new WidgetActionContext(
+                _viewModel.Definition.Id,
+                meterId,
+                actionUri,
+                name => _viewModel.Definition.Variables.TryGetValue(name, out var value) ? value : null);
+
+            var handled = await plugin.ExecuteAsync(context);
+            if (!handled)
+                _logger.LogDebug("Plugin action {ActionUri} declined handling for skin \"{Skin}\"", actionUri, _viewModel.Definition.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Plugin action {ActionUri} failed for skin \"{Skin}\"", actionUri, _viewModel.Definition.Name);
         }
     }
 
@@ -562,6 +676,39 @@ public sealed partial class SkinHostWindow : Window
         }
     }
 
+    private static Windows.UI.Color BlendColor(Windows.UI.Color a, Windows.UI.Color b, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return Windows.UI.Color.FromArgb(
+            (byte)Math.Round(a.A + (b.A - a.A) * amount),
+            (byte)Math.Round(a.R + (b.R - a.R) * amount),
+            (byte)Math.Round(a.G + (b.G - a.G) * amount),
+            (byte)Math.Round(a.B + (b.B - a.B) * amount));
+    }
+
+    private static Windows.UI.Color WithAlpha(Windows.UI.Color color, byte alpha) =>
+        Windows.UI.Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    /// <summary>
+    /// Shared soft-accent gradient used by the live widget renderer. The middle tone is blended
+    /// from the two theme accents so saturated palettes transition smoothly instead of banding.
+    /// </summary>
+    private static LinearGradientBrush CreateAccentSweep(SolidColorBrush primary, SolidColorBrush strong)
+    {
+        var middle = BlendColor(primary.Color, strong.Color, 0.38);
+        return new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = WithAlpha(primary.Color, 0xEA), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(middle, 0xF2), Offset = 0.52 },
+                new GradientStop { Color = WithAlpha(strong.Color, 0xDA), Offset = 1.0 },
+            },
+        };
+    }
+
     /// <summary>A track + fill pair wrapped in one Grid, so it can be positioned as a single element.</summary>
     private static Grid BuildBarVisual(BarMeterViewModel vm)
     {
@@ -578,16 +725,7 @@ public sealed partial class SkinHostWindow : Window
         // (not a hardcoded color pair) so it reads as "a nicer bar" under any palette, not just
         // the Cozy Café defaults — same reasoning as every other brush lookup in this file.
         var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
-        var gradientFill = new LinearGradientBrush
-        {
-            StartPoint = new Windows.Foundation.Point(0, 0),
-            EndPoint = new Windows.Foundation.Point(1, 0),
-            GradientStops =
-            {
-                new GradientStop { Color = normalBrush.Color, Offset = 0 },
-                new GradientStop { Color = strongBrush.Color, Offset = 1 },
-            },
-        };
+        var gradientFill = CreateAccentSweep(normalBrush, strongBrush);
 
         var fill = new Border
         {
@@ -625,12 +763,27 @@ public sealed partial class SkinHostWindow : Window
 
         // Tint is a low-alpha cut of the accent color itself, not a separate token, so it's
         // correct for any theme rather than just the Cozy Café defaults.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var chipGradient = new RadialGradientBrush
+        {
+            Center = new Windows.Foundation.Point(0.35, 0.28),
+            GradientOrigin = new Windows.Foundation.Point(0.35, 0.28),
+            RadiusX = 0.92,
+            RadiusY = 0.92,
+            GradientStops =
+            {
+                new GradientStop { Color = WithAlpha(normalBrush.Color, 0x34), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(BlendColor(normalBrush.Color, strongBrush.Color, 0.5), 0x1B), Offset = 0.55 },
+                new GradientStop { Color = WithAlpha(strongBrush.Color, 0x07), Offset = 1.0 },
+            }
+        };
+
         var chip = new Border
         {
             Width = vm.Width,
             Height = vm.Height,
             CornerRadius = new CornerRadius(Math.Min(vm.Width, vm.Height) * 0.25),
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B)),
+            Background = chipGradient,
         };
 
         var icon = new FontIcon
@@ -655,7 +808,26 @@ public sealed partial class SkinHostWindow : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IconMeterViewModel.Glyph))
+            {
+                var oldGlyph = icon.Glyph;
                 icon.Glyph = vm.Glyph;
+
+                if (oldGlyph != vm.Glyph)
+                {
+                    var fade = new DoubleAnimation
+                    {
+                        From = 0.25,
+                        To = 1,
+                        Duration = TimeSpan.FromMilliseconds(140),
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                    };
+                    Storyboard.SetTarget(fade, icon);
+                    Storyboard.SetTargetProperty(fade, "Opacity");
+                    var story = new Storyboard();
+                    story.Children.Add(fade);
+                    story.Begin();
+                }
+            }
         };
 
         // Cover art (from a bound measure's ImageUrl, e.g. VibeFinderMeasure) layers over the
@@ -669,12 +841,69 @@ public sealed partial class SkinHostWindow : Window
             Height = vm.Height,
             Stretch = Stretch.UniformToFill,
             Visibility = Visibility.Collapsed,
+            Opacity = 0,
+            RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
+            RenderTransform = new ScaleTransform { ScaleX = 0.96, ScaleY = 0.96 },
         };
-        image.ImageOpened += (_, _) => image.Visibility = Visibility.Visible;
-        image.ImageFailed += (_, _) => image.Visibility = Visibility.Collapsed;
+
+        void AnimateArtworkIn()
+        {
+            image.Visibility = Visibility.Visible;
+
+            if (image.RenderTransform is ScaleTransform scale)
+            {
+                var scaleX = new DoubleAnimation
+                {
+                    From = scale.ScaleX,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                var scaleY = new DoubleAnimation
+                {
+                    From = scale.ScaleY,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(scaleX, scale);
+                Storyboard.SetTargetProperty(scaleX, "ScaleX");
+                Storyboard.SetTarget(scaleY, scale);
+                Storyboard.SetTargetProperty(scaleY, "ScaleY");
+
+                var fade = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(fade, image);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+
+                var story = new Storyboard();
+                story.Children.Add(scaleX);
+                story.Children.Add(scaleY);
+                story.Children.Add(fade);
+                story.Begin();
+            }
+            else
+            {
+                image.Opacity = 1;
+            }
+        }
+
+        image.ImageOpened += (_, _) => AnimateArtworkIn();
+        image.ImageFailed += (_, _) =>
+        {
+            image.Visibility = Visibility.Collapsed;
+            image.Opacity = 0;
+        };
 
         if (vm.ImageUrl is string initialUrl && Uri.TryCreate(initialUrl, UriKind.Absolute, out var initialUri))
+        {
             image.Source = new BitmapImage(initialUri);
+        }
 
         vm.PropertyChanged += (_, e) =>
         {
@@ -682,12 +911,23 @@ public sealed partial class SkinHostWindow : Window
 
             if (vm.ImageUrl is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
+                // Start the new frame just behind the old one, then fade/scale it in once the
+                // network image has decoded. This prevents the widget from hard-cutting between
+                // album covers when VibeFinder changes tracks.
+                image.Opacity = 0;
+                image.Visibility = Visibility.Visible;
+                if (image.RenderTransform is ScaleTransform scale)
+                {
+                    scale.ScaleX = 0.96;
+                    scale.ScaleY = 0.96;
+                }
                 image.Source = new BitmapImage(uri);
             }
             else
             {
                 image.Source = null;
                 image.Visibility = Visibility.Collapsed;
+                image.Opacity = 0;
             }
         };
 
@@ -735,11 +975,12 @@ public sealed partial class SkinHostWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
         var arc = new Microsoft.UI.Xaml.Shapes.Path
         {
             Width = vm.Width,
             Height = vm.Height,
-            Stroke = normalBrush,
+            Stroke = CreateAccentSweep(normalBrush, strongBrush),
             StrokeThickness = thickness,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -790,7 +1031,7 @@ public sealed partial class SkinHostWindow : Window
             if (e.PropertyName == nameof(RingMeterViewModel.FillFraction))
                 Redraw();
             if (e.PropertyName == nameof(RingMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
-                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : CreateAccentSweep(normalBrush, strongBrush);
         };
 
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
@@ -817,21 +1058,37 @@ public sealed partial class SkinHostWindow : Window
 
         // Fades from a translucent cut of the line's own color down to nothing, so it stays
         // correct for any accent color rather than a separately-maintained fill token.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var blended = BlendColor(normalBrush.Color, strongBrush.Color, 0.35);
+
         var areaFill = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(0, 1),
             GradientStops =
             {
-                new GradientStop { Color = Windows.UI.Color.FromArgb(0x55, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 0 },
-                new GradientStop { Color = Windows.UI.Color.FromArgb(0x00, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 1 },
+                new GradientStop { Color = WithAlpha(normalBrush.Color, 0x46), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(blended, 0x1E), Offset = 0.45 },
+                new GradientStop { Color = WithAlpha(strongBrush.Color, 0x00), Offset = 1.0 },
             },
         };
         var area = new Polygon { Fill = areaFill };
 
+        var lineGradient = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = normalBrush.Color, Offset = 0.0 },
+                new GradientStop { Color = blended, Offset = 0.52 },
+                new GradientStop { Color = strongBrush.Color, Offset = 1.0 },
+            },
+        };
+
         var line = new Polyline
         {
-            Stroke = normalBrush,
+            Stroke = lineGradient,
             StrokeThickness = 2,
             StrokeLineJoin = PenLineJoin.Round,
         };
@@ -994,4 +1251,14 @@ public sealed partial class SkinHostWindow : Window
 
         menu.ShowAt(RootCanvas, new FlyoutShowOptions { Position = position });
     }
+}
+
+
+internal static class WidgetGroupOrderingExtensions
+{
+    public static int ZIndexForOrdering(this WidgetGroupDefinition group, IReadOnlyList<MeterDefinition> meters) =>
+        group.MeterIds
+            .Select(id => meters.FirstOrDefault(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.ZIndex ?? 0)
+            .DefaultIfEmpty(0)
+            .Min();
 }
