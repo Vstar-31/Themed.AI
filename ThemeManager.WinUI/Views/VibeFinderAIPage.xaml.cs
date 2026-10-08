@@ -172,7 +172,9 @@ public sealed partial class VibeFinderAIPage : Page
         if (skin is null) return false;
         var placement = scene?.Widgets.FirstOrDefault(p =>
             p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
-        return placement?.Visible ?? skin.Enabled;
+        return scene is null
+            ? skin.Enabled
+            : placement?.Visible == true;
     }
 
     private static void EnsureScenePlacement(DesktopScene scene, SkinDefinition skin)
