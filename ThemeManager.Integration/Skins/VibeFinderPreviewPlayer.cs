@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Microsoft.Extensions.Logging;
@@ -8,51 +7,100 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ThemeManager.Integration.Skins;
 
 /// <summary>
-/// A simple native audio player for VibeFinder's 30s preview URLs.
-/// Replaces the broken YouTube WebView2 approach, since the backend doesn't return youtube_video_id.
+/// One native preview player shared by VibeFinder widgets.
+///
+/// The WinRT MediaPlayer object is owned by the UI apartment. Widget measures are refreshed from
+/// worker threads, so this class never queries MediaPlayer/MediaPlaybackSession directly from those
+/// workers; it mirrors playback state through the session events into thread-safe scalar fields.
 /// </summary>
 public static class VibeFinderPreviewPlayer
 {
     private static readonly MediaPlayer _player;
     private static ILogger _logger = NullLogger.Instance;
 
-    // The URL currently loaded into _player.Source, kept alongside it because MediaPlayer
-    // doesn't expose the source URI back out for logging once it's been set.
     private static string? _currentUrl;
+    private static int _hasSource;
+    private static int _isPlaying;
+    private static long _positionTicks;
+    private static long _durationTicks;
 
-    public static bool IsPlaying => _player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
-    public static double CurrentTime => _player.PlaybackSession.Position.TotalSeconds;
-    public static double Duration => _player.PlaybackSession.NaturalDuration.TotalSeconds;
-    public static double Progress => Duration > 0 ? CurrentTime / Duration : 0;
+    public static bool IsPlaying => Volatile.Read(ref _isPlaying) != 0;
+    public static double CurrentTime => TimeSpan.FromTicks(Math.Max(0, Volatile.Read(ref _positionTicks))).TotalSeconds;
+    public static double Duration => TimeSpan.FromTicks(Math.Max(0, Volatile.Read(ref _durationTicks))).TotalSeconds;
+    public static double Progress => Duration > 0 ? Math.Clamp(CurrentTime / Duration, 0, 1) : 0;
 
     static VibeFinderPreviewPlayer()
     {
-        _player = new MediaPlayer();
-        _player.AudioCategory = MediaPlayerAudioCategory.Media;
-        _player.MediaFailed += (sender, args) =>
+        _player = new MediaPlayer
         {
-            // Previously an empty handler — "swallow media failures so they don't propagate to
-            // the background thread and crash the process" was the right call, but silently
-            // leaving _player.Source pointed at the URL that just failed was not: the next
-            // TogglePause() call would see Source != null, assume playback was already loaded,
-            // and call _player.Play() on a source that can never succeed — every subsequent
-            // play/pause click on that widget would then silently no-op with nothing in the
-            // logs. iTunes preview URLs do fail this way in practice (expired signed URL,
-            // regional block, transient 404), so this was reachable, not theoretical — and is
-            // very likely a real contributor to "themed.ai bugging after a few play/pause
-            // cycles". Resetting Source here means the NEXT Play() call starts clean instead
-            // of retrying a URL already known to be dead.
-            _logger.LogWarning("VibeFinderPreviewPlayer: MediaFailed for {Url} — {ErrorCode} {ErrorMessage}",
-                _currentUrl, args.Error, args.ErrorMessage);
-            _player.Source = null;
-            _currentUrl = null;
+            AudioCategory = MediaPlayerAudioCategory.Media
         };
-        _player.MediaEnded += (sender, args) =>
+
+        var session = _player.PlaybackSession;
+
+        session.PlaybackStateChanged += (_, _) =>
+        {
+            try
+            {
+                var playing = session.PlaybackState == MediaPlaybackState.Playing;
+                Volatile.Write(ref _isPlaying, playing ? 1 : 0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "VibeFinderPreviewPlayer: failed to read PlaybackStateChanged state");
+            }
+        };
+
+        session.PositionChanged += (sender, _) =>
+        {
+            try
+            {
+                Volatile.Write(ref _positionTicks, Math.Max(0, sender.Position.Ticks));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "VibeFinderPreviewPlayer: failed to read playback position");
+            }
+        };
+
+        session.NaturalDurationChanged += (sender, _) =>
+        {
+            try
+            {
+                Volatile.Write(ref _durationTicks, Math.Max(0, sender.NaturalDuration.Ticks));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "VibeFinderPreviewPlayer: failed to read natural duration");
+            }
+        };
+
+        _player.MediaFailed += (_, args) =>
+        {
+            _logger.LogWarning(
+                "VibeFinderPreviewPlayer: MediaFailed for {Url} — {ErrorCode} {ErrorMessage}",
+                _currentUrl,
+                args.Error,
+                args.ErrorMessage);
+
+            Volatile.Write(ref _isPlaying, 0);
+            Volatile.Write(ref _positionTicks, 0);
+            Volatile.Write(ref _durationTicks, 0);
+            Volatile.Write(ref _hasSource, 0);
+            _currentUrl = null;
+
+            try { _player.Source = null; }
+            catch (Exception ex) { _logger.LogDebug(ex, "VibeFinderPreviewPlayer: failed to clear failed media source"); }
+        };
+
+        _player.MediaEnded += (_, _) =>
+        {
+            Volatile.Write(ref _isPlaying, 0);
             _logger.LogDebug("VibeFinderPreviewPlayer: preview clip ended ({Url})", _currentUrl);
+        };
     }
 
-    /// <summary>Wires up real logging. Called once from App.xaml.cs during startup — before that,
-    /// this class silently no-ops on failures via NullLogger, same as it always has.</summary>
+    /// <summary>Wires up real logging. Called once during app startup before widgets are opened.</summary>
     public static void Initialize(ILogger logger) => _logger = logger;
 
     public static void Play(string? url)
@@ -67,50 +115,74 @@ public static class VibeFinderPreviewPlayer
         {
             _player.Source = MediaSource.CreateFromUri(new Uri(url));
             _currentUrl = url;
+            Volatile.Write(ref _hasSource, 1);
+            Volatile.Write(ref _isPlaying, 1);
+            Volatile.Write(ref _positionTicks, 0);
+            Volatile.Write(ref _durationTicks, 0);
             _player.Play();
             _logger.LogDebug("VibeFinderPreviewPlayer: playing {Url}", url);
         }
         catch (Exception ex)
         {
-            // Previously an empty `catch (Exception) { }` — a malformed preview URL used to
-            // fail completely silently here.
             _logger.LogWarning(ex, "VibeFinderPreviewPlayer: Play() failed for {Url}", url);
-            _player.Source = null;
+            Volatile.Write(ref _isPlaying, 0);
+            Volatile.Write(ref _hasSource, 0);
+            Volatile.Write(ref _positionTicks, 0);
+            Volatile.Write(ref _durationTicks, 0);
             _currentUrl = null;
+            try { _player.Source = null; } catch { }
         }
     }
 
     public static void TogglePause(string? url)
     {
-        if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
+        if (IsPlaying)
         {
             _logger.LogDebug("VibeFinderPreviewPlayer: pausing {Url}", _currentUrl);
-            _player.Pause();
+            try { _player.Pause(); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "VibeFinderPreviewPlayer: Pause() failed");
+            }
+            Volatile.Write(ref _isPlaying, 0);
+            return;
         }
-        else if (_player.Source == null && !string.IsNullOrWhiteSpace(url))
-        {
-            Play(url);
-        }
-        else if (_player.Source != null)
+
+        if (Volatile.Read(ref _hasSource) != 0)
         {
             _logger.LogDebug("VibeFinderPreviewPlayer: resuming {Url}", _currentUrl);
-            _player.Play();
+            try
+            {
+                _player.Play();
+                Volatile.Write(ref _isPlaying, 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "VibeFinderPreviewPlayer: resume failed");
+                Volatile.Write(ref _isPlaying, 0);
+            }
+            return;
         }
-        else
+
+        if (!string.IsNullOrWhiteSpace(url))
         {
-            // Source is null AND no url was supplied — e.g. the widget is showing a track with
-            // no preview_url at all (VibeFinderMeasure's "No match" placeholder track has one).
-            // Previously this fell into the resume branch below and called _player.Play() on an
-            // empty player: a click that visibly did nothing, with nothing logged to explain why.
-            _logger.LogDebug("VibeFinderPreviewPlayer: TogglePause() called with no URL and nothing loaded — nothing to play");
+            Play(url);
+            return;
         }
+
+        _logger.LogDebug("VibeFinderPreviewPlayer: TogglePause() called with no URL and nothing loaded");
     }
 
     public static void Stop()
     {
         _logger.LogDebug("VibeFinderPreviewPlayer: stop ({Url})", _currentUrl);
-        _player.Pause();
-        _player.Source = null;
+        try { _player.Pause(); } catch { }
+        try { _player.Source = null; } catch { }
+
         _currentUrl = null;
+        Volatile.Write(ref _hasSource, 0);
+        Volatile.Write(ref _isPlaying, 0);
+        Volatile.Write(ref _positionTicks, 0);
+        Volatile.Write(ref _durationTicks, 0);
     }
 }
