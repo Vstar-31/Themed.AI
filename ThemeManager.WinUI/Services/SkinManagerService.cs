@@ -211,6 +211,8 @@ public sealed class SkinManagerService : IDisposable
             .OrderBy(p => p.ZIndex)
             .ToList();
 
+        var sceneWasMutated = false;
+
         // Worlds should contain one placement per widget. Older versions could leave behind
         // orphaned GUIDs or duplicate VibeFinder placements during provisioning/rebuilds.
         // Normalize those records before opening any windows so a world can never resurrect
@@ -242,7 +244,6 @@ public sealed class SkinManagerService : IDisposable
         var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
         var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var successfulPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
-        var sceneWasMutated = false;
         var applied = 0;
         var missing = 0;
 
