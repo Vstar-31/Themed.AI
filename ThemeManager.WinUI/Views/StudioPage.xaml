@@ -159,12 +159,12 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <ToggleSwitch x:Name="SelectedWorldAestheticToggle"
-                                                      Header="Auto-apply this world"
+                                                      Header="Auto-apply this world (override)"
                                                       IsOn="False"
                                                       Toggled="SelectedWorldAestheticToggle_Toggled"
                                                       VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1"
-                                                   Text="This world can opt into automatic aesthetic application even when the global Studio switch is OFF."
+                                                   Text="Overrides the global Studio setting for this world. ON or OFF is remembered separately for this world."
                                                    FontSize="12"
                                                    Foreground="{StaticResource TextMutedBrush}"
                                                    VerticalAlignment="Center"
