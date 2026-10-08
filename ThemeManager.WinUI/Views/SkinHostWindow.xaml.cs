@@ -398,9 +398,9 @@ public sealed partial class SkinHostWindow : Window
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                         bool webEmbedActive =
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
-                            ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive;
+                            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
 
-                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webEmbedActive={WebActive}, visibleEmbed={VisibleEmbed}, playerActive={PlayerActive})",
+                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webBridgeActive={WebActive}, visibleEmbed={VisibleEmbed}, playerActive={PlayerActive})",
                             _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive,
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive,
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive);
