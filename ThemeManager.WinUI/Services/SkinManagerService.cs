@@ -407,8 +407,9 @@ public sealed class SkinManagerService : IDisposable
 
     private async Task SyncActiveScenePlacementAsync(SkinDefinition skin)
     {
-        var scene = App.SceneService?.ActiveScene;
-        if (scene is null) return;
+        var sceneService = App.SceneService;
+        var scene = sceneService?.ActiveScene;
+        if (scene is null || sceneService is null) return;
 
         var placement = scene.Widgets.FirstOrDefault(
             p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
@@ -420,7 +421,7 @@ public sealed class SkinManagerService : IDisposable
         placement.Visible = skin.Enabled;
         placement.Definition = skin.Clone(skin.Id);
 
-        await App.SceneService.UpsertAsync(scene);
+        await sceneService.UpsertAsync(scene);
     }
 
     public void ToggleAllWidgetsVisibility()
