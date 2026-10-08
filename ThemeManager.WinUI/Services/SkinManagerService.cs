@@ -43,6 +43,32 @@ public sealed class SkinManagerService : IDisposable
     public async Task InitializeAsync()
     {
         _skins = await _repo.LoadAllAsync();
+
+        // Studio worlds own VibeFinder visibility. Resolve the persisted active world before
+        // opening any windows so legacy global Enabled flags cannot briefly resurrect widgets
+        // that are disabled in the current world.
+        await App.SceneService.InitializeAsync();
+        if (App.SceneService.ActiveScene is { } activeScene)
+        {
+            foreach (var vibeSkin in _skins.Where(IsVibeFinderSkin))
+            {
+                var placement = activeScene.Widgets.FirstOrDefault(p =>
+                    p.WidgetId.Equals(vibeSkin.Id, StringComparison.OrdinalIgnoreCase));
+
+                if (placement is not null)
+                {
+                    vibeSkin.X = placement.X;
+                    vibeSkin.Y = placement.Y;
+                    vibeSkin.Opacity = Math.Clamp(placement.Opacity, 0, 1);
+                    vibeSkin.Enabled = placement.Visible;
+                }
+                else
+                {
+                    vibeSkin.Enabled = false;
+                }
+            }
+        }
+
         bool changed = false;
         foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
         {
@@ -584,6 +610,9 @@ public sealed class SkinManagerService : IDisposable
         _open.Clear();
         _scheduler.Clear();
     }
+
+    private static bool IsVibeFinderSkin(SkinDefinition skin) =>
+        skin.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase);
 
     public void EnsureVibeFinderSkinsExist()
     {
