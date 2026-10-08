@@ -60,11 +60,11 @@ public sealed class SceneBehavior
     public bool AutoSwitch { get; set; }
 
     /// <summary>
-    /// When enabled in Desktop Studio, selecting this scene immediately applies its visual
-    /// aesthetic (theme, wallpaper and widget composition). Disabled by default so merely
-    /// browsing Studio never changes the desktop.
+    /// Per-world override for Studio aesthetic auto-application.
+    /// null = follow the global Studio preference; true/false = explicitly enable/disable
+    /// automatic application for this world only.
     /// </summary>
-    public bool ApplyAestheticOnSelection { get; set; }
+    public bool? ApplyAestheticOnSelection { get; set; }
 
     public double TransitionSeconds { get; set; } = 0.8;
     public double MotionIntensity { get; set; } = 0.35;
