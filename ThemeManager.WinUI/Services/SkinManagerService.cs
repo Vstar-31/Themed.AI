@@ -262,11 +262,12 @@ public sealed class SkinManagerService : IDisposable
 
                     if (liveVibe is not null)
                     {
+                        var oldWidgetId = placement.WidgetId;
                         skin = liveVibe;
                         placement.WidgetId = liveVibe.Id;
                         _logger.LogInformation(
                             "Desktop world rebound legacy widget placement {OldWidgetId} to canonical {WidgetId} ({WidgetName})",
-                            placement.WidgetId, skin.Id, skin.Name);
+                            oldWidgetId, skin.Id, skin.Name);
                     }
                     else
                     {
