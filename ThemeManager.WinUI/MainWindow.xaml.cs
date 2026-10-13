@@ -327,9 +327,21 @@ public sealed partial class MainWindow : Window
 
     private void InitializeSidebarState()
     {
-        var settings = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
-        bool collapsed = settings.TryGetValue("Navigation.SidebarCollapsed", out var collapsedValue) && collapsedValue is bool collapsedSetting && collapsedSetting;
-        bool moreExpanded = settings.TryGetValue("Navigation.MoreToolsExpanded", out var moreValue) && moreValue is bool moreSetting && moreSetting;
+        bool collapsed = false;
+        bool moreExpanded = false;
+        try
+        {
+            var settings = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
+            collapsed = settings.TryGetValue("Navigation.SidebarCollapsed", out var collapsedValue)
+                && collapsedValue is bool collapsedSetting && collapsedSetting;
+            moreExpanded = settings.TryGetValue("Navigation.MoreToolsExpanded", out var moreValue)
+                && moreValue is bool moreSetting && moreSetting;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Sidebar preferences could not be read; using the default navigation state");
+        }
+
         SetMoreToolsExpanded(moreExpanded, persist: false);
         SetSidebarCollapsed(collapsed, persist: false);
     }
