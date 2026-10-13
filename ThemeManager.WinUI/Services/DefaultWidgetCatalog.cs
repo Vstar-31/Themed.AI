@@ -105,9 +105,9 @@ public static partial class DefaultWidgetCatalog
         // are left in place except for the general clipping safety check below.
         if (skin.Name.Equals("VibeFinder Minimal", StringComparison.OrdinalIgnoreCase))
         {
-            var prev = skin.Meters.FirstOrDefault(m => m.MeasureName.Equals("Prev", StringComparison.OrdinalIgnoreCase));
-            var state = skin.Meters.FirstOrDefault(m => m.MeasureName.Equals("VibeState", StringComparison.OrdinalIgnoreCase));
-            var next = skin.Meters.FirstOrDefault(m => m.MeasureName.Equals("Next", StringComparison.OrdinalIgnoreCase));
+            var prev = skin.Meters.FirstOrDefault(m => string.Equals(m.MeasureName, "Prev", StringComparison.OrdinalIgnoreCase));
+            var state = skin.Meters.FirstOrDefault(m => string.Equals(m.MeasureName, "VibeState", StringComparison.OrdinalIgnoreCase));
+            var next = skin.Meters.FirstOrDefault(m => string.Equals(m.MeasureName, "Next", StringComparison.OrdinalIgnoreCase));
 
             bool isLegacyStockLayout =
                 prev is not null && state is not null && next is not null &&
