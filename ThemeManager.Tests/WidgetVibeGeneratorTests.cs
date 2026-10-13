@@ -138,6 +138,40 @@ public class WidgetVibeGeneratorTests
         Assert.InRange(analysis.SizeScale, 0.5, 2.0);
     }
 
+    [Fact]
+    public void Generate_HugeUptimeTracker_ProducesSafeWidgetGeometry()
+    {
+        var context = new ThemeManager.Core.Personalization.GenerationContext
+        {
+            Prompt = "huge uptime tracker"
+        };
+        var engine = new ThemeManager.Core.Personalization.CandidateEngine();
+        var candidates = engine.GenerateWidgetCandidates(context, 1920, 1080);
+        var ranked = new ThemeManager.Core.Personalization.HeuristicRankingEngine()
+            .RankWidgets(candidates, new ThemeManager.Core.Personalization.UserProfile(), context);
+
+        Assert.Equal(3, ranked.Count);
+        Assert.Contains(ranked, c => c.Skin.Measures.Any(m => m.Type == MeasureType.Uptime));
+
+        foreach (var candidate in ranked)
+        {
+            var skin = candidate.Skin;
+            Assert.False(skin.Enabled);
+            Assert.InRange(skin.Width, 80, 1200);
+            Assert.InRange(skin.Height, 60, 1200);
+            Assert.True(double.IsFinite(skin.X));
+            Assert.True(double.IsFinite(skin.Y));
+            Assert.All(skin.Meters, meter =>
+            {
+                Assert.True(double.IsFinite(meter.X));
+                Assert.True(double.IsFinite(meter.Y));
+                Assert.InRange(meter.Width, 1, 800);
+                Assert.InRange(meter.Height, 1, 800);
+                Assert.True(double.IsFinite(meter.FontSize));
+            });
+        }
+    }
+
     // ── Meter kind preference ─────────────────────────────────────────────────
 
     [Fact]
