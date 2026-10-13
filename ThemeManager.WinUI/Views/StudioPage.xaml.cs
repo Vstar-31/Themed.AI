@@ -3,7 +3,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Personalization;
 using ThemeManager.WinUI.Services;
+using Microsoft.UI.Xaml.Input;
 
 namespace ThemeManager.WinUI.Views;
 
@@ -356,35 +358,191 @@ public sealed partial class StudioPage : Page
         }
     }
 
-    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await CreateWorldAsync(true);
+    private async void GenerateWorld_Click(object sender, RoutedEventArgs e)
+        => await GeneratePromptWorldAsync();
 
-    private async Task CreateWorldAsync(bool generateWallpaper)
+    private async void WorldPromptBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var pick = Worlds[Random.Shared.Next(Worlds.Length)];
-        var scene = new DesktopScene
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+        e.Handled = true;
+        await GeneratePromptWorldAsync();
+    }
+
+    private void WorldPromptChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string prompt } && !string.IsNullOrWhiteSpace(prompt))
         {
-            Name = pick.Name,
-            Description = pick.Description,
-            ThemeId = App.ThemeService.ActiveTheme.Id,
-            Tags = new List<string> { pick.Tag, "generated", "vibe" },
-            Widgets = CaptureCurrentWidgetLayout(),
-            Effects = new List<SceneEffect>
+            WorldPromptBox.Text = prompt;
+            WorldPromptBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            WorldPromptBox.SelectionStart = WorldPromptBox.Text.Length;
+        }
+    }
+
+    private async Task GeneratePromptWorldAsync()
+    {
+        var prompt = WorldPromptBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            ApplyStatus.Text = "Describe the desktop you want first — the prompt drives its palette, wallpaper and widget mix.";
+            WorldPromptBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            return;
+        }
+
+        await CreateWorldAsync(true, prompt);
+    }
+
+    private async Task CreateWorldAsync(bool generateWallpaper, string prompt)
+    {
+        prompt = prompt.Trim();
+        var lower = prompt.ToLowerInvariant();
+        var tag = InferWorldTag(lower);
+        var minimal = ContainsAny(lower, "minimal", "minimalist", "only", "just", "clean", "focus");
+        var dark = ContainsAny(lower, "dark", "midnight", "night", "noir", "neon", "cyberpunk", "space");
+        var light = ContainsAny(lower, "light", "bright", "airy", "daylight", "pastel", "white");
+        var wantsMotion = ContainsAny(lower, "animated", "motion", "energetic", "dynamic", "alive");
+        var wantsMusic = ContainsAny(lower, "music", "playlist", "player", "song", "spotify", "vibe", "listen", "audio");
+
+        var context = new GenerationContext
+        {
+            Prompt = prompt,
+            Constraints = new GenerationConstraints
             {
-                new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = pick.Tag is "neon" or "hud" ? 0.8 : 0.35 },
-                new() { Type = "AmbientMotion", Intensity = 0.25, Speed = 0.65 }
-            },
-            Behavior = new SceneBehavior { ReactToVibeFinder = true, ReactToMedia = true, TransitionSeconds = 0.9 }
+                MustBeDarkTheme = dark && !light,
+                MustBeLightTheme = light && !dark,
+                Minimalist = minimal,
+                MaxWidgets = minimal ? 3 : 5
+            }
         };
 
-        await App.SceneService.UpsertAsync(scene);
-        Select(scene);
-
-        if (generateWallpaper)
+        ApplyStatus.Text = "Designing a palette and composing your desktop world…";
+        try
         {
-            WallpaperStyleCombo.SelectedItem = WallpaperStyleForTag(pick.Tag);
-            WallpaperNameBox.Text = scene.Name;
-            await GenerateWallpaperAsync(false);
+            var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
+            var generatedTheme = candidate.Theme;
+            generatedTheme.Description = $"Palette generated from: {prompt}";
+            await App.ThemeService.SaveThemeAsync(generatedTheme);
+
+            var scene = new DesktopScene
+            {
+                Name = BuildWorldName(generatedTheme.Name),
+                Description = prompt,
+                ThemeId = generatedTheme.Id,
+                Tags = new List<string> { tag, "generated", "prompt-generated" },
+                Widgets = CaptureWidgetLayoutForPrompt(prompt, minimal ? 3 : 5),
+                Effects = new List<SceneEffect>
+                {
+                    new()
+                    {
+                        Type = tag == "minimal" ? "Glass" : tag is "neon" or "hud" ? "Glow" : "AmbientMotion",
+                        Intensity = wantsMotion ? 0.8 : minimal ? 0.12 : tag is "neon" or "hud" ? 0.58 : 0.28,
+                        Speed = wantsMotion ? 0.9 : 0.4
+                    },
+                    new()
+                    {
+                        Type = "AmbientMotion",
+                        Intensity = wantsMotion ? 0.55 : minimal ? 0.08 : 0.22,
+                        Speed = wantsMotion ? 0.85 : 0.35
+                    }
+                },
+                Behavior = new SceneBehavior
+                {
+                    ReactToVibeFinder = wantsMusic,
+                    ReactToMedia = true,
+                    ReactToWeather = ContainsAny(lower, "weather", "rain", "storm", "forecast"),
+                    MotionIntensity = wantsMotion ? 0.8 : minimal ? 0.1 : 0.3,
+                    TransitionSeconds = ContainsAny(lower, "snappy", "instant", "fast") ? 0.35 : 0.9
+                }
+            };
+
+            await App.SceneService.UpsertAsync(scene);
+            Select(scene);
+
+            if (generateWallpaper)
+            {
+                WallpaperStyleCombo.SelectedItem = WallpaperStyleForTag(tag);
+                WallpaperNameBox.Text = scene.Name;
+                WallpaperStatusText.Text = $"Generating wallpaper from the new “{generatedTheme.Name}” palette…";
+                await GenerateWallpaperAsync(false);
+            }
+
+            ApplyStatus.Text = $"Created “{scene.Name}” from your prompt. Review its widgets and press Apply to desktop when ready.";
         }
+        catch (Exception ex)
+        {
+            ApplyStatus.Text = $"World generation failed: {ex.Message}";
+            App.LoggerFactory.CreateLogger<StudioPage>().LogError(ex, "Prompt-to-world generation failed for {Prompt}", prompt);
+        }
+    }
+
+    private static string InferWorldTag(string prompt)
+    {
+        if (ContainsAny(prompt, "neon", "cyberpunk", "synthwave", "tokyo", "magenta", "vaporwave")) return "neon";
+        if (ContainsAny(prompt, "hud", "terminal", "sci-fi", "futuristic", "cyber", "spaceship", "dashboard")) return "hud";
+        if (ContainsAny(prompt, "cozy", "cafe", "café", "warm", "autumn", "library", "reading", "linen")) return "cozy";
+        if (ContainsAny(prompt, "arctic", "ice", "snow", "glacier", "minimal", "minimalist", "zen", "focus", "clean")) return "minimal";
+        return ContainsAny(prompt, "rain", "night", "midnight", "city", "storm", "space", "noir", "moody") ? "nocturnal" : "cozy";
+    }
+
+    private static bool ContainsAny(string text, params string[] values)
+        => values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildWorldName(string? themeName)
+    {
+        var clean = string.IsNullOrWhiteSpace(themeName) ? "New Desktop" : themeName.Trim();
+        clean = clean.EndsWith("World", StringComparison.OrdinalIgnoreCase) ? clean : $"{clean} World";
+        return clean.Length <= 48 ? clean : clean[..48].TrimEnd();
+    }
+
+    private List<SceneWidgetPlacement> CaptureWidgetLayoutForPrompt(string prompt, int maxWidgets)
+    {
+        var available = App.SkinManager?.Skins ?? new List<SkinDefinition>();
+        var lower = prompt.ToLowerInvariant();
+        var chosen = new List<SkinDefinition>();
+        bool explicitWidgetIntent = ContainsAny(lower, "clock", "time", "date", "cpu", "processor", "ram", "memory", "disk", "storage", "system stats", "performance", "network", "wifi", "bandwidth", "uptime", "music", "playlist", "player", "song", "spotify", "vibe", "widget");
+        bool wantsNoWidgets = ContainsAny(lower, "no widgets", "without widgets", "wallpaper only", "background only");
+
+        void AddFirst(params string[] nameHints)
+        {
+            var match = available.FirstOrDefault(s => nameHints.Any(h =>
+                s.Name.Contains(h, StringComparison.OrdinalIgnoreCase)));
+            if (match is not null && chosen.All(s => !s.Id.Equals(match.Id, StringComparison.OrdinalIgnoreCase)))
+                chosen.Add(match);
+        }
+
+        if (wantsNoWidgets) return new List<SceneWidgetPlacement>();
+
+        if (ContainsAny(lower, "clock", "time", "date")) AddFirst("clock");
+        if (ContainsAny(lower, "cpu", "processor", "ram", "memory", "disk", "storage", "system stats", "performance")) AddFirst("system monitor", "system");
+        if (ContainsAny(lower, "network", "wifi", "bandwidth", "internet")) AddFirst("network");
+        if (ContainsAny(lower, "uptime")) AddFirst("uptime");
+        if (ContainsAny(lower, "music", "playlist", "player", "song", "spotify", "vibe", "listen", "audio"))
+        {
+            if (ContainsAny(lower, "playlist", "full player", "music dashboard")) AddFirst("vibefinder playlist");
+            else if (ContainsAny(lower, "minimal", "compact", "pill")) AddFirst("vibefinder minimal");
+            else AddFirst("vibefinder primary");
+        }
+
+        if (chosen.Count == 0 && !explicitWidgetIntent)
+            chosen = available.Where(s => s.Enabled).Take(maxWidgets).ToList();
+        if (chosen.Count == 0 && !wantsNoWidgets)
+            chosen = available.Where(s => s.Enabled).Take(maxWidgets).ToList();
+
+        chosen = chosen.Take(maxWidgets).ToList();
+        if (chosen.Count == 0) return new List<SceneWidgetPlacement>();
+
+        return chosen.Select((skin, index) => new SceneWidgetPlacement
+        {
+            WidgetId = skin.Id,
+            X = skin.X,
+            Y = skin.Y,
+            Scale = 1.0,
+            Rotation = 0,
+            Opacity = Math.Clamp(skin.Opacity, 0, 1),
+            ZIndex = index,
+            Visible = true,
+            Monitor = "Primary",
+            Definition = skin.Clone(skin.Id)
+        }).ToList();
     }
 
     private static string WallpaperStyleForTag(string tag) => tag switch
@@ -415,9 +573,20 @@ public sealed partial class StudioPage : Page
             })
             .ToList() ?? new List<SceneWidgetPlacement>();
 
+    private static readonly string[] SurprisePrompts =
+    [
+        "A rainy cyberpunk night with neon magenta and cyan, a music player and system stats",
+        "A cozy autumn reading nook with warm paper colors, clock and uptime",
+        "A bright minimal focus desk with lots of whitespace and only a clock",
+        "An arctic glass workstation with icy blue accents, system monitor and network stats",
+        "A dark orbital terminal with a subtle HUD, uptime and a compact music pill"
+    ];
+
     private async void SurpriseMe_Click(object sender, RoutedEventArgs e)
     {
-        await CreateWorldAsync(true);
+        var prompt = SurprisePrompts[Random.Shared.Next(SurprisePrompts.Length)];
+        WorldPromptBox.Text = prompt;
+        await CreateWorldAsync(true, prompt);
         await ApplySelectedWorldAsync();
     }
 
@@ -560,10 +729,13 @@ public sealed partial class StudioPage : Page
             var name = string.IsNullOrWhiteSpace(WallpaperNameBox.Text)
                 ? _selected.Name
                 : WallpaperNameBox.Text.Trim();
+            var worldTheme = App.ThemeService.Themes.FirstOrDefault(t =>
+                t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase))
+                ?? App.ThemeService.ActiveTheme;
 
-            WallpaperStatusText.Text = $"Generating {style} wallpaper from {App.ThemeService.ActiveTheme.Name}…";
+            WallpaperStatusText.Text = $"Generating {style} wallpaper from {worldTheme.Name}…";
             var path = await ThemedWallpaperGenerator.GenerateAsync(
-                App.ThemeService.ActiveTheme,
+                worldTheme,
                 style,
                 width,
                 height,
