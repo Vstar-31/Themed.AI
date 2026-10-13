@@ -325,23 +325,61 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void InitializeSidebarState()
+    private static readonly object SidebarPreferencesLock = new();
+
+    private static string SidebarPreferencesPath => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ThemedAI",
+        "navigation-state.json");
+
+    private static Dictionary<string, bool> ReadSidebarPreferences()
     {
-        bool collapsed = false;
-        bool moreExpanded = false;
         try
         {
-            var settings = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
-            collapsed = settings.TryGetValue("Navigation.SidebarCollapsed", out var collapsedValue)
-                && collapsedValue is bool collapsedSetting && collapsedSetting;
-            moreExpanded = settings.TryGetValue("Navigation.MoreToolsExpanded", out var moreValue)
-                && moreValue is bool moreSetting && moreSetting;
+            var path = SidebarPreferencesPath;
+            if (!System.IO.File.Exists(path)) return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(System.IO.File.ReadAllText(path))
+                ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool ReadSidebarPreference(string key)
+    {
+        lock (SidebarPreferencesLock)
+            return ReadSidebarPreferences().TryGetValue(key, out var value) && value;
+    }
+
+    private void PersistSidebarPreference(string key, bool value)
+    {
+        try
+        {
+            lock (SidebarPreferencesLock)
+            {
+                var preferences = ReadSidebarPreferences();
+                preferences[key] = value;
+                var path = SidebarPreferencesPath;
+                var directory = System.IO.Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    System.IO.Directory.CreateDirectory(directory);
+                var tempPath = path + ".tmp";
+                System.IO.File.WriteAllText(tempPath, System.Text.Json.JsonSerializer.Serialize(preferences));
+                System.IO.File.Move(tempPath, path, overwrite: true);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Sidebar preferences could not be read; using the default navigation state");
+            _logger.LogDebug(ex, "Could not persist sidebar preference {PreferenceKey}", key);
         }
+    }
 
+    private void InitializeSidebarState()
+    {
+        var collapsed = ReadSidebarPreference("Navigation.SidebarCollapsed");
+        var moreExpanded = ReadSidebarPreference("Navigation.MoreToolsExpanded");
         SetMoreToolsExpanded(moreExpanded, persist: false);
         SetSidebarCollapsed(collapsed, persist: false);
     }
@@ -362,10 +400,7 @@ public sealed partial class MainWindow : Window
         NavMore.Content = _sidebarCollapsed ? "⋯" : (expanded ? "⌃  More tools" : "⌄  More tools");
         ToolTipService.SetToolTip(NavMore, expanded ? "Collapse more tools" : "Expand more tools");
         if (persist)
-        {
-            try { Windows.Storage.ApplicationData.Current.LocalSettings.Values["Navigation.MoreToolsExpanded"] = expanded; }
-            catch (Exception ex) { _logger.LogDebug(ex, "Could not persist expanded navigation state"); }
-        }
+            PersistSidebarPreference("Navigation.MoreToolsExpanded", expanded);
     }
 
     private void SetSidebarCollapsed(bool collapsed, bool persist)
@@ -407,10 +442,7 @@ public sealed partial class MainWindow : Window
         SidebarToggleButton.Content = collapsed ? "☰" : "‹";
         ToolTipService.SetToolTip(SidebarToggleButton, collapsed ? "Expand sidebar" : "Collapse sidebar");
         if (persist)
-        {
-            try { Windows.Storage.ApplicationData.Current.LocalSettings.Values["Navigation.SidebarCollapsed"] = collapsed; }
-            catch (Exception ex) { _logger.LogDebug(ex, "Could not persist sidebar state"); }
-        }
+            PersistSidebarPreference("Navigation.SidebarCollapsed", collapsed);
     }
 
     private void NavThemes_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(ThemesPage)); SetActiveNav(NavThemes); }
