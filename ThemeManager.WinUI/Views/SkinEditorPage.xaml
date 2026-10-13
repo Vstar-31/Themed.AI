@@ -43,13 +43,13 @@
         </Grid>
 
         <!-- ══════════════════════════════════════════════════════════
-             Content: 360px controls | preview
+             Content: responsive controls | preview
         ══════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="1" Margin="32,0,32,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" />
-                <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="0.9*" MinWidth="260" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="1.1*" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
             <!-- ── Left: controls ── -->
@@ -60,11 +60,11 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Widget size &amp; layout" Style="{StaticResource SectionHeaderStyle}" />
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <NumberBox Header="Width" Width="150"
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <NumberBox Header="Width" Width="104"
                                            Value="{x:Bind ViewModel.Width, Mode=TwoWay}"
                                            SpinButtonPlacementMode="Compact" Minimum="60" Maximum="1200" />
-                                <NumberBox Header="Height" Width="150"
+                                <NumberBox Header="Height" Width="104"
                                            Value="{x:Bind ViewModel.Height, Mode=TwoWay}"
                                            SpinButtonPlacementMode="Compact" Minimum="40" Maximum="1200" />
                             </StackPanel>
@@ -361,11 +361,11 @@
                                 <TextBlock Text="Threshold alert" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />
                                 <TextBlock Text="When the value exceeds this %, the meter changes to the alert color. Set to 0 to disable."
                                            Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <NumberBox Header="Threshold %" Width="120"
+                                <StackPanel Spacing="8">
+                                    <NumberBox Header="Threshold %" HorizontalAlignment="Stretch"
                                                Value="{x:Bind ViewModel.SelectedMeter.ThresholdPercent, Mode=TwoWay}"
                                                SpinButtonPlacementMode="Compact" Minimum="0" Maximum="100" />
-                                    <TextBox Header="Alert color (hex)" Width="140"
+                                    <TextBox Header="Alert color (hex)" HorizontalAlignment="Stretch"
                                              Text="{x:Bind ViewModel.SelectedMeter.ThresholdColorHex, Mode=TwoWay}"
                                              PlaceholderText="#FF4444" />
                                 </StackPanel>
@@ -379,21 +379,28 @@
             </ScrollViewer>
 
             <!-- ── Right: live preview ── -->
-            <Grid Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Spacing="10" HorizontalAlignment="Center">
-                    <TextBlock Text="Drag a meter to reposition it — click to select and edit."
-                               Style="{StaticResource CaptionStyle}" HorizontalAlignment="Center" />
-                    <Border x:Name="PreviewFrame"
-                            Width="{x:Bind ViewModel.Width, Mode=OneWay}"
-                            Height="{x:Bind ViewModel.Height, Mode=OneWay}"
-                            BorderBrush="{StaticResource BorderSubtleBrush}"
-                            BorderThickness="2"
-                            CornerRadius="{StaticResource CornerRadiusLarge}"
-                            Background="{StaticResource CardBackgroundBrush}">
-                        <Canvas x:Name="PreviewCanvas" Background="Transparent" />
-                    </Border>
-                </StackPanel>
-            </Grid>
+            <ScrollViewer Grid.Column="2"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          ZoomMode="Disabled">
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel Spacing="10" HorizontalAlignment="Center">
+                        <TextBlock Text="Drag a meter to reposition it — click to select and edit."
+                                   Style="{StaticResource CaptionStyle}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" />
+                        <Border x:Name="PreviewFrame"
+                                Width="{x:Bind ViewModel.Width, Mode=OneWay}"
+                                Height="{x:Bind ViewModel.Height, Mode=OneWay}"
+                                BorderBrush="{StaticResource BorderSubtleBrush}"
+                                BorderThickness="2"
+                                CornerRadius="{StaticResource CornerRadiusLarge}"
+                                Background="{StaticResource CardBackgroundBrush}">
+                            <Canvas x:Name="PreviewCanvas" Background="Transparent" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
         </Grid>
 
         <!-- ══════════════════════════════════════════════════════════
