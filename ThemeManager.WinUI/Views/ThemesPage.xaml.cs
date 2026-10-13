@@ -59,6 +59,11 @@ public sealed partial class ThemesPage : Page
         }
     }
 
+    private void GeneratePaletteButton_Click(object sender, RoutedEventArgs e)
+    {
+        App.MainWindow?.NavigateToThemeGenerator();
+    }
+
     private async void NewThemeButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.CreateThemeAsync();
