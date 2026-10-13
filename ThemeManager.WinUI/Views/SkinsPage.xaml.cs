@@ -76,6 +76,11 @@ public sealed partial class SkinsPage : Page
             ViewModel.ToggleMasterVisibility();
     }
 
+    private void GenerateWidgetButton_Click(object sender, RoutedEventArgs e)
+    {
+        App.MainWindow?.NavigateToWidgetGenerator();
+    }
+
     private async void NewWidgetButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.CreateSkinAsync();
