@@ -118,29 +118,69 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref NativeMonitorInfo info);
+
     /// <summary>
-    /// Work-area size (in DIPs) of the monitor the main window is currently on, so a prompt like
-    /// "top right" lands on the screen the user is actually looking at instead of an assumed
-    /// 1920x1080. Same DPI-conversion approach as SkinHostWindow's _scaleFactor. Returns null on
-    /// any failure — WidgetVibeGenerator falls back to its own default in that case, so a bad
-    /// lookup here can never block generation, only make positioning less precise.
+    /// Reads the work area for the monitor containing the main window using Win32 monitor APIs.
+    /// This avoids the WinRT DisplayArea projection in a path that runs immediately before
+    /// generation; failures degrade to the generator's conservative default positioning.
     /// </summary>
-    private static (double Width, double Height)? GetScreenSizeDips()
+    private (double Width, double Height)? GetScreenSizeDips()
     {
         try
         {
-            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
-            if (displayArea is null) return null;
+            var mainWindow = App.MainWindow;
+            if (mainWindow is null) return null;
+
+            var hwnd = WindowNative.GetWindowHandle(mainWindow);
+            if (hwnd == IntPtr.Zero) return null;
+
+            var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+            if (monitor == IntPtr.Zero) return null;
+
+            var info = new NativeMonitorInfo { Size = Marshal.SizeOf<NativeMonitorInfo>() };
+            if (!GetMonitorInfo(monitor, ref info)) return null;
 
             double scale = GetDpiForWindow(hwnd) / 96.0;
-            if (scale <= 0) scale = 1.0;
+            if (!double.IsFinite(scale) || scale <= 0) scale = 1.0;
 
-            return (displayArea.WorkArea.Width / scale, displayArea.WorkArea.Height / scale);
+            var width = (info.Work.Right - info.Work.Left) / scale;
+            var height = (info.Work.Bottom - info.Work.Top) / scale;
+            if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
+                return null;
+
+            _logger.LogDebug("Widget generation screen work area: {Width:0}×{Height:0} DIPs (scale {Scale:0.00})",
+                width, height, scale);
+            return (width, height);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "Could not read widget-generation work area; using default positioning");
             return null;
         }
     }
@@ -163,9 +203,11 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
         Status = "Reading your description…";
         _logger.LogInformation("Generating/Refining widget for text: {PromptText}", PromptText);
 
+        var stage = "prompt parsing";
         try
         {
             var text = PromptText.Trim();
+            _logger.LogDebug("Widget generation stage: {Stage} (prompt length {Length})", stage, text.Length);
 
             // Phase 5: Conversational Refinement
             var promptWords = VibeTokenizer.TokenizeFull(text).Raw;
@@ -202,11 +244,24 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
                 }
 
                 HasResult = false;
+                stage = "monitor work-area lookup";
                 var screen = GetScreenSizeDips();
+                _logger.LogDebug("Widget generation work-area lookup completed (hasBounds={HasBounds})", screen is not null);
+
+                stage = "candidate generation and ranking";
                 var context = new GenerationContext { Prompt = text };
+                _logger.LogDebug("Widget generation candidate engine starting");
                 var candidate = await Task.Run(() =>
                     App.Personalization.GenerateBestWidget(context, screen?.Width, screen?.Height));
+                _logger.LogDebug(
+                    "Widget candidate selected: {Name}; measures={MeasureCount}; meters={MeterCount}; size={Width:0.##}×{Height:0.##}; source={Source}",
+                    candidate.Skin.Name, candidate.Skin.Measures.Count, candidate.Skin.Meters.Count,
+                    candidate.Skin.Width, candidate.Skin.Height, candidate.GenerationSource);
 
+                stage = "validating generated widget";
+                SanitizeGeneratedSkin(candidate.Skin, screen);
+
+                stage = "applying generation defaults";
                 // Autofill weather target from settings if available
                 var schedule = App.Settings?.Schedule;
                 string? weatherCity = schedule?.WeatherUseDynamicLocation == true ? "AUTO" : schedule?.WeatherCity;
@@ -221,6 +276,7 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
                     }
                 }
 
+                stage = "updating generator result bindings";
                 Analysis = candidate.Analysis;
                 GeneratedSkin = candidate.Skin;
                 HasResult = true;
@@ -233,13 +289,39 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Status = $"Error: {ex.Message}";
-            _logger.LogError(ex, "Failed to generate or refine widget.");
+            Status = $"Widget generation failed during {stage}: {ex.Message}";
+            _logger.LogError(ex, "Failed to generate or refine widget during stage {Stage}", stage);
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private static void SanitizeGeneratedSkin(SkinDefinition skin, (double Width, double Height)? screen)
+    {
+        static double FiniteClamp(double value, double min, double max, double fallback)
+            => double.IsFinite(value) ? Math.Clamp(value, min, max) : fallback;
+
+        skin.Width = FiniteClamp(skin.Width, 80, 1200, 240);
+        skin.Height = FiniteClamp(skin.Height, 60, 1200, 120);
+        skin.X = FiniteClamp(skin.X, 0, Math.Max(0, (screen?.Width ?? 1920) - skin.Width), 40);
+        skin.Y = FiniteClamp(skin.Y, 0, Math.Max(0, (screen?.Height ?? 1080) - skin.Height), 40);
+        skin.Opacity = FiniteClamp(skin.Opacity, 0, 1, 0.5);
+
+        foreach (var meter in skin.Meters)
+        {
+            meter.Width = FiniteClamp(meter.Width, 1, 800, 100);
+            meter.Height = FiniteClamp(meter.Height, 1, 800, 20);
+            meter.X = FiniteClamp(meter.X, 0, Math.Max(0, skin.Width - meter.Width), 0);
+            meter.Y = FiniteClamp(meter.Y, 0, Math.Max(0, skin.Height - meter.Height), 0);
+            meter.FontSize = FiniteClamp(meter.FontSize, 8, 72, 13);
+        }
+
+        if (string.IsNullOrWhiteSpace(skin.Name))
+            skin.Name = "Custom Widget";
+        if (string.IsNullOrWhiteSpace(skin.Id))
+            skin.Id = Guid.NewGuid().ToString();
     }
 
     /// <summary>Adds the generated widget to the list and returns it, ready to hand to the editor.</summary>
