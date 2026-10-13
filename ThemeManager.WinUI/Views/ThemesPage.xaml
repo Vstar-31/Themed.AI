@@ -27,6 +27,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Spacing="2">
@@ -34,13 +35,19 @@
                            FontSize="{StaticResource FontSizeDisplay}"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Create, edit, and apply cozy palettes"
-                           Style="{StaticResource CaptionStyle}" />
+                <TextBlock Text="Color palettes for the app and supported Windows accents. Themes change the look; they do not change your wallpaper or widget layout."
+                           Style="{StaticResource CaptionStyle}"
+                           TextWrapping="Wrap" />
             </StackPanel>
 
             <Button Grid.Column="1"
+                    Content="Generate palette"
+                    VerticalAlignment="Center"
+                    Margin="0,0,8,0"
+                    Click="GeneratePaletteButton_Click" />
+            <Button Grid.Column="2"
                     x:Name="NewThemeButton"
-                    Content="+ New Theme"
+                    Content="+ Blank theme"
                     Style="{StaticResource PrimaryButtonStyle}"
                     VerticalAlignment="Center"
                     Click="NewThemeButton_Click" />
