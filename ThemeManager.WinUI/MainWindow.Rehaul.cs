@@ -39,10 +39,10 @@ public sealed partial class MainWindow
             SkinsPage => NavWidgets,
             SkinEditorPage => NavWidgets,
             WidgetGeneratorPage => NavWidgets,
+            VibeFinderAIPage => NavVibeFinderAI,
             DesktopWorldPage => NavMore,
             SystemIntegrationPage => NavMore,
             GalleryPage => NavMore,
-            VibeFinderAIPage => NavMore,
             SettingsPage => NavMore,
             _ => NavStudio
         };
