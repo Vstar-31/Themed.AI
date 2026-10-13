@@ -348,7 +348,7 @@ public sealed partial class MainWindow : Window
         _moreToolsExpanded = expanded;
         MoreToolsPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         NavMore.Content = _sidebarCollapsed ? "⋯" : (expanded ? "⌃  More tools" : "⌄  More tools");
-        NavMore.ToolTip = expanded ? "Collapse more tools" : "Expand more tools";
+        ToolTipService.SetToolTip(NavMore, expanded ? "Collapse more tools" : "Expand more tools");
         if (persist)
         {
             try { Windows.Storage.ApplicationData.Current.LocalSettings.Values["Navigation.MoreToolsExpanded"] = expanded; }
@@ -393,7 +393,7 @@ public sealed partial class MainWindow : Window
         NavMore.HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         NavMore.Padding = collapsed ? new Thickness(0, 10, 0, 10) : new Thickness(12, 10, 12, 10);
         SidebarToggleButton.Content = collapsed ? "☰" : "‹";
-        SidebarToggleButton.ToolTip = collapsed ? "Expand sidebar" : "Collapse sidebar";
+        ToolTipService.SetToolTip(SidebarToggleButton, collapsed ? "Expand sidebar" : "Collapse sidebar");
         if (persist)
         {
             try { Windows.Storage.ApplicationData.Current.LocalSettings.Values["Navigation.SidebarCollapsed"] = collapsed; }
