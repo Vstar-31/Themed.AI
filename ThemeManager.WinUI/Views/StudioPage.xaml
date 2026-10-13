@@ -28,15 +28,51 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Margin="0,0,0,24">
-                <StackPanel>
-                    <TextBlock Text="DESKTOP STUDIO" FontSize="12" FontWeight="SemiBold" Opacity="0.65" />
-                    <TextBlock Text="Build your world" FontSize="36" FontWeight="Bold" Margin="0,4,0,0" />
-                    <TextBlock Text="Compose wallpapers, widgets, atmosphere and Windows personality as one living scene." FontSize="14" Opacity="0.72" Margin="0,6,0,0" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button Content="Surprise me" Click="SurpriseMe_Click" Margin="0,0,8,0" />
-                    <Button Content="Generate world" Click="GenerateWorld_Click" />
-                </StackPanel>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <StackPanel>
+                        <TextBlock Text="DESKTOP STUDIO  ·  WORLDS" FontSize="12" FontWeight="SemiBold" Opacity="0.65" />
+                        <TextBlock Text="Build a complete desktop world" FontSize="34" FontWeight="Bold" Margin="0,4,0,0" />
+                        <TextBlock Text="Themes are palettes. Worlds bring a palette together with wallpaper, widget layout and desktop behavior — then save the whole setup as one scene." FontSize="14" Opacity="0.72" Margin="0,6,140,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Content="Surprise me" Click="SurpriseMe_Click" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,16,0,0" ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBox x:Name="WorldPromptBox"
+                             Grid.Row="0"
+                             Header="Describe the desktop you want"
+                             PlaceholderText="e.g. a rainy cyberpunk city, magenta/cyan glow, a compact music player and system stats"
+                             Style="{StaticResource CozyTextBoxStyle}"
+                             Height="58"
+                             FontSize="14"
+                             KeyDown="WorldPromptBox_KeyDown" />
+                    <Button Grid.Row="0"
+                            Grid.Column="1"
+                            Content="Generate world"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            VerticalAlignment="Bottom"
+                            Padding="18,12"
+                            Click="GenerateWorld_Click" />
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Try:" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
+                        <Button Content="Neon soundstage" Tag="A neon night desktop with cyan and magenta glow, music player and system stats" Click="WorldPromptChip_Click" Style="{StaticResource GhostButtonStyle}" Padding="10,5" />
+                        <Button Content="Rainy reading nook" Tag="A cozy rainy reading nook with warm paper colors, clock and uptime" Click="WorldPromptChip_Click" Style="{StaticResource GhostButtonStyle}" Padding="10,5" />
+                        <Button Content="Minimal focus desk" Tag="A clean minimal focus desk with a calm light palette and only a clock" Click="WorldPromptChip_Click" Style="{StaticResource GhostButtonStyle}" Padding="10,5" />
+                    </StackPanel>
+                </Grid>
             </Grid>
 
             <Grid Grid.Row="1">
@@ -248,15 +284,17 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock x:Name="ApplyStatus" Text="Ready" FontSize="12" Foreground="{StaticResource TextMutedBrush}" />
                                 <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,3,0,0" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="Save current layout" Click="SaveCurrentLayout_Click" />
-                            <Button Grid.Column="2" Content="Duplicate" Click="DuplicateWorld_Click" />
-                            <Button Grid.Column="3" Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" />
-                            <Button Grid.Column="4" Content="Apply to desktop" Click="ApplyScene_Click" Padding="20,10" />
+                            <Button Grid.Column="1" Content="Edit details" Click="EditWorldDetails_Click" />
+                            <Button Grid.Column="2" Content="Save layout" Click="SaveCurrentLayout_Click" />
+                            <Button Grid.Column="3" Content="Duplicate" Click="DuplicateWorld_Click" />
+                            <Button Grid.Column="4" Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" />
+                            <Button Grid.Column="5" Content="Apply to desktop" Click="ApplyScene_Click" Padding="18,10" />
                         </Grid>
                     </Grid>
                 </Border>
