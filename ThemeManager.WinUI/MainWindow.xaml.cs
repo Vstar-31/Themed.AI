@@ -18,6 +18,8 @@ namespace ThemeManager.WinUI;
 public sealed partial class MainWindow : Window
 {
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<MainWindow>();
+    private bool _sidebarCollapsed;
+    private bool _moreToolsExpanded;
     private bool _vibeFinderPrewarmStarted;
     private bool _vibeFinderAwaitingNetwork;
     private bool _vibeFinderPrewarmHandlersAttached;
@@ -29,6 +31,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ConfigureTitleBar();
+        InitializeSidebarState();
         ContentFrame.Navigate(typeof(ThemesPage));
         SetActiveNav(NavThemes);
 
@@ -322,6 +325,82 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void InitializeSidebarState()
+    {
+        var settings = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
+        bool collapsed = settings.TryGetValue("Navigation.SidebarCollapsed", out var collapsedValue) && collapsedValue is bool collapsedSetting && collapsedSetting;
+        bool moreExpanded = settings.TryGetValue("Navigation.MoreToolsExpanded", out var moreValue) && moreValue is bool moreSetting && moreSetting;
+        SetMoreToolsExpanded(moreExpanded, persist: false);
+        SetSidebarCollapsed(collapsed, persist: false);
+    }
+
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+        => SetSidebarCollapsed(!_sidebarCollapsed, persist: true);
+
+    private void NavMore_Click(object sender, RoutedEventArgs e)
+    {
+        SetMoreToolsExpanded(!_moreToolsExpanded, persist: true);
+        SetActiveNav(NavMore);
+    }
+
+    private void SetMoreToolsExpanded(bool expanded, bool persist)
+    {
+        _moreToolsExpanded = expanded;
+        MoreToolsPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        NavMore.Content = _sidebarCollapsed ? "⋯" : (expanded ? "⌃  More tools" : "⌄  More tools");
+        NavMore.ToolTip = expanded ? "Collapse more tools" : "Expand more tools";
+        if (persist)
+        {
+            try { Windows.Storage.ApplicationData.Current.LocalSettings.Values["Navigation.MoreToolsExpanded"] = expanded; }
+            catch (Exception ex) { _logger.LogDebug(ex, "Could not persist expanded navigation state"); }
+        }
+    }
+
+    private void SetSidebarCollapsed(bool collapsed, bool persist)
+    {
+        _sidebarCollapsed = collapsed;
+        RootGrid.ColumnDefinitions[0].Width = new GridLength(collapsed ? 68 : 220);
+        BrandPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        SidebarFooter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        MakeHeader.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        var labels = new (Button Button, string Expanded, string Icon)[]
+        {
+            (NavStudio, "✦  Studio", "✦"),
+            (NavThemes, "🎨  Themes", "🎨"),
+            (NavWidgets, "🧩  Widgets", "🧩"),
+            (NavVibeFinderAI, "🎵  VibeFinder AI", "🎵"),
+            (NavWorld, "◈  Desktop World", "◈"),
+            (NavVibe, "✨  Palette generator", "✨"),
+            (NavWidgetVibe, "🪄  Widget generator", "🪄"),
+            (NavPreview, "◉  Preview / editor", "◉"),
+            (NavSystem, "⚙  System", "⚙"),
+            (NavGallery, "▦  Gallery", "▦"),
+            (NavSettings, "🔧  Settings", "🔧")
+        };
+
+        foreach (var item in labels)
+        {
+            item.Button.Content = collapsed ? item.Icon : item.Expanded;
+            item.Button.HorizontalContentAlignment = collapsed
+                ? HorizontalAlignment.Center
+                : HorizontalAlignment.Left;
+            item.Button.Padding = collapsed
+                ? new Thickness(0, 10, 0, 10)
+                : new Thickness(12, 10, 12, 10);
+        }
+
+        NavMore.Content = collapsed ? "⋯" : (_moreToolsExpanded ? "⌃  More tools" : "⌄  More tools");
+        NavMore.HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        NavMore.Padding = collapsed ? new Thickness(0, 10, 0, 10) : new Thickness(12, 10, 12, 10);
+        SidebarToggleButton.Content = collapsed ? "☰" : "‹";
+        SidebarToggleButton.ToolTip = collapsed ? "Expand sidebar" : "Collapse sidebar";
+        if (persist)
+        {
+            try { Windows.Storage.ApplicationData.Current.LocalSettings.Values["Navigation.SidebarCollapsed"] = collapsed; }
+            catch (Exception ex) { _logger.LogDebug(ex, "Could not persist sidebar state"); }
+        }
+    }
+
     private void NavThemes_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(ThemesPage)); SetActiveNav(NavThemes); }
     private void NavVibe_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(VibePage)); SetActiveNav(NavThemes); }
     private void NavPreview_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(ThemeEditorPage)); SetActiveNav(NavThemes); }
@@ -354,7 +433,7 @@ public sealed partial class MainWindow : Window
 
     private void SetActiveNav(Button active)
     {
-        Button[] all = [NavStudio, NavThemes, NavWidgets, NavMore];
+        Button[] all = [NavStudio, NavThemes, NavWidgets, NavVibeFinderAI, NavMore, NavWorld, NavVibe, NavPreview, NavSystem, NavWidgetVibe, NavGallery, NavSettings];
         foreach (var btn in all)
         {
             btn.Style = btn == active ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemActiveStyle"] : (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemStyle"];
