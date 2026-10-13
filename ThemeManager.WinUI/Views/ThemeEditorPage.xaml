@@ -73,9 +73,9 @@
         <!-- ════════ EDITOR + PREVIEW ══════════════════════════════════════ -->
         <Grid Grid.Row="1" Margin="32,0,32,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" />
-                <ColumnDefinition Width="20"  />
-                <ColumnDefinition Width="*"   />
+                <ColumnDefinition Width="0.9*" MinWidth="260" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="1.1*" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
             <!-- ── LEFT: Editor form ──────────────────────────────────── -->
