@@ -17,7 +17,7 @@ public sealed partial class MainWindow
     private void NavWorld_Click(object sender, RoutedEventArgs e)
     {
         ContentFrame.Navigate(typeof(DesktopWorldPage));
-        SetActiveNav(NavWorld);
+        SetActiveNav(NavMore);
 
         if (_worldNavHooked) return;
         _worldNavHooked = true;
@@ -33,17 +33,18 @@ public sealed partial class MainWindow
         var button = ContentFrame.Content switch
         {
             StudioPage => NavStudio,
-            DesktopWorldPage => NavWorld,
             ThemesPage => NavThemes,
-            VibePage => NavVibe,
-            ThemeEditorPage => NavPreview,
-            SystemIntegrationPage => NavSystem,
+            VibePage => NavThemes,
+            ThemeEditorPage => NavThemes,
             SkinsPage => NavWidgets,
-            WidgetGeneratorPage => NavWidgetVibe,
-            GalleryPage => NavGallery,
-            VibeFinderAIPage => NavVibeFinderAI,
-            SettingsPage => NavSettings,
-            _ => NavThemes
+            SkinEditorPage => NavWidgets,
+            WidgetGeneratorPage => NavWidgets,
+            DesktopWorldPage => NavMore,
+            SystemIntegrationPage => NavMore,
+            GalleryPage => NavMore,
+            VibeFinderAIPage => NavMore,
+            SettingsPage => NavMore,
+            _ => NavStudio
         };
         SetActiveNav(button);
     }
