@@ -40,9 +40,9 @@
         <!-- ════════ MAIN: generator left, insights right ══════════════════ -->
         <Grid Grid.Row="1" Margin="32,20,32,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="340" />
-                <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="250" />
             </Grid.ColumnDefinitions>
 
             <!-- ── LEFT ──────────────────────────────────────────────────── -->
