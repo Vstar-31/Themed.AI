@@ -325,6 +325,12 @@ public sealed class SkinManagerService : IDisposable
                 continue;
             }
 
+            if (IsVibeFinderSkin(skin) && DefaultWidgetCatalog.RepairVibeFinderLayout(skin))
+            {
+                sceneWasMutated = true;
+                placement.Definition = skin.Clone(skin.Id);
+            }
+
             sceneIds.Add(skin.Id);
             await ApplyScenePlacementCoreAsync(
                 skin,
