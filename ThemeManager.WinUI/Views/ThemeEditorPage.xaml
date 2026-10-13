@@ -21,49 +21,52 @@
 
         <!-- ════════ HEADER ════════════════════════════════════════════════ -->
         <Grid Grid.Row="0" Padding="32,24,32,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*"    />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Content="← Back"
-                    Style="{StaticResource GhostButtonStyle}"
-                    Click="BackButton_Click"
-                    VerticalAlignment="Center"
-                    Margin="0,0,16,0" />
+                <Button Grid.Column="0" Content="← Back"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Click="BackButton_Click"
+                        VerticalAlignment="Center"
+                        Margin="0,0,16,0" />
 
-            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                <TextBlock Text="Theme Editor"
-                           FontSize="{StaticResource FontSizeDisplay}"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Palette updates live · Ctrl+Z to undo · Ctrl+Y to redo"
-                           Style="{StaticResource CaptionStyle}" />
-            </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Theme Editor"
+                               FontSize="{StaticResource FontSizeDisplay}"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="Palette updates live · Ctrl+Z to undo · Ctrl+Y to redo"
+                               Style="{StaticResource CaptionStyle}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
 
-            <!-- Header actions -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-
-                <!-- Undo / Redo -->
+            <!-- Actions occupy their own row so they never compete with the title. -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                        Spacing="8" Margin="0,12,0,0">
                 <Button x:Name="UndoButton"
                         Content="{x:Bind ViewModel.UndoDepthLabel, Mode=OneWay}"
                         Style="{StaticResource GhostButtonStyle}"
                         IsEnabled="{x:Bind ViewModel.CanUndo, Mode=OneWay}"
                         Click="UndoButton_Click"
                         Padding="12,8,12,8" />
-
                 <Button x:Name="RedoButton"
                         Content="Redo"
                         Style="{StaticResource GhostButtonStyle}"
                         IsEnabled="{x:Bind ViewModel.CanRedo, Mode=OneWay}"
                         Click="RedoButton_Click"
                         Padding="12,8,12,8" />
-
                 <Button Content="Revert"
                         Style="{StaticResource GhostButtonStyle}"
                         Click="RevertButton_Click" />
-
                 <Button Content="Save Theme"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Click="SaveButton_Click" />
