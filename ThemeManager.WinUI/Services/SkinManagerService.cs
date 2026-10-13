@@ -44,6 +44,20 @@ public sealed class SkinManagerService : IDisposable
     {
         _skins = await _repo.LoadAllAsync();
 
+        // Repair off-canvas VibeFinder meters before creating native widget windows. This also
+        // migrates the old stock Minimal transport row without resetting user-authored layouts.
+        bool changed = false;
+        foreach (var skin in _skins.Where(IsVibeFinderSkin))
+        {
+            if (DefaultWidgetCatalog.RepairVibeFinderLayout(skin))
+            {
+                changed = true;
+                _logger.LogInformation(
+                    "VibeFinder layout repaired before window creation for {WidgetName}",
+                    skin.Name);
+            }
+        }
+
         // Studio worlds own VibeFinder visibility. Resolve the persisted active world before
         // opening any windows so legacy global Enabled flags cannot briefly resurrect widgets
         // that are disabled in the current world.
@@ -69,7 +83,6 @@ public sealed class SkinManagerService : IDisposable
             }
         }
 
-        bool changed = false;
         foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
         {
             int removed = skin.Meters.RemoveAll(m => m.Kind == MeterKind.WebEmbed);
@@ -663,7 +676,11 @@ public sealed class SkinManagerService : IDisposable
             {
                 var needsRebuild = !skin.Variables.TryGetValue("designVersion", out var version) ||
                                    !string.Equals(version, DefaultWidgetCatalog.DesignVersion, StringComparison.Ordinal);
-                if (!needsRebuild) continue;
+                if (!needsRebuild)
+                {
+                    if (DefaultWidgetCatalog.RepairVibeFinderLayout(skin)) changed = true;
+                    continue;
+                }
 
                 var enabled = skin.Enabled;
                 var x = skin.X;
