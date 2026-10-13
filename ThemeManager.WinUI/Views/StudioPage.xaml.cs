@@ -889,6 +889,7 @@ public sealed partial class StudioPage : Page
             if (targetTheme is not null)
             {
                 App.ThemeService.SetActiveTheme(targetTheme);
+                await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(targetTheme.BackgroundBase));
                 await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
             }
 
