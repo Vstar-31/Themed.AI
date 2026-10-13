@@ -277,25 +277,30 @@
                             </StackPanel>
                         </Border>
 
-                        <Grid Grid.Row="3" ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Row="3" Spacing="8">
+                            <StackPanel Spacing="3">
                                 <TextBlock x:Name="ApplyStatus" Text="Ready" FontSize="12" Foreground="{StaticResource TextMutedBrush}" />
-                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,3,0,0" />
+                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="Edit details" Click="EditWorldDetails_Click" />
-                            <Button Grid.Column="2" Content="Save layout" Click="SaveCurrentLayout_Click" />
-                            <Button Grid.Column="3" Content="Duplicate" Click="DuplicateWorld_Click" />
-                            <Button Grid.Column="4" Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" />
-                            <Button Grid.Column="5" Content="Apply to desktop" Click="ApplyScene_Click" Padding="18,10" />
-                        </Grid>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Edit details" Click="EditWorldDetails_Click" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Content="Save layout" Click="SaveCurrentLayout_Click" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="2" Content="Duplicate" Click="DuplicateWorld_Click" HorizontalAlignment="Stretch" />
+                            </Grid>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Delete world" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Content="Apply to desktop" Click="ApplyScene_Click" Padding="12,10" HorizontalAlignment="Stretch" />
+                            </Grid>
+                        </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
