@@ -136,6 +136,17 @@ public sealed partial class StudioPage
             t.Equals("minimal", StringComparison.OrdinalIgnoreCase));
         if (tag is null) return;
 
+        // Prompt-generated worlds own the palette selected by the generator. Do not replace
+        // that user-specific theme with a tag preset when the world is rehydrated or applied.
+        if (scene.Tags.Any(t => t.Equals("prompt-generated", StringComparison.OrdinalIgnoreCase)) &&
+            App.ThemeService.Themes.FirstOrDefault(t => t.Id.Equals(scene.ThemeId, StringComparison.OrdinalIgnoreCase)) is { } generatedTheme)
+        {
+            App.ThemeService.SetActiveTheme(generatedTheme);
+            await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(generatedTheme.BackgroundBase));
+            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(generatedTheme.AccentPrimary));
+            return;
+        }
+
         var worldThemeId = $"world-{tag.ToLowerInvariant()}";
         var worldTheme = App.ThemeService.Themes.FirstOrDefault(t => t.Id.Equals(worldThemeId, StringComparison.OrdinalIgnoreCase));
         if (worldTheme is null)
