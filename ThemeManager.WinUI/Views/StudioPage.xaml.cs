@@ -627,6 +627,55 @@ public sealed partial class StudioPage : Page
         ApplyStatus.Text = "Current desktop layout saved to this world ✓";
     }
 
+    private async void EditWorldDetails_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+
+        var nameBox = new TextBox
+        {
+            Header = "World name",
+            Text = _selected.Name,
+            PlaceholderText = "Give this world a memorable name"
+        };
+        var descriptionBox = new TextBox
+        {
+            Header = "Description / prompt",
+            Text = _selected.Description,
+            PlaceholderText = "What makes this desktop world yours?",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 100
+        };
+        var content = new StackPanel { Spacing = 12, MinWidth = 360 };
+        content.Children.Add(nameBox);
+        content.Children.Add(descriptionBox);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Edit desktop world",
+            Content = content,
+            PrimaryButtonText = "Save changes",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var nextName = nameBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(nextName))
+        {
+            ApplyStatus.Text = "World name can't be empty.";
+            return;
+        }
+
+        _selected.Name = nextName;
+        _selected.Description = descriptionBox.Text?.Trim() ?? string.Empty;
+        await App.SceneService.UpsertAsync(_selected);
+        Select(_selected, false);
+        ApplyStatus.Text = $"Saved changes to “{_selected.Name}”.";
+    }
+
     private async void DuplicateWorld_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null) return;
