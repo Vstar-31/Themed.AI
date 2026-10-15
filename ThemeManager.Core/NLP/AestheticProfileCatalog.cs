@@ -142,6 +142,18 @@ public static class AestheticProfileCatalog
         new("cyber-sigil", "Cyber Sigil", "Internet-era occult futurism: black-violet, acid lime, bruised silver and neon chartreuse.",
             ["cyber sigil", "sigilcore", "cyber sigilism", "internet occult", "dark web aesthetic"],
             "#0B0B12", "#1B1624", "#2B2336", "#C3F53C", "#D35DFF", "#F4F5EF", "#C4C3D0", "#4E425F"),
+        new("brooched", "Brooched", "Heirloom jewellery translated into a desktop palette: pearl, deep velvet, antique metal and jewel-tone detail.",
+            ["brooched", "brooched trend", "heirloom brooch", "brooch aesthetic", "vintage jewellery aesthetic"],
+            "#17121D", "#2A2030", "#3A2B42", "#B89557", "#E8D6B5", "#FAF3E8", "#CBBCCB", "#5A455F"),
+        new("scent-stacking", "Scent Stacking", "A layered fragrance palette of smoked amber, vanilla cream, rosewood and polished espresso.",
+            ["scent stacking", "scent stacking trend", "perfume layering", "amber vanilla rose", "fragrance aesthetic"],
+            "#211711", "#39251D", "#51372A", "#C18445", "#8C4B55", "#FFF1DE", "#D7BCA0", "#765342"),
+        new("darecations", "Darecations", "Adrenaline travel with alpine blue, summit snow, warning coral and a punch of expedition orange.",
+            ["darecations", "darecation", "darecations trend", "adventure travel aesthetic", "adrenaline rush aesthetic"],
+            "#0E1B2A", "#1E3448", "#2B4A60", "#FF6D5A", "#F0C96D", "#F2F7FB", "#B9CAD6", "#456578"),
+        new("cabbage-crush", "Cabbage Crush", "Garden-fresh green, pearly pale lilac and deep berry: playful botanical color with a fashion-editor twist.",
+            ["cabbage crush", "cabbage crush trend", "vegetable garden aesthetic", "crushed green aesthetic", "botanical maximalism"],
+            "#F0F4E5", "#DCE8C8", "#C6D8AE", "#597C42", "#824C70", "#283425", "#5D6F52", "#B6C79C"),
     ];
 
     public static IReadOnlyList<Profile> Profiles => AllProfiles;
@@ -276,6 +288,6 @@ public static class AestheticProfileCatalog
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
         var lower = value.ToLowerInvariant().Replace("’", "'");
         lower = Regex.Replace(lower, @"[^a-z0-9]+", " ");
-        return Regex.Replace(lower, @"s+", " ").Trim();
+        return Regex.Replace(lower, @"\s+", " ").Trim();
     }
 }
