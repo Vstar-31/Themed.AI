@@ -1,5 +1,6 @@
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Core.Personalization;
 
