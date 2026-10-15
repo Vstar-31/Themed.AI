@@ -452,13 +452,18 @@ public static class AestheticProfileCatalog
             return true;
 
         // Natural prompts often insert a short bridge word: "without the neon", "not too glossy",
-        // "avoid using chrome". Keep the negation window local so later positive clauses still work.
-        var recent = words.TakeLast(4).ToArray();
-        if (recent.Any(word => word is "without" or "avoid" or "skip" or "exclude" or "never"))
-            return true;
-        if (recent.Length >= 2 &&
-            recent[^2] is "not" or "no" or "dont" or "doesnt" or "cant" or "wont")
-            return true;
+        // "avoid using chrome". Match only the immediate phrase before the cue so a later positive
+        // clause (for example "avoid neon but use cyan") is not accidentally negated too.
+        if (words.Length >= 2)
+        {
+            var pair = $"{words[^2]} {words[^1]}";
+            if (pair is "dont use" or "dont want" or "dont like" or "do not" or
+                "not like" or "not really" or "not too" or "not very" or
+                "without the" or "without using" or "without being" or
+                "avoid using" or "avoid the" or "skip using" or "skip the" or
+                "rather than" or "instead of")
+                return true;
+        }
 
         if (words.Length >= 2)
         {
