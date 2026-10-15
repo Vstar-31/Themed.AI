@@ -144,7 +144,15 @@ public static class PaletteQualityValidator
         float targetL = dark
             ? Math.Clamp(adjacentL + minimumGap + 0.012f, 0.04f, 0.96f)
             : Math.Clamp(adjacentL - minimumGap - 0.012f, 0.04f, 0.96f);
-        return ColorMath.OklchToHex(targetL, chroma, hue);
+        var candidate = ColorMath.OklchToHex(targetL, chroma, hue);
+        var candidateLuminance = ColorMath.LuminanceFromHex(candidate);
+
+        // A surface staircase is a visual nicety, not permission to break the selected mode.
+        // Keep the original role color when a large lightness jump would push a dark UI into the
+        // mid-luminance zone (or make a light UI unexpectedly dark); contrast repair still runs.
+        if (dark && candidateLuminance > 0.17f) return color;
+        if (!dark && candidateLuminance < 0.42f) return color;
+        return candidate;
     }
 
     private static string RepairForeground(
