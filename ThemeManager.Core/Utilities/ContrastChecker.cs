@@ -65,22 +65,20 @@ public static class ContrastChecker
                 LargeGrade(ratio)));
         }
 
-        // Primary text on all background surfaces
+        // Actual foreground/background pairs used by app text and accent treatments. The old
+        // "Text on Surface" check incorrectly treated BackgroundBase (a background color) as text,
+        // making it mathematically impossible for a coherent dark palette to pass all checks.
         Add("Body text / Background Base",   theme.TextPrimary, theme.BackgroundBase);
         Add("Body text / Background Alt",    theme.TextPrimary, theme.BackgroundAlt);
         Add("Body text / Surface",           theme.TextPrimary, theme.Surface);
 
-        // Muted text
         Add("Muted text / Background Base",  theme.TextMuted,   theme.BackgroundBase);
         Add("Muted text / Background Alt",   theme.TextMuted,   theme.BackgroundAlt);
 
-        // Accent text / interactive text on backgrounds
         Add("Accent / Background Base",      theme.AccentPrimary, theme.BackgroundBase);
         Add("Accent strong / Background",    theme.AccentStrong,  theme.BackgroundBase);
-
-        // Text on Surface (buttons)
-        Add("Text on Surface (buttons)",     theme.BackgroundBase, theme.Surface);
-        Add("Strong text on Surface",        theme.AccentStrong,   theme.Surface);
+        Add("Accent / Surface",              theme.AccentPrimary, theme.Surface);
+        Add("Strong accent / Surface",       theme.AccentStrong, theme.Surface);
 
         return results;
     }
