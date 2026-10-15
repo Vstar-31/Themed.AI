@@ -448,7 +448,16 @@ public static class AestheticProfileCatalog
         if (words.Length == 0) return false;
 
         var last = words[^1];
-        if (last is "not" or "no" or "never" or "without" or "avoid" or "skip" or "exclude")
+        if (last is "not" or "no" or "never" or "without" or "avoid" or "skip" or "exclude" or "less")
+            return true;
+
+        // Natural prompts often insert a short bridge word: "without the neon", "not too glossy",
+        // "avoid using chrome". Keep the negation window local so later positive clauses still work.
+        var recent = words.TakeLast(4).ToArray();
+        if (recent.Any(word => word is "without" or "avoid" or "skip" or "exclude" or "never"))
+            return true;
+        if (recent.Length >= 2 &&
+            recent[^2] is "not" or "no" or "dont" or "doesnt" or "cant" or "wont")
             return true;
 
         if (words.Length >= 2)
@@ -714,7 +723,32 @@ public static class AestheticProfileCatalog
     }
 
     private static bool HasAny(string text, params string[] phrases)
-        => phrases.Any(phrase => text.Contains(Normalize(phrase), StringComparison.Ordinal));
+        => phrases.Any(phrase => ContainsPositivePhrase(text, Normalize(phrase)));
+
+    /// <summary>
+    /// Checks a whole normalized phrase, ignoring occurrences negated immediately before the cue.
+    /// Shared by aesthetic modifiers and ranking so "not neon" cannot receive a neon/vibrancy
+    /// bonus and accidental substrings in unrelated words don't trigger art direction.
+    /// </summary>
+    public static bool ContainsPositiveCue(string? prompt, string phrase)
+        => ContainsPositivePhrase(Normalize(prompt), Normalize(phrase));
+
+    private static bool ContainsPositivePhrase(string normalizedText, string normalizedPhrase)
+    {
+        if (normalizedText.Length == 0 || normalizedPhrase.Length == 0) return false;
+        var paddedText = $" {normalizedText} ";
+        var paddedPhrase = $" {normalizedPhrase} ";
+        int searchFrom = 0;
+        while (searchFrom < paddedText.Length)
+        {
+            int index = paddedText.IndexOf(paddedPhrase, searchFrom, StringComparison.Ordinal);
+            if (index < 0) return false;
+            var prefix = paddedText[..index].TrimEnd();
+            if (!IsNegatedReference(prefix)) return true;
+            searchFrom = index + 1;
+        }
+        return false;
+    }
 
     /// <summary>Exposes the catalog's shared phrase normalization to ranking and diagnostics.</summary>
     public static string NormalizeForMatching(string? value) => Normalize(value);
