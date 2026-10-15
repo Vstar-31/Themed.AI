@@ -10,93 +10,89 @@ namespace ThemeManager.Core.NLP;
 public sealed class VibeThemeGenerator
 {
     public CozyTheme Generate(string vibeText)
-    {
-        var signal = VibeAnalyzer.Analyze(vibeText);
-
-        GeneratedPalette palette = signal.HasSignal
-            ? PaletteHarmonizer.Generate(signal)
-            : new GeneratedPalette(
-                "#F5F2EE","#E8E2D8","#C4AE98",
-                "#8B6E58","#5C4035","#2E2018",
-                "#7A6A60","#DDD5C8", false);
-
-        var (name, description) = ThemeNameGenerator.Generate(signal);
-
-        var theme = new CozyTheme
-        {
-            Id           = Guid.NewGuid().ToString(),
-            Name         = name,
-            Description  = description,
-            IsBuiltIn    = false,
-            LastModified = DateTimeOffset.UtcNow,
-        };
-        palette.ApplyTo(theme);
-        return theme;
-    }
+        => GenerateAndExplain(vibeText).Theme;
 
     public VibeAnalysisResult Explain(string vibeText)
-    {
-        var signal  = VibeAnalyzer.Analyze(vibeText);
-        var palette = signal.HasSignal ? PaletteHarmonizer.Generate(signal) : null;
-        var (name, _) = ThemeNameGenerator.Generate(signal);
+        => GenerateAndExplain(vibeText).Analysis;
 
-        return new VibeAnalysisResult(
-            MatchedKeywords:    signal.MatchedKeywords,
-            KeywordCategories:  signal.KeywordCategories,
-            BigramMatches:      signal.BigramMatches,
-            FuzzyCorrections:   signal.FuzzyCorrections,
-            HadEmojiInput:      signal.HadEmojiInput,
-            SentimentScore:     signal.SentimentValence,
-            ComputedHue:        signal.Hue,
-            ComputedLightness:  signal.Lightness,
-            ComputedSaturation: signal.Saturation,
-            WarmthBias:         signal.Warmth,
-            IsDark:             signal.IsDark,
-            GeneratedName:      name,
-            Swatches:           palette?.Swatches().ToList() ?? new()
-        );
-    }
-
+    /// <summary>
+    /// Generates and explains a palette in one pass. Exact aesthetic/pop-culture references use a
+    /// curated art-directed profile; free-form prompts use the compositional NLP engine. Both paths
+    /// go through the same contrast/tonal quality gate before the theme is returned.
+    /// </summary>
     public (CozyTheme Theme, VibeAnalysisResult Analysis) GenerateAndExplain(string vibeText)
     {
         var signal = VibeAnalyzer.Analyze(vibeText);
+        var profile = AestheticProfileCatalog.Find(vibeText);
 
-        GeneratedPalette palette = signal.HasSignal
-            ? PaletteHarmonizer.Generate(signal)
-            : new GeneratedPalette(
-                "#F5F2EE","#E8E2D8","#C4AE98",
-                "#8B6E58","#5C4035","#2E2018",
-                "#7A6A60","#DDD5C8", false);
-
-        var (name, description) = ThemeNameGenerator.Generate(signal);
-
-        var theme = new CozyTheme
+        CozyTheme theme;
+        if (profile is not null)
         {
-            Id           = Guid.NewGuid().ToString(),
-            Name         = name,
-            Description  = description,
-            IsBuiltIn    = false,
-            LastModified = DateTimeOffset.UtcNow,
-        };
-        palette.ApplyTo(theme);
+            theme = AestheticProfileCatalog.CreateTheme(profile, vibeText);
+        }
+        else
+        {
+            GeneratedPalette palette = signal.HasSignal
+                ? PaletteHarmonizer.Generate(signal)
+                : new GeneratedPalette(
+                    "#F5F2EE", "#E8E2D8", "#C4AE98",
+                    "#8B6E58", "#5C4035", "#2E2018",
+                    "#7A6A60", "#DDD5C8", false);
 
-        var analysis = new VibeAnalysisResult(
-            MatchedKeywords:    signal.MatchedKeywords,
-            KeywordCategories:  signal.KeywordCategories,
-            BigramMatches:      signal.BigramMatches,
-            FuzzyCorrections:   signal.FuzzyCorrections,
-            HadEmojiInput:      signal.HadEmojiInput,
-            SentimentScore:     signal.SentimentValence,
-            ComputedHue:        signal.Hue,
-            ComputedLightness:  signal.Lightness,
-            ComputedSaturation: signal.Saturation,
-            WarmthBias:         signal.Warmth,
-            IsDark:             signal.IsDark,
-            GeneratedName:      name,
-            Swatches:           palette.Swatches().ToList()
-        );
+            var (name, description) = ThemeNameGenerator.Generate(signal);
+            theme = new CozyTheme
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = name,
+                Description = description,
+                IsBuiltIn = false,
+                LastModified = DateTimeOffset.UtcNow,
+            };
+            palette.ApplyTo(theme);
+            PaletteQualityValidator.ValidateAndRepair(theme, signal.HasSignal ? signal.IsDark : null);
+        }
 
+        var analysis = BuildAnalysis(signal, theme, profile);
         return (theme, analysis);
+    }
+
+    private static VibeAnalysisResult BuildAnalysis(
+        VibeSignal signal,
+        CozyTheme theme,
+        AestheticProfileCatalog.Profile? profile)
+    {
+        var keywords = signal.MatchedKeywords.ToList();
+        var categories = new Dictionary<string, string>(signal.KeywordCategories, StringComparer.OrdinalIgnoreCase);
+        var bigrams = signal.BigramMatches.ToList();
+        var fuzzy = new Dictionary<string, string>(signal.FuzzyCorrections, StringComparer.OrdinalIgnoreCase);
+
+        if (profile is not null)
+        {
+            // Surface the detected visual language in the insight panel even when the alias itself
+            // is not a color-lexicon word (e.g. "Neo Deco", "Frutiger Aero", or "Gimme Gummy").
+            if (!keywords.Contains(profile.Name, StringComparer.OrdinalIgnoreCase))
+                keywords.Insert(0, profile.Name);
+            categories[profile.Name] = "aesthetic profile";
+        }
+
+        var (hue, saturation, _) = ColorMath.HexToHsl(theme.AccentPrimary);
+        var (_, _, lightness) = ColorMath.HexToHsl(theme.BackgroundBase);
+        var isDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f;
+
+        return new VibeAnalysisResult(
+            MatchedKeywords: keywords,
+            KeywordCategories: categories,
+            BigramMatches: bigrams,
+            FuzzyCorrections: fuzzy,
+            HadEmojiInput: signal.HadEmojiInput,
+            SentimentScore: signal.SentimentValence,
+            ComputedHue: hue,
+            ComputedLightness: lightness,
+            ComputedSaturation: saturation,
+            WarmthBias: signal.Warmth,
+            IsDark: isDark,
+            GeneratedName: theme.Name,
+            Swatches: [theme.BackgroundBase, theme.BackgroundAlt, theme.Surface, theme.AccentPrimary, theme.AccentStrong]);
     }
 
     /// <summary>
@@ -135,6 +131,7 @@ public sealed class VibeThemeGenerator
         baseTheme.AccentStrong   = AdjustColor(baseTheme.AccentStrong,  lightnessDelta, saturationDelta, warmthTargetHue);
 
         RepairTextContrast(baseTheme);
+        PaletteQualityValidator.ValidateAndRepair(baseTheme);
         return baseTheme;
     }
 
