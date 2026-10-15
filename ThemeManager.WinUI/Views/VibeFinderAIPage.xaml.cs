@@ -361,6 +361,8 @@ public sealed partial class VibeFinderAIPage : Page
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
             StatusText.Visibility = Visibility.Visible;
             _logger.LogInformation("VibeFinderAIPage: embed login succeeded");
+            if (!_initialAnalysisTriggered)
+                PushVibePromptAndTrackLimit(triggerRun: true);
             return;
         }
 
