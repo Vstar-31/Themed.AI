@@ -1,6 +1,7 @@
 using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Core.Personalization;
 
@@ -43,21 +44,46 @@ public class HeuristicRankingEngine
     private float ScoreTheme(ThemeCandidate candidate, UserProfile profile, GenerationContext context)
     {
         float score = 0f;
-        
-        // 1. Context Constraints
-        // (Skipping MustBeDarkTheme check since CozyTheme doesn't expose BaseTheme directly yet)
+        var theme = candidate.Theme;
+        var backgroundLuminance = ColorMath.LuminanceFromHex(theme.BackgroundBase);
+        var isDark = backgroundLuminance < 0.18f;
 
-        // 2. Profile History
-        if (profile.LikedThemeIds.Contains(candidate.Theme.Id)) score += 10f;
-        if (profile.DislikedThemeIds.Contains(candidate.Theme.Id)) score -= 20f;
+        // Explicit light/dark constraints are hard product requirements, not descriptive hints.
+        if (context.Constraints.MustBeDarkTheme)
+            score += isDark ? 12f : -40f;
+        if (context.Constraints.MustBeLightTheme)
+            score += isDark ? -40f : 12f;
 
-        // 3. Color Preferences (Heuristic Example)
-        // Check if the theme's primary color matches any highly preferred colors
-        string primaryHex = candidate.Theme.AccentPrimary;
-        if (profile.ColorPreferences.TryGetValue(primaryHex, out float weight))
+        // Aesthetic references get a strong semantic boost so a named look isn't beaten by a
+        // generic synonym variant just because that variant happened to match another color word.
+        var profileMatch = AestheticProfileCatalog.Find(context.Prompt);
+        if (profileMatch is not null &&
+            theme.Description.Contains(profileMatch.Description, StringComparison.OrdinalIgnoreCase))
+            score += 18f;
+
+        // Reward palettes that preserve the target color family while allowing art-directed
+        // alternatives to vary in saturation/lightness.
+        var targetSignal = VibeAnalyzer.Analyze(context.Prompt);
+        if (targetSignal.HasSignal)
         {
-            score += weight * 5f;
+            var actualHue = ColorMath.HexToHsl(theme.AccentPrimary).H;
+            var hueDistance = Math.Abs(actualHue - targetSignal.Hue);
+            hueDistance = Math.Min(hueDistance, 360f - hueDistance);
+            score += Math.Max(-2f, 8f - hueDistance / 18f);
         }
+
+        // Palette quality remains a first-class ranking signal even though all generated candidates
+        // are repaired before ranking; this also protects future generation paths that add candidates.
+        var contrast = ContrastChecker.Check(theme);
+        int passing = contrast.Count(r => r.PassesAA);
+        score += passing * 1.5f;
+        score -= (contrast.Count - passing) * 8f;
+
+        // Profile History and explicit color preferences.
+        if (profile.LikedThemeIds.Contains(theme.Id)) score += 10f;
+        if (profile.DislikedThemeIds.Contains(theme.Id)) score -= 20f;
+        if (profile.ColorPreferences.TryGetValue(CozyTheme.NormalizeHex(theme.AccentPrimary), out float weight))
+            score += weight * 5f;
 
         return score;
     }
