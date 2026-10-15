@@ -374,22 +374,38 @@ public sealed partial class SkinHostWindow : Window
                     const string vibeFinderPreviewPrefix = "themed://vibefinder/preview?url=";
                     if (url.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase))
                     {
-                        // VibeFinderMeasure's own-preview playback action: use the native media player
-                        // to play the iTunes preview clip.
+                        // All VibeFinder controls must use one authority at a time. Once the cached
+                        // primary WebView exists, a title/artist click starts its web player (without
+                        // toggling off a track already playing). Before that first visit, the native
+                        // 30-second preview remains the safe widget-only fallback.
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
-                        if (vibeMeasure != null)
+                        bool webEmbedActive =
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
+
+                        if (vibeMeasure is null)
                         {
-                            _logger.LogDebug("Skin \"{Skin}\": preview-play click -> VibeFinderPreviewPlayer.Play({Url})",
-                                _viewModel.Definition.Name, vibeMeasure.CurrentPreviewUrl ?? "(null)");
-                            VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
+                            _logger.LogWarning("Skin \"{Skin}\": clicked a VibeFinder preview URL but this widget has no VibeFinderMeasure", _viewModel.Definition.Name);
+                        }
+                        else if (webEmbedActive)
+                        {
+                            if (!ThemeManager.Integration.Skins.VibeFinderWebState.IsPlaying)
+                            {
+                                _logger.LogDebug("Skin \"{Skin}\": preview-play click -> primary VibeFinder WebView playpause",
+                                    _viewModel.Definition.Name);
+                                ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"playpause\"}");
+                            }
+                            else
+                            {
+                                _logger.LogTrace("Skin \"{Skin}\": preview-play click ignored because primary VibeFinder playback is already active",
+                                    _viewModel.Definition.Name);
+                            }
                         }
                         else
                         {
-                            // Previously a complete silent no-op with no fallback and nothing logged —
-                            // this specific URL scheme only exists on a VibeFinderMeasure's own meter,
-                            // so a widget without one clicking it is a skins.json authoring mistake, not
-                            // a runtime state to recover from. Worth a Warning so it's visible either way.
-                            _logger.LogWarning("Skin \"{Skin}\": clicked a vibefinder/preview URL but this widget has no VibeFinderMeasure", _viewModel.Definition.Name);
+                            _logger.LogDebug("Skin \"{Skin}\": preview-play click -> native preview {Url}",
+                                _viewModel.Definition.Name, vibeMeasure.CurrentPreviewUrl ?? "(null)");
+                            VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
                         }
                     }
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
