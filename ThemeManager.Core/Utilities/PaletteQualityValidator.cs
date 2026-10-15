@@ -65,6 +65,24 @@ public static class PaletteQualityValidator
             repairs.Add("surface");
         }
 
+        // Contrast alone is not enough for a polished palette: the base, navigation and card
+        // surfaces need a perceptible tonal staircase. Enforce a small OKLCH-lightness gap while
+        // preserving each token's own hue/chroma, so flat-looking generated palettes gain depth
+        // without being recolored into a generic theme.
+        var orderedAlt = EnsureSurfaceDepth(theme.BackgroundAlt, theme.BackgroundBase, dark);
+        if (orderedAlt != theme.BackgroundAlt)
+        {
+            theme.BackgroundAlt = orderedAlt;
+            repairs.Add("surface depth hierarchy");
+        }
+
+        var orderedSurface = EnsureSurfaceDepth(theme.Surface, theme.BackgroundAlt, dark);
+        if (orderedSurface != theme.Surface)
+        {
+            theme.Surface = orderedSurface;
+            repairs.Add("card surface depth");
+        }
+
         var backgrounds = new[] { theme.BackgroundBase, theme.BackgroundAlt, theme.Surface };
         theme.TextPrimary = RepairForeground(theme.TextPrimary, backgrounds, dark, MinimumTextContrast, out var changedPrimary);
         if (changedPrimary) repairs.Add("primary text contrast");
@@ -111,6 +129,22 @@ public static class PaletteQualityValidator
         }
 
         return dark ? "#100D18" : "#F1EDF6";
+    }
+
+    private static string EnsureSurfaceDepth(string color, string adjacentSurface, bool dark)
+    {
+        const float minimumGap = 0.06f;
+        var (colorL, chroma, hue) = ColorMath.HexToOklch(color);
+        var (adjacentL, _, _) = ColorMath.HexToOklch(adjacentSurface);
+        bool hierarchyAlreadyClear = dark
+            ? colorL >= adjacentL + minimumGap
+            : colorL <= adjacentL - minimumGap;
+        if (hierarchyAlreadyClear) return color;
+
+        float targetL = dark
+            ? Math.Clamp(adjacentL + minimumGap + 0.012f, 0.04f, 0.96f)
+            : Math.Clamp(adjacentL - minimumGap - 0.012f, 0.04f, 0.96f);
+        return ColorMath.OklchToHex(targetL, chroma, hue);
     }
 
     private static string RepairForeground(
