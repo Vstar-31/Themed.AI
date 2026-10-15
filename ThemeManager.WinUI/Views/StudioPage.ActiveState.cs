@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using ThemeManager.Core.Models;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.WinUI.Views;
 
@@ -141,6 +142,10 @@ public sealed partial class StudioPage
         if (scene.Tags.Any(t => t.Equals("prompt-generated", StringComparison.OrdinalIgnoreCase)) &&
             App.ThemeService.Themes.FirstOrDefault(t => t.Id.Equals(scene.ThemeId, StringComparison.OrdinalIgnoreCase)) is { } generatedTheme)
         {
+            var generatedQuality = PaletteQualityValidator.ValidateAndRepair(generatedTheme);
+            if (generatedQuality.Repairs.Count > 0)
+                await App.ThemeService.SaveThemeAsync(generatedTheme);
+
             App.ThemeService.SetActiveTheme(generatedTheme);
             await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(generatedTheme.BackgroundBase));
             await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(generatedTheme.AccentPrimary));
@@ -149,6 +154,7 @@ public sealed partial class StudioPage
 
         var worldThemeId = $"world-{tag.ToLowerInvariant()}";
         var worldTheme = App.ThemeService.Themes.FirstOrDefault(t => t.Id.Equals(worldThemeId, StringComparison.OrdinalIgnoreCase));
+        bool isNewWorldTheme = worldTheme is null;
         if (worldTheme is null)
         {
             var current = App.ThemeService.ActiveTheme;
@@ -177,8 +183,18 @@ public sealed partial class StudioPage
             worldTheme.BorderSubtle = palette.Item8;
             worldTheme.CornerRadiusScale = palette.Item9;
             worldTheme.DensityScale = palette.Item10;
-            await App.ThemeService.SaveThemeAsync(worldTheme);
         }
+
+        // Legacy and built-in Studio palettes use the same quality gate as NLP-generated palettes.
+        // This repairs old saved worlds too, not only newly created presets.
+        bool? preferDark = tag is "nocturnal" or "hud" or "neon"
+            ? true
+            : tag is "cozy" or "minimal"
+                ? false
+                : null;
+        var quality = PaletteQualityValidator.ValidateAndRepair(worldTheme, preferDark);
+        if (isNewWorldTheme || quality.Repairs.Count > 0)
+            await App.ThemeService.SaveThemeAsync(worldTheme);
 
         if (!scene.ThemeId.Equals(worldTheme.Id, StringComparison.OrdinalIgnoreCase))
         {
