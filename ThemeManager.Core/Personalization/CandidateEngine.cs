@@ -14,7 +14,18 @@ public class CandidateEngine
         ArgumentNullException.ThrowIfNull(context);
         var candidates = new List<ThemeCandidate>();
         var (baseTheme, baseAnalysis) = _themeGen.GenerateAndExplain(context.Prompt);
-        candidates.Add(new ThemeCandidate { Theme = baseTheme, Analysis = baseAnalysis, GenerationSource = "ArtDirectedBase" });
+        bool? preferredPolarity = context.Constraints.MustBeDarkTheme
+            ? true
+            : context.Constraints.MustBeLightTheme
+                ? false
+                : null;
+        PaletteQualityValidator.ValidateAndRepair(baseTheme, preferredPolarity);
+        candidates.Add(new ThemeCandidate
+        {
+            Theme = baseTheme,
+            Analysis = baseAnalysis is null ? null : AnalysisForVariant(baseAnalysis, baseTheme),
+            GenerationSource = "ArtDirectedBase"
+        });
 
         if (count > 1)
         {
@@ -31,8 +42,7 @@ public class CandidateEngine
                         ? "more muted"
                         : "lighter and more muted";
             _themeGen.Refine(softTheme, softInstruction);
-            PaletteQualityValidator.ValidateAndRepair(softTheme, context.Constraints.MustBeDarkTheme ? true :
-                context.Constraints.MustBeLightTheme ? false : null);
+            PaletteQualityValidator.ValidateAndRepair(softTheme, preferredPolarity);
             candidates.Add(new ThemeCandidate
             {
                 Theme = softTheme,
@@ -54,8 +64,7 @@ public class CandidateEngine
                         ? "more muted"
                         : "more vibrant";
             _themeGen.Refine(electricTheme, electricInstruction);
-            PaletteQualityValidator.ValidateAndRepair(electricTheme, context.Constraints.MustBeDarkTheme ? true :
-                context.Constraints.MustBeLightTheme ? false : null);
+            PaletteQualityValidator.ValidateAndRepair(electricTheme, preferredPolarity);
             candidates.Add(new ThemeCandidate
             {
                 Theme = electricTheme,
@@ -71,6 +80,7 @@ public class CandidateEngine
         => source with
         {
             GeneratedName = theme.Name,
+            IsDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f,
             Swatches = [theme.BackgroundBase, theme.BackgroundAlt, theme.Surface, theme.AccentPrimary, theme.AccentStrong]
         };
 
