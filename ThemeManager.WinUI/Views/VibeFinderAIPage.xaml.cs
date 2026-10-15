@@ -448,6 +448,12 @@ public sealed partial class VibeFinderAIPage : Page
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit }));
             if (triggerRun)
             {
+                if (!_embedReady || !_embedHasToken)
+                {
+                    _logger.LogDebug("VibeFinderAIPage: analysis request deferred until the authenticated SPA is ready");
+                    return;
+                }
+
                 ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit }));
                 _initialAnalysisTriggered = true;
             }
