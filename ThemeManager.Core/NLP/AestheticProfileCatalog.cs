@@ -654,19 +654,14 @@ public static class AestheticProfileCatalog
         else if (HasAny(text, "more vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon", "dopamine", "maximalist", "camp"))
             chromaDelta = 0.025f;
 
-        var hueShift = 0f;
+        // Named color cues use conventional HSL hue degrees (the same intuitive scale exposed
+        // by the UI color picker). Do not compare those values directly with OKLCH hue: its
+        // perceptual hue angle differs materially for saturated violet/cyan/green colors.
         var hueTarget = MatchHueModifier(text);
-        var baseHue = baseColor.H;
-        if (hueTarget is { } target)
-        {
-            var delta = target - baseHue;
-            if (delta > 180) delta -= 360;
-            if (delta < -180) delta += 360;
-            hueShift = delta;
-        }
-        else if (HasAny(text, "warmer", "more warm", "warmer tones", "amber glow"))
+        var hueShift = 0f;
+        if (hueTarget is null && HasAny(text, "warmer", "more warm", "warmer tones", "amber glow"))
             hueShift = 10;
-        else if (HasAny(text, "cooler", "more cool", "cooler tones", "make it icy", "frosted", "glacier"))
+        else if (hueTarget is null && HasAny(text, "cooler", "more cool", "cooler tones", "make it icy", "frosted", "glacier"))
             hueShift = -10;
 
         theme.BackgroundBase = ColorMath.OklchToHex(
@@ -682,22 +677,34 @@ public static class AestheticProfileCatalog
         theme.BorderSubtle = ColorMath.OklchToHex(
             borderColor.L + lightnessDelta * 0.5f, borderColor.C + chromaDelta * 0.15f, borderColor.H + hueShift);
 
+        if (hueTarget is { } requestedHue)
+        {
+            var currentBackgroundHue = ColorMath.HexToHsl(theme.BackgroundBase).H;
+            var hueDelta = ShortestHueDelta(currentBackgroundHue, requestedHue);
+
+            // Preserve each role's saturation/lightness and hue relationships while shifting the
+            // entire palette in the color-picker's familiar HSL hue space.
+            theme.BackgroundBase = ShiftHslHue(theme.BackgroundBase, hueDelta);
+            theme.BackgroundAlt = ShiftHslHue(theme.BackgroundAlt, hueDelta);
+            theme.Surface = ShiftHslHue(theme.Surface, hueDelta);
+            theme.AccentPrimary = ShiftHslHue(theme.AccentPrimary, hueDelta);
+            theme.AccentStrong = ShiftHslHue(theme.AccentStrong, hueDelta);
+            theme.BorderSubtle = ShiftHslHue(theme.BorderSubtle, hueDelta);
+        }
+
         // Treat accent requests as accents, not as permission to repaint the whole background.
         // This keeps a named reference recognizable (e.g. "Frutiger Aero with violet accents").
         var accentHueTarget = MatchAccentHueModifier(text);
         if (accentHueTarget is { } requestedAccentHue)
         {
-            theme.AccentPrimary = SetOklchHue(theme.AccentPrimary, requestedAccentHue);
-            // Translate the secondary accent by the same shortest hue delta to preserve the
-            // intended relationship between the two accent roles.
-            var currentStrong = ColorMath.HexToOklch(theme.AccentStrong);
-            var currentPrimary = ColorMath.HexToOklch(ColorMath.OklchToHex(
-                primaryColor.L + lightnessDelta, primaryColor.C + chromaDelta, primaryColor.H + hueShift));
-            var accentDelta = requestedAccentHue - currentPrimary.H;
-            if (accentDelta > 180) accentDelta -= 360;
-            if (accentDelta < -180) accentDelta += 360;
-            theme.AccentStrong = ColorMath.OklchToHex(
-                currentStrong.L, currentStrong.C, currentStrong.H + accentDelta);
+            var currentPrimaryHue = ColorMath.HexToHsl(theme.AccentPrimary).H;
+            var accentDelta = ShortestHueDelta(currentPrimaryHue, requestedAccentHue);
+
+            // "Violet accents" means violet in the app's familiar HSL color-picker scale, not
+            // OKLCH's differently oriented hue angle. Shift both accent roles together so the
+            // pair remains harmonious while leaving background identity untouched.
+            theme.AccentPrimary = SetHslHue(theme.AccentPrimary, requestedAccentHue);
+            theme.AccentStrong = ShiftHslHue(theme.AccentStrong, accentDelta);
         }
 
         var artDirection = new List<string>();
@@ -737,10 +744,24 @@ public static class AestheticProfileCatalog
             theme.Description = $"{theme.Description} Art direction: {string.Join(", ", artDirection.Distinct(StringComparer.OrdinalIgnoreCase))}."; 
     }
 
-    private static string SetOklchHue(string hex, float hue)
+    private static float ShortestHueDelta(float fromHue, float toHue)
     {
-        var (lightness, chroma, _) = ColorMath.HexToOklch(hex);
-        return ColorMath.OklchToHex(lightness, chroma, hue);
+        var delta = toHue - fromHue;
+        if (delta > 180f) delta -= 360f;
+        if (delta < -180f) delta += 360f;
+        return delta;
+    }
+
+    private static string ShiftHslHue(string hex, float delta)
+    {
+        var (hue, saturation, lightness) = ColorMath.HexToHsl(hex);
+        return ColorMath.HslToHex(hue + delta, saturation, lightness);
+    }
+
+    private static string SetHslHue(string hex, float hue)
+    {
+        var (_, saturation, lightness) = ColorMath.HexToHsl(hex);
+        return ColorMath.HslToHex(hue, saturation, lightness);
     }
 
     private static string SetOklchLightness(string hex, float lightness)
