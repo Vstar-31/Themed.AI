@@ -67,7 +67,7 @@ public class PaletteQualityValidatorTests
             BackgroundAlt = "#160D27",
             Surface = "#24113A",
             AccentPrimary = "#FF4FD8",
-            AccentStrong = "#7B6A00", // 3:1 non-text contrast, but not 4.5:1 text contrast on every surface
+            AccentStrong = "#8A7810", // Visible as a component; intentionally below 4.5:1 against some surfaces
             TextPrimary = "#F7EFFF",
             TextMuted = "#C8B8D8",
             BorderSubtle = "#4A2A63"
