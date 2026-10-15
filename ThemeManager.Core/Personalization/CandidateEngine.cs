@@ -1,3 +1,4 @@
+using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
 using ThemeManager.Core.Utilities;
