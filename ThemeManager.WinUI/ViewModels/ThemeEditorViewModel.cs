@@ -258,6 +258,31 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     /// Restores this theme's palette to the snapshot loaded from disk or most recently saved.
     /// It must never reset a custom theme to the global Cozy Café defaults.
     /// </summary>
+    public void RepairPalette()
+    {
+        var before = PaletteSnapshot.From(_working);
+        var report = PaletteQualityValidator.ValidateAndRepair(_working);
+        RefreshContrast();
+
+        if (report.Repairs.Count == 0)
+        {
+            StatusMessage = "This palette already passes the current contrast and surface checks.";
+            _logger.LogInformation("Palette quality repair found no issues for {ThemeName}", _working.Name);
+            return;
+        }
+
+        _history.Push(before);
+        SyncPropertiesFromWorking();
+        NotifyActiveThemeIfEditingIt();
+        RefreshContrast();
+        Dirty = true;
+        StatusMessage = $"Repaired {report.Repairs.Count} palette issue(s). Save the theme to keep these changes.";
+        _logger.LogInformation(
+            "Repaired palette {ThemeId} ({ThemeName}); repairs={Repairs}; AA={PassingPairs}/{TotalPairs}",
+            _working.Id, _working.Name, string.Join(", ", report.Repairs),
+            report.PassingPairs, report.TotalPairs);
+    }
+
     public void RevertPaletteChanges()
     {
         _history.Push(_working); // allow undo back past the revert
