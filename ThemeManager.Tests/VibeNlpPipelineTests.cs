@@ -481,6 +481,17 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void Generate_BlendedAestheticsPreserveCompositionModifiers()
+    {
+        var theme = _gen.Generate("Cool-Wasabi palette with brutalist hard edges and spacious layout");
+
+        Assert.Equal(0.55, theme.CornerRadiusScale);
+        Assert.True(theme.DensityScale > 1.0);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
     public void Generate_CompositionalGlassPromptAdjustsGeometryNotJustColors()
     {
         var baseline = AestheticProfileCatalog.CreateTheme(
