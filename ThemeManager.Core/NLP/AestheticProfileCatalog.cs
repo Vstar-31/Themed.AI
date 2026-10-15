@@ -270,11 +270,143 @@ public static class AestheticProfileCatalog
                 matches.Add((profile, bestScore, bestPosition));
         }
 
+        // If no exact named aesthetic was found (or the user explicitly asks for a
+        // blend but one reference is misspelled), run a conservative phrase-level fuzzy pass.
+        // This is deliberately separate from ColorLexicon fuzzy matching: aesthetic names are
+        // multi-token concepts and should not collapse into a random nearest colour word.
+        bool hasBlendConnector = HasBlendConnector(normalized);
+        if (matches.Count == 0 || (hasBlendConnector && matches.Count < 2))
+        {
+            var fuzzyMatches = FindFuzzyProfiles(normalized);
+            foreach (var match in fuzzyMatches)
+            {
+                if (matches.All(existing => !existing.Profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase)))
+                    matches.Add(match);
+                if (matches.Count >= (hasBlendConnector ? 2 : 1))
+                    break;
+            }
+        }
+
         return matches
             .OrderByDescending(match => match.Score)
             .ThenBy(match => match.Position)
             .Select(match => match.Profile)
             .ToList();
+    }
+
+    private static List<(Profile Profile, int Score, int Position)> FindFuzzyProfiles(string normalized)
+    {
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var matches = new List<(Profile Profile, int Score, int Position, int Edits)>();
+
+        foreach (var profile in AllProfiles)
+        {
+            int bestScore = int.MinValue;
+            int bestPosition = int.MaxValue;
+            int bestEdits = int.MaxValue;
+
+            foreach (var alias in profile.Aliases.Prepend(profile.Name))
+            {
+                var aliasWords = Normalize(alias).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (aliasWords.Length == 0 || aliasWords.Length > words.Length) continue;
+
+                for (int start = 0; start <= words.Length - aliasWords.Length; start++)
+                {
+                    int edits = 0;
+                    bool valid = true;
+                    for (int i = 0; i < aliasWords.Length; i++)
+                    {
+                        if (string.Equals(words[start + i], aliasWords[i], StringComparison.Ordinal))
+                            continue;
+
+                        int maxDistance = aliasWords[i].Length >= 9 ? 2 : aliasWords[i].Length >= 5 ? 1 : 0;
+                        if (maxDistance == 0 || Math.Abs(words[start + i].Length - aliasWords[i].Length) > maxDistance)
+                        {
+                            valid = false;
+                            break;
+                        }
+
+                        int distance = EditDistanceAtMost(words[start + i], aliasWords[i], maxDistance);
+                        if (distance > maxDistance)
+                        {
+                            valid = false;
+                            break;
+                        }
+                        edits += distance;
+                        // A short phrase with several typos is too ambiguous to be a reliable reference.
+                        if (edits > 2)
+                        {
+                            valid = false;
+                            break;
+                        }
+                    }
+
+                    if (!valid || edits == 0) continue;
+                    var prefix = string.Join(' ', words.Take(start));
+                    if (IsNegatedReference(prefix)) continue;
+
+                    int score = aliasWords.Length * 1000 + Normalize(alias).Length - 2800 - edits * 450;
+                    if (score > bestScore || (score == bestScore && start < bestPosition))
+                    {
+                        bestScore = score;
+                        bestPosition = start;
+                        bestEdits = edits;
+                    }
+                }
+            }
+
+            if (bestScore > int.MinValue)
+                matches.Add((profile, bestScore, bestPosition, bestEdits));
+        }
+
+        // Never guess between several near-ties; a fuzzy result is used only when the best match
+        // is clearly stronger than the next alternative. Exact matches always win upstream.
+        var ordered = matches
+            .OrderByDescending(m => m.Score)
+            .ThenBy(m => m.Edits)
+            .ThenBy(m => m.Position)
+            .ToList();
+        if (ordered.Count == 0) return new List<(Profile, int, int)>();
+        if (ordered.Count > 1 && ordered[0].Score - ordered[1].Score < 180)
+            return new List<(Profile, int, int)>();
+        return ordered.Select(m => (m.Profile, m.Score, m.Position)).ToList();
+    }
+
+    private static int EditDistanceAtMost(string source, string target, int limit)
+    {
+        if (Math.Abs(source.Length - target.Length) > limit) return limit + 1;
+        var previous = new int[target.Length + 1];
+        var current = new int[target.Length + 1];
+        for (int j = 0; j <= target.Length; j++) previous[j] = j;
+
+        for (int i = 1; i <= source.Length; i++)
+        {
+            current[0] = i;
+            int rowMin = current[0];
+            for (int j = 1; j <= target.Length; j++)
+            {
+                int cost = source[i - 1] == target[j - 1] ? 0 : 1;
+                current[j] = Math.Min(
+                    Math.Min(previous[j] + 1, current[j - 1] + 1),
+                    previous[j - 1] + cost);
+                rowMin = Math.Min(rowMin, current[j]);
+            }
+            if (rowMin > limit) return limit + 1;
+            (previous, current) = (current, previous);
+        }
+
+        return previous[target.Length];
+    }
+
+    private static bool HasBlendConnector(string normalized)
+    {
+        var text = $" {normalized} ";
+        string[] connectors =
+        [
+            " meets ", " x ", " + ", " blend ", " blended with ", " mix ", " mixed with ",
+            " mashup ", " mash up ", " fusion ", " fused with ", " and "
+        ];
+        return connectors.Any(connector => text.Contains(connector, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -285,15 +417,7 @@ public static class AestheticProfileCatalog
     public static bool RequestsBlend(string? prompt, IReadOnlyList<Profile> matches)
     {
         if (matches.Count < 2) return false;
-        var text = $" {Normalize(prompt)} ";
-        // Use whole-phrase boundaries for connectors; substring matching would treat words such
-        // as "candycore" as a request to blend because they contain "and".
-        string[] connectors =
-        [
-            " meets ", " x ", " + ", " blend ", " blended with ", " mix ", " mixed with ",
-            " mashup ", " mash up ", " fusion ", " fused with ", " and "
-        ];
-        return connectors.Any(connector => text.Contains(connector, StringComparison.Ordinal));
+        return HasBlendConnector(Normalize(prompt));
     }
 
     private static bool IsNegatedReference(string prefix)
