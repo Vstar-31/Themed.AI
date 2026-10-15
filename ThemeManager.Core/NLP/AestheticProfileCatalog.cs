@@ -231,9 +231,14 @@ public static class AestheticProfileCatalog
     {
         if (matches.Count < 2) return false;
         var text = $" {Normalize(prompt)} ";
-        return HasAny(text,
+        // Use whole-phrase boundaries for connectors; substring matching would treat words such
+        // as "candycore" as a request to blend because they contain "and".
+        string[] connectors =
+        [
             " meets ", " x ", " + ", " blend ", " blended with ", " mix ", " mixed with ",
-            " mashup ", " mash up ", " fusion ", " fused with ", " and ");
+            " mashup ", " mash up ", " fusion ", " fused with ", " and "
+        ];
+        return connectors.Any(connector => text.Contains(connector, StringComparison.Ordinal));
     }
 
     private static bool IsNegatedReference(string prefix)
