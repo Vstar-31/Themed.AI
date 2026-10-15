@@ -19,6 +19,8 @@ public sealed partial class VibeFinderAIPage : Page
     private bool _embedReady;
     private bool _embedHasToken;
     private bool _initialAnalysisTriggered;
+    private bool _initialAnalysisDeferredForNativePreview;
+    private bool _isPageVisible;
     private System.EventHandler<ThemeManager.Core.Models.CozyTheme>? _themeChangedHandler;
     private System.EventHandler<DesktopScene?>? _activeSceneChangedHandler;
     private const string ActiveThemeSentinel = "$theme";
@@ -32,6 +34,7 @@ public sealed partial class VibeFinderAIPage : Page
         // Keep the WebView2/React session alive while users move between workspaces. A fresh
         // page instance remounts VibeFinder, re-runs analysis, changes tracks and resets playback.
         NavigationCacheMode = NavigationCacheMode.Required;
+        ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.PreviewEnded += OnNativePreviewEnded;
 
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
@@ -59,16 +62,34 @@ public sealed partial class VibeFinderAIPage : Page
                     StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                         hasToken ? Microsoft.UI.Colors.Green : Microsoft.UI.Colors.Gray);
                     StatusText.Visibility = Visibility.Visible;
-                    bool shouldTriggerInitialRun = hasToken && !_initialAnalysisTriggered;
                     _logger.LogInformation(
-                        "VibeFinderAIPage: embed ready (hasToken={HasToken}, initialRunAlreadyTriggered={InitialRunAlreadyTriggered}) — {Action}",
-                        hasToken, _initialAnalysisTriggered,
-                        shouldTriggerInitialRun ? "syncing prompt and starting initial analysis" : "syncing prompt without restarting playback/results");
+                        "VibeFinderAIPage: embed ready (hasToken={HasToken}, initialRunAlreadyTriggered={InitialRunAlreadyTriggered}, initialRunDeferred={InitialRunDeferred})",
+                        hasToken, _initialAnalysisTriggered, _initialAnalysisDeferredForNativePreview);
 
-                    // The SPA can emit readiness more than once across auth changes. Only its first
-                    // authenticated-ready event starts analysis; later readiness messages must not
-                    // reset the current track or playback session.
-                    PushVibePromptAndTrackLimit(triggerRun: shouldTriggerInitialRun);
+                    // Do not replace a native preview midway through its 30-second clip just
+                    // because the user opened this tab. Once it finishes, initialize the visible SPA.
+                    // The pending flag makes repeated APP_READY notifications safe.
+                    if (hasToken && !_initialAnalysisTriggered)
+                    {
+                        if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.IsPlaying)
+                        {
+                            _initialAnalysisDeferredForNativePreview = true;
+                            PushVibePromptAndTrackLimit(triggerRun: false);
+                            _logger.LogInformation("VibeFinderAIPage: initial analysis deferred until native preview ends");
+                        }
+                        else if (!_initialAnalysisDeferredForNativePreview)
+                        {
+                            PushVibePromptAndTrackLimit(triggerRun: true);
+                        }
+                        else
+                        {
+                            PushVibePromptAndTrackLimit(triggerRun: false);
+                        }
+                    }
+                    else
+                    {
+                        PushVibePromptAndTrackLimit(triggerRun: false);
+                    }
                     return;
                 }
                 ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json, fromVisibleEmbed: true);
@@ -102,7 +123,10 @@ public sealed partial class VibeFinderAIPage : Page
         _isInitializing = false;
         _themeChangedHandler = (_, _) =>
         {
-            if (string.Equals(PromptBox.Text?.Trim(), ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase))
+            // $theme should react only while the user is actually in this workspace. A background
+            // tab must not silently replace the active track.
+            if (_isPageVisible &&
+                string.Equals(PromptBox.Text?.Trim(), ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase))
                 PushVibePromptAndTrackLimit();
         };
         App.ThemeService.ThemeChanged += _themeChangedHandler;
@@ -361,8 +385,19 @@ public sealed partial class VibeFinderAIPage : Page
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
             StatusText.Visibility = Visibility.Visible;
             _logger.LogInformation("VibeFinderAIPage: embed login succeeded");
-            if (!_initialAnalysisTriggered)
-                PushVibePromptAndTrackLimit(triggerRun: true);
+            if (!_initialAnalysisTriggered && !_initialAnalysisDeferredForNativePreview)
+            {
+                if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.IsPlaying)
+                {
+                    _initialAnalysisDeferredForNativePreview = true;
+                    PushVibePromptAndTrackLimit(triggerRun: false);
+                    _logger.LogInformation("VibeFinderAIPage: initial analysis deferred after login until native preview ends");
+                }
+                else
+                {
+                    PushVibePromptAndTrackLimit(triggerRun: true);
+                }
+            }
             return;
         }
 
@@ -456,6 +491,7 @@ public sealed partial class VibeFinderAIPage : Page
 
                 ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit }));
                 _initialAnalysisTriggered = true;
+                _initialAnalysisDeferredForNativePreview = false;
             }
         }
         catch (Exception ex)
@@ -464,8 +500,22 @@ public sealed partial class VibeFinderAIPage : Page
         }
     }
 
+    private void OnNativePreviewEnded()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_initialAnalysisDeferredForNativePreview || _initialAnalysisTriggered ||
+                !_embedReady || !_embedHasToken)
+                return;
+
+            _logger.LogInformation("VibeFinderAIPage: native preview ended; starting deferred initial analysis");
+            PushVibePromptAndTrackLimit(triggerRun: true);
+        });
+    }
+
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
+        _isPageVisible = false;
         // This page is NavigationCacheMode.Required. Unloaded means the user changed tabs, not
         // that the WebView session is dead. Keep its playback bridge and state authority attached
         // so widget controls continue addressing the same player and the tab resumes without reload.
