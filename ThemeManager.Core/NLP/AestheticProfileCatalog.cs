@@ -344,6 +344,12 @@ public static class AestheticProfileCatalog
         if (normalizedPrompt.Contains("cool wasabi", StringComparison.Ordinal))
         {
             orderedProfiles = orderedProfiles
+                .OrderBy(profile => profile.Id == "cool-blue" ? 0 : profile.Id == "wasabi-palette" ? 1 : 2)
+                .ToList();
+        }
+        else if (normalizedPrompt.Contains("persimmon plum", StringComparison.Ordinal))
+        {
+            orderedProfiles = orderedProfiles
                 .OrderBy(profile => profile.Id == "persimmon-palette" ? 0 : profile.Id == "plum-noir" ? 1 : 2)
                 .ToList();
         }
