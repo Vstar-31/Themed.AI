@@ -534,8 +534,10 @@ public static class AestheticProfileCatalog
             TextPrimary = BlendOklch(first.TextPrimary, second.TextPrimary, 0.12f),
             TextMuted = BlendOklch(first.TextMuted, second.TextMuted, 0.20f),
             BorderSubtle = BlendOklch(first.BorderSubtle, second.BorderSubtle, 0.25f),
-            CornerRadiusScale = (primary.Id == "frutiger-aero" || secondary.Id == "frutiger-aero") ? 1.25 : 1.0,
-            DensityScale = 1.0
+            // CreateTheme has already interpreted the prompt's visual language. Preserve that
+            // geometry/density rather than overwriting it with defaults during color blending.
+            CornerRadiusScale = first.CornerRadiusScale,
+            DensityScale = first.DensityScale
         };
 
         PaletteQualityValidator.ValidateAndRepair(blended);
