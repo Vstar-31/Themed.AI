@@ -287,11 +287,10 @@ public static class AestheticProfileCatalog
             }
         }
 
-        var orderedProfiles = matches
-            .OrderByDescending(match => match.Score)
-            .ThenBy(match => match.Position)
-            .Select(match => match.Profile)
-            .ToList();
+        var orderedMatches = hasBlendConnector
+            ? matches.OrderBy(match => match.Position).ThenByDescending(match => match.Score)
+            : matches.OrderByDescending(match => match.Score).ThenBy(match => match.Position);
+        var orderedProfiles = orderedMatches.Select(match => match.Profile).ToList();
 
         // The published 2026 Palette pair is named in color order; duplicate phrase aliases can
         // tie on score/position, so preserve that canonical order for the blended theme name.
@@ -358,10 +357,13 @@ public static class AestheticProfileCatalog
                     if (IsNegatedReference(prefix)) continue;
 
                     int score = aliasWords.Length * 1000 + Normalize(alias).Length - 2800 - edits * 450;
-                    if (score > bestScore || (score == bestScore && start < bestPosition))
+                    int characterPosition = start == 0
+                        ? 0
+                        : words.Take(start).Sum(word => word.Length) + start;
+                    if (score > bestScore || (score == bestScore && characterPosition < bestPosition))
                     {
                         bestScore = score;
-                        bestPosition = start;
+                        bestPosition = characterPosition;
                         bestEdits = edits;
                     }
                 }
