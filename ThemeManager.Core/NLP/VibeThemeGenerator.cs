@@ -57,6 +57,12 @@ public sealed class VibeThemeGenerator
                 LastModified = DateTimeOffset.UtcNow,
             };
             palette.ApplyTo(theme);
+
+            // Free-form prompts need the same finishing language as named profiles: glass-like
+            // surfaces, minimal density, maximalist accents, specific accent requests, etc.
+            // This shared composition pass lets natural descriptions refine the palette without
+            // requiring every phrase to be a pre-authored aesthetic name.
+            AestheticProfileCatalog.ApplyPromptModifiers(theme, vibeText);
             PaletteQualityValidator.ValidateAndRepair(theme, signal.HasSignal ? signal.IsDark : null);
         }
 
