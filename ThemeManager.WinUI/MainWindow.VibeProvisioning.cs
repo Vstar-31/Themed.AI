@@ -100,9 +100,9 @@ public sealed partial class MainWindow
         {
             // Once VibeFinderAIPage has been opened, its cached WebView is the session for the
             // whole app lifetime. Never drive a second hidden SPA on theme changes.
-            if (VibeFinderWebState.IsVisibleEmbedActive)
+            if (VibeFinderWebState.IsVisibleEmbedActive || VibeFinderPreviewPlayer.HasSource)
             {
-                _logger.LogTrace("VibeFinder prewarm theme sync skipped; cached primary embed owns playback");
+                _logger.LogTrace("VibeFinder prewarm theme sync skipped; primary embed or native preview owns playback");
                 return;
             }
 
