@@ -6,11 +6,13 @@ public sealed partial class VibeFinderAIPage
 {
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
-        // Loaded can fire after CoreWebView2 initialization (and after another page briefly
-        // owned/released the global command bridge). Reclaim visible authority and rebind the
-        // command sink every time the page becomes visible.
-        ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
-        BindVisibleEmbedBridge();
+        // Rebind only when the cached browser is actually ready. Claim authority after the
+        // command sink exists so widget clicks can never be routed to a half-initialized WebView.
+        if (VibeFinderWebView.CoreWebView2 is not null)
+        {
+            BindVisibleEmbedBridge();
+            ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
+        }
 
         // Keep the switches synchronized with the active world's saved composition.
         // navigation must never tear down and recreate VFAI windows.
