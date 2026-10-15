@@ -48,11 +48,17 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_ThemeChanged(object? sender, ThemeManager.Core.Models.CozyTheme theme)
     {
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("VibeFinder theme sync skipped for hidden prewarm; primary page owns the live session");
+            return;
+        }
         if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
-            _logger.LogInformation("VibeFinder theme sync: refreshing playlist for \"{Theme}\"", theme.Name);
+            if (VibeFinderWebState.IsVisibleEmbedActive ||
+                !_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+            _logger.LogInformation("VibeFinder prewarm theme sync: refreshing playlist for \"{Theme}\"", theme.Name);
             PushVibePromptAndTrackLimit();
         });
     }
