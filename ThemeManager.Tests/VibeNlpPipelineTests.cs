@@ -489,8 +489,50 @@ public class VibeNlpPipelineTests
 
         Assert.True(glass.CornerRadiusScale >= baseline.CornerRadiusScale);
         Assert.True(glass.DensityScale > baseline.DensityScale);
+        Assert.Contains("Art direction:", glass.Description);
         Assert.All(ContrastChecker.Check(glass), check =>
             Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void RankThemes_GlassPromptPrefersArtDirectedRoundedCandidate()
+    {
+        var seed = _gen.Generate("a calm violet interface");
+        var square = seed.Duplicate();
+        square.Name = "Square";
+        square.CornerRadiusScale = 0.55;
+        var rounded = seed.Duplicate();
+        rounded.Name = "Rounded Glass";
+        rounded.CornerRadiusScale = 1.35;
+
+        var ranking = new HeuristicRankingEngine().RankThemes(
+            [
+                new ThemeCandidate { Theme = square },
+                new ThemeCandidate { Theme = rounded }
+            ],
+            new UserProfile(),
+            new GenerationContext { Prompt = "glass interface" });
+
+        Assert.Equal("Rounded Glass", ranking[0].Theme.Name);
+    }
+
+    [Fact]
+    public void ValidateAndRepair_UsesFilledButtonForegroundForStrongAccent()
+    {
+        var theme = AestheticProfileCatalog.CreateTheme(
+            AestheticProfileCatalog.Find("Neon Afterglow")!, "Neon Afterglow");
+        var originalHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentStrong).H;
+
+        var report = PaletteQualityValidator.ValidateAndRepair(theme, preferDark: true);
+        var filledButtonText = ContrastChecker.BestBlackOrWhiteForeground(theme.AccentStrong);
+        var ratio = ThemeManager.Core.Utilities.ColorMath.ContrastRatio(filledButtonText, theme.AccentStrong);
+
+        Assert.True(report.PassesAA);
+        Assert.True(ratio >= 4.5f, $"Filled button text only has {ratio:F2}:1 contrast.");
+        var repairedHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentStrong).H;
+        var hueDelta = Math.Abs(repairedHue - originalHue);
+        Assert.True(Math.Min(hueDelta, 360f - hueDelta) < 2f,
+            "Button fill repair should preserve the palette's accent hue.");
     }
 
     [Fact]
