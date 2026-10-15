@@ -196,27 +196,50 @@ public static class ColorMath
         chroma = Math.Clamp(chroma, 0f, 0.5f);
         hueDeg = ((hueDeg % 360f) + 360f) % 360f;
 
-        for (int attempt = 0; attempt < 40; attempt++)
+        static bool InSrgbGamut((float R, float G, float B) rgb)
         {
-            var (r, g, b) = OklchToLinearRgb(lightness, chroma, hueDeg);
-            if (r >= 0f && r <= 1f && g >= 0f && g <= 1f && b >= 0f && b <= 1f)
-            {
-                static float Encode(float linear)
-                    => linear <= 0.0031308f
-                        ? 12.92f * linear
-                        : 1.055f * MathF.Pow(linear, 1f / 2.4f) - 0.055f;
-                return RgbToHex(Encode(r), Encode(g), Encode(b));
-            }
-
-            chroma *= 0.90f;
+            // Matrix operations at saturated gamut edges can overshoot by a few millionths due to
+            // floating-point error. Treat that as in-gamut; channels are clamped only at encoding.
+            const float epsilon = 0.000005f;
+            return rgb.R >= -epsilon && rgb.R <= 1f + epsilon &&
+                   rgb.G >= -epsilon && rgb.G <= 1f + epsilon &&
+                   rgb.B >= -epsilon && rgb.B <= 1f + epsilon;
         }
 
-        // At C≈0 every OKLCH lightness is in-gamut; this fallback mainly protects floating-point
-        // edge cases at pure black/white.
-        var (rr, gg, bb) = OklchToLinearRgb(lightness, 0f, hueDeg);
-        static float Gamma(float linear)
-            => linear <= 0.0031308f ? 12.92f * linear : 1.055f * MathF.Pow(Math.Max(0f, linear), 1f / 2.4f) - 0.055f;
-        return RgbToHex(Gamma(rr), Gamma(gg), Gamma(bb));
+        static string EncodeHex((float R, float G, float B) rgb)
+        {
+            static float Encode(float linear)
+            {
+                linear = Math.Clamp(linear, 0f, 1f);
+                return linear <= 0.0031308f
+                    ? 12.92f * linear
+                    : 1.055f * MathF.Pow(linear, 1f / 2.4f) - 0.055f;
+            }
+
+            return RgbToHex(Encode(rgb.R), Encode(rgb.G), Encode(rgb.B));
+        }
+
+        var requested = OklchToLinearRgb(lightness, chroma, hueDeg);
+        if (InSrgbGamut(requested))
+            return EncodeHex(requested);
+
+        // Reducing chroma by 10% repeatedly was too coarse: a tiny negative channel at pure
+        // saturated red/green/blue could discard a large amount of chroma and visibly rotate the
+        // result. Binary-search the highest in-gamut chroma instead, preserving requested OKLCH
+        // lightness and hue as closely as the sRGB boundary allows.
+        float low = 0f;
+        float high = chroma;
+        for (int i = 0; i < 28; i++)
+        {
+            float mid = (low + high) * 0.5f;
+            if (InSrgbGamut(OklchToLinearRgb(lightness, mid, hueDeg)))
+                low = mid;
+            else
+                high = mid;
+        }
+
+        var mapped = OklchToLinearRgb(lightness, low, hueDeg);
+        return EncodeHex(mapped);
     }
 
     private static (float R, float G, float B) OklchToLinearRgb(float lightness, float chroma, float hueDeg)
