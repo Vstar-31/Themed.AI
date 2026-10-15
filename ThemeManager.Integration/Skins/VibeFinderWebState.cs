@@ -203,6 +203,19 @@ public static class VibeFinderWebState
 
     private static void HandlePlayerState(JsonElement root)
     {
+        bool incomingPlaying = root.TryGetProperty("isPlaying", out var incomingPlay) &&
+            incomingPlay.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+            incomingPlay.GetBoolean();
+
+        // The browser often emits an initial PAUSED snapshot as soon as it mounts. That is not a
+        // user playback action and must not steal state from a native preview that is still loaded.
+        // The first actual web PLAYING state stops native playback and transfers authority cleanly.
+        if (VibeFinderPreviewPlayer.HasSource && !incomingPlaying)
+        {
+            _logger.LogTrace("VibeFinderWebState: ignored initial web player state while native preview owns the playback source");
+            return;
+        }
+
         CancelNativeFallback();
         IsActive = true;
         IsPlayerActive = true;
@@ -347,7 +360,7 @@ public static class VibeFinderWebState
     public static void SkipNext()
     {
         if (_tracks.Count == 0) return;
-        if (SendCommand != null && IsPlayerActive) { SendCommand("{\"command\":\"next\"}"); return; }
+        if (SendCommand != null && IsPlayerActive && !VibeFinderPreviewPlayer.HasSource) { SendCommand("{\"command\":\"next\"}"); return; }
         CurrentIndex = (CurrentIndex + 1) % _tracks.Count;
         ApplyCurrentTrack();
         VibeFinderPreviewPlayer.Play(PreviewUrl);
@@ -360,7 +373,7 @@ public static class VibeFinderWebState
     public static void SkipPrevious()
     {
         if (_tracks.Count == 0) return;
-        if (SendCommand != null && IsPlayerActive) { SendCommand("{\"command\":\"prev\"}"); return; }
+        if (SendCommand != null && IsPlayerActive && !VibeFinderPreviewPlayer.HasSource) { SendCommand("{\"command\":\"prev\"}"); return; }
         CurrentIndex = (CurrentIndex - 1 + _tracks.Count) % _tracks.Count;
         ApplyCurrentTrack();
         VibeFinderPreviewPlayer.Play(PreviewUrl);
