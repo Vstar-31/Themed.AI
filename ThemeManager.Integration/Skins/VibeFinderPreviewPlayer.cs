@@ -99,8 +99,10 @@ public static class VibeFinderPreviewPlayer
         _player.MediaEnded += (_, _) =>
         {
             Volatile.Write(ref _isPlaying, 0);
+            Volatile.Write(ref _hasSource, 0);
             Volatile.Write(ref _positionTicks, Math.Max(0, Volatile.Read(ref _durationTicks)));
             _logger.LogDebug("VibeFinderPreviewPlayer: preview clip ended ({Url})", _currentUrl);
+            _currentUrl = null;
             try { PreviewEnded?.Invoke(); }
             catch (Exception ex) { _logger.LogDebug(ex, "VibeFinderPreviewPlayer: preview-ended subscriber failed"); }
         };
