@@ -295,6 +295,13 @@ public partial class App : Application
         UpdateBrush("TextMutedBrush", HexToColor(theme.TextMuted));
         UpdateBrush("BorderSubtleBrush", HexToColor(theme.BorderSubtle));
 
+        // Derived foregrounds must follow the generated palette too. Surface labels use the
+        // palette's validated primary text; filled primary buttons choose whichever of black/white
+        // contrasts best against AccentStrong instead of assuming every accent is dark enough for white.
+        UpdateBrush("TextOnSurfaceBrush", HexToColor(theme.TextPrimary));
+        UpdateBrush("TextOnAccentBrush", HexToColor(
+            ThemeManager.Core.Utilities.ContrastChecker.BestBlackOrWhiteForeground(theme.AccentStrong)));
+
         // Hover/pressed variants (auto-computed from base surface color).
         UpdateBrush("SurfaceHoverBrush", HexToColor(LightenHex(theme.Surface, 0.15)));
         UpdateBrush("SurfacePressedBrush", HexToColor(DarkenHex(theme.Surface, 0.10)));
