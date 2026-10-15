@@ -347,9 +347,9 @@ public sealed partial class SkinEditorPage : Page
                 Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, iconAccent.Color.R, iconAccent.Color.G, iconAccent.Color.B)),
                 Child = new FontIcon
                 {
-                    // Match SkinHostWindow's live renderer so the editor preview never shows
-                    // tofu/fallback boxes for Segoe MDL2 Assets private-use glyphs.
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+                    // Match the live renderer's Windows 11 symbol font so current Fluent
+                    // glyphs don't fall back to a tiny outlined missing-character box.
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"),
                     Width = meter.Width,
                     Height = meter.Height,
                     FontSize = Math.Max(8, Math.Min(meter.Width, meter.Height) * 0.55),
