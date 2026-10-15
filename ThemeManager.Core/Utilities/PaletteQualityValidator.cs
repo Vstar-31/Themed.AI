@@ -11,6 +11,8 @@ namespace ThemeManager.Core.Utilities;
 public static class PaletteQualityValidator
 {
     public const float MinimumTextContrast = 4.5f;
+    // WCAG non-text contrast for functional control fills against adjacent surfaces.
+    public const float MinimumComponentContrast = 3.0f;
     public const float MinimumBorderContrast = 1.35f;
 
     public sealed record Report(
@@ -90,8 +92,13 @@ public static class PaletteQualityValidator
         if (changedMuted) repairs.Add("muted text contrast");
         theme.AccentPrimary = RepairForeground(theme.AccentPrimary, backgrounds, dark, MinimumTextContrast, out var changedAccent);
         if (changedAccent) repairs.Add("primary accent contrast");
-        theme.AccentStrong = RepairForeground(theme.AccentStrong, backgrounds, dark, MinimumTextContrast, out var changedStrong);
-        if (changedStrong) repairs.Add("strong accent contrast");
+        // AccentStrong is the fill of primary buttons, not a text color. Keep its hue identity
+        // and only adjust its lightness when needed so the fill remains visible against adjacent
+        // surfaces at the WCAG 1.4.11 non-text threshold. Button text is chosen separately using
+        // ContrastChecker.BestBlackOrWhiteForeground.
+        theme.AccentStrong = RepairForeground(theme.AccentStrong, backgrounds, dark,
+            MinimumComponentContrast, out var changedStrong);
+        if (changedStrong) repairs.Add("primary button fill visibility");
 
         theme.BorderSubtle = RepairForeground(theme.BorderSubtle, [theme.BackgroundBase], dark,
             MinimumBorderContrast, out var changedBorder);
