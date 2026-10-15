@@ -130,6 +130,17 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         set { if (SetProperty(ref _borderSubtle, value)) ApplyToken(t => t.BorderSubtle = value); }
     }
 
+    // Per-token reset targets are read from the loaded/saved theme baseline, not Cozy Café
+    // constants. Resetting one token therefore preserves the identity of a custom palette.
+    public string BaselineBackgroundBase => _baselinePalette.BackgroundBase;
+    public string BaselineBackgroundAlt => _baselinePalette.BackgroundAlt;
+    public string BaselineSurface => _baselinePalette.Surface;
+    public string BaselineAccentPrimary => _baselinePalette.AccentPrimary;
+    public string BaselineAccentStrong => _baselinePalette.AccentStrong;
+    public string BaselineTextPrimary => _baselinePalette.TextPrimary;
+    public string BaselineTextMuted => _baselinePalette.TextMuted;
+    public string BaselineBorderSubtle => _baselinePalette.BorderSubtle;
+
     // ── Scale sliders ─────────────────────────────────────────────────────────
 
     private double _cornerRadiusScale = 1.0;
@@ -231,6 +242,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         {
             await _themeService.SaveThemeAsync(_working);
             _baselinePalette = PaletteSnapshot.From(_working);
+            OnPropertyChanged(string.Empty); // refresh all per-token reset targets
             Dirty = false;
             StatusMessage = $"\"{_working.Name}\" saved; future reverts return to this palette.";
             _logger.LogInformation("User saved theme: {ThemeName}", _working.Name);
