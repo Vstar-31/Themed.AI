@@ -536,15 +536,17 @@ public static class AestheticProfileCatalog
         var lightnessDelta = 0f;
         if (HasAny(text, "darker", "make it darker", "darken the palette", "less bright", "dim it"))
             lightnessDelta = -0.045f;
-        else if (HasAny(text, "lighter", "make it lighter", "lighten the palette", "brighter background"))
+        else if (HasAny(text, "lighter", "make it lighter", "lighten the palette", "brighter background", "airy", "sunlit"))
             lightnessDelta = 0.045f;
+        else if (HasAny(text, "cinematic", "noir", "moody", "after dark", "late night"))
+            lightnessDelta = -0.025f;
 
-        // OKLCH chroma is not HSL saturation; small numeric changes have a more direct,
-        // controlled impact on perceived intensity, so avoid applying the old 0.13 HSL delta here.
+        // OKLCH chroma is not HSL saturation; numeric changes preserve a reference's hue family
+        // while independently responding to "pastel", "matte", "glossy", "dopamine" and "electric".
         var chromaDelta = 0f;
-        if (HasAny(text, "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer"))
+        if (HasAny(text, "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer", "matte", "pastel", "quiet luxury"))
             chromaDelta = -0.025f;
-        else if (HasAny(text, "more vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon"))
+        else if (HasAny(text, "more vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon", "dopamine", "maximalist", "camp"))
             chromaDelta = 0.025f;
 
         var hueShift = 0f;
@@ -557,9 +559,9 @@ public static class AestheticProfileCatalog
             if (delta < -180) delta += 360;
             hueShift = delta;
         }
-        else if (HasAny(text, "warmer", "more warm", "warmer tones"))
+        else if (HasAny(text, "warmer", "more warm", "warmer tones", "amber glow"))
             hueShift = 10;
-        else if (HasAny(text, "cooler", "more cool", "cooler tones", "make it icy"))
+        else if (HasAny(text, "cooler", "more cool", "cooler tones", "make it icy", "frosted", "glacier"))
             hueShift = -10;
 
         theme.BackgroundBase = ColorMath.OklchToHex(
@@ -574,24 +576,109 @@ public static class AestheticProfileCatalog
             strongColor.L + lightnessDelta, strongColor.C + chromaDelta, strongColor.H + hueShift);
         theme.BorderSubtle = ColorMath.OklchToHex(
             borderColor.L + lightnessDelta * 0.5f, borderColor.C + chromaDelta * 0.15f, borderColor.H + hueShift);
+
+        // Treat accent requests as accents, not as permission to repaint the whole background.
+        // This keeps a named reference recognizable (e.g. "Frutiger Aero with violet accents").
+        var accentHueTarget = MatchAccentHueModifier(text);
+        if (accentHueTarget is { } requestedAccentHue)
+        {
+            theme.AccentPrimary = SetOklchHue(theme.AccentPrimary, requestedAccentHue);
+            // Translate the secondary accent by the same shortest hue delta to preserve the
+            // intended relationship between the two accent roles.
+            var currentStrong = ColorMath.HexToOklch(theme.AccentStrong);
+            var currentPrimary = ColorMath.HexToOklch(ColorMath.OklchToHex(
+                primaryColor.L + lightnessDelta, primaryColor.C + chromaDelta, primaryColor.H + hueShift));
+            var accentDelta = requestedAccentHue - currentPrimary.H;
+            if (accentDelta > 180) accentDelta -= 360;
+            if (accentDelta < -180) accentDelta += 360;
+            theme.AccentStrong = ColorMath.OklchToHex(
+                currentStrong.L, currentStrong.C, currentStrong.H + accentDelta);
+        }
+
+        var artDirection = new List<string>();
+        if (HasAny(text, "glass", "glassy", "glassmorphism", "liquid glass", "frutiger aero", "holographic", "glossy", "chrome"))
+        {
+            theme.CornerRadiusScale = Math.Max(theme.CornerRadiusScale, 1.22);
+            theme.DensityScale = Math.Clamp(theme.DensityScale * 0.96, 0.5, 2.0);
+            theme.Surface = SetOklchLightness(theme.Surface, Math.Min(0.92f, ColorMath.HexToOklch(theme.Surface).L + 0.025f));
+            artDirection.Add("glossy, glass-like surfaces");
+        }
+        if (HasAny(text, "brutalist", "brutalism", "hard edges", "industrial", "raw concrete", "terminal ui"))
+        {
+            theme.CornerRadiusScale = 0.55;
+            artDirection.Add("hard-edged geometry");
+        }
+        if (HasAny(text, "minimal", "minimalist", "clean girl", "quiet luxury", "less clutter", "focus desk"))
+        {
+            theme.DensityScale = Math.Clamp(theme.DensityScale * 0.90, 0.5, 2.0);
+            artDirection.Add("restrained, spacious composition");
+        }
+        if (HasAny(text, "spacious", "airy layout", "breathing room", "lots of whitespace"))
+        {
+            theme.DensityScale = Math.Clamp(theme.DensityScale * 1.12, 0.5, 2.0);
+            artDirection.Add("generous negative space");
+        }
+        if (HasAny(text, "maximalist", "dopamine", "eclectic", "camp", "playful maximalism"))
+        {
+            theme.CornerRadiusScale = Math.Clamp(Math.Max(theme.CornerRadiusScale, 1.08), 0.25, 2.0);
+            artDirection.Add("expressive maximalist accents");
+        }
+
+        if (artDirection.Count > 0)
+            theme.Description = $"{theme.Description} Art direction: {string.Join(", ", artDirection.Distinct(StringComparer.OrdinalIgnoreCase))}."; 
+    }
+
+    private static string SetOklchHue(string hex, float hue)
+    {
+        var (lightness, chroma, _) = ColorMath.HexToOklch(hex);
+        return ColorMath.OklchToHex(lightness, chroma, hue);
+    }
+
+    private static string SetOklchLightness(string hex, float lightness)
+    {
+        var (_, chroma, hue) = ColorMath.HexToOklch(hex);
+        return ColorMath.OklchToHex(lightness, chroma, hue);
+    }
+
+    private static float? MatchAccentHueModifier(string text)
+    {
+        var cues = new (string[] Phrases, float Hue)[]
+        {
+            (["red accents", "red highlights", "coral accents", "cherry accents", "scarlet details"], 0),
+            (["orange accents", "amber accents", "persimmon accents"], 28),
+            (["gold accents", "brass accents", "gold details"], 45),
+            (["yellow accents", "wasabi accents", "chartreuse accents"], 65),
+            (["green accents", "jade accents", "emerald accents", "sage accents"], 135),
+            (["teal accents", "sea-glass accents"], 180),
+            (["cyan accents", "cyan highlights", "aqua accents"], 190),
+            (["blue accents", "blue highlights", "cobalt accents"], 220),
+            (["indigo accents", "indigo highlights"], 245),
+            (["purple accents", "violet accents", "ultraviolet accents"], 275),
+            (["magenta accents", "fuchsia accents"], 315),
+            (["pink accents", "rose accents", "blush accents"], 335),
+        };
+
+        foreach (var (phrases, hue) in cues)
+            if (HasAny(text, phrases)) return hue;
+        return null;
     }
 
     private static float? MatchHueModifier(string text)
     {
         var cues = new (string[] Phrases, float Hue)[]
         {
-            (["more red", "red accents", "make it red", "in red"], 0),
-            (["more orange", "orange accents", "make it orange", "in orange"], 28),
-            (["more gold", "gold accents", "make it gold", "in gold"], 45),
-            (["more yellow", "yellow accents", "make it yellow", "in yellow"], 55),
-            (["more green", "green accents", "make it green", "in green"], 125),
-            (["more teal", "teal accents", "make it teal", "in teal"], 180),
-            (["more cyan", "cyan accents", "make it cyan", "in cyan"], 190),
-            (["more blue", "blue accents", "make it blue", "in blue", "bluer"], 220),
-            (["more indigo", "indigo accents", "make it indigo", "in indigo"], 245),
-            (["more purple", "purple accents", "make it purple", "in purple"], 275),
-            (["more magenta", "magenta accents", "make it magenta", "in magenta"], 315),
-            (["more pink", "pink accents", "make it pink", "in pink", "pinker"], 335),
+            (["more red", "make it red", "in red", "make everything red"], 0),
+            (["more orange", "make it orange", "in orange"], 28),
+            (["more gold", "make it gold", "in gold"], 45),
+            (["more yellow", "make it yellow", "in yellow"], 55),
+            (["more green", "make it green", "in green"], 125),
+            (["more teal", "make it teal", "in teal"], 180),
+            (["more cyan", "make it cyan", "in cyan"], 190),
+            (["more blue", "make it blue", "in blue", "bluer"], 220),
+            (["more indigo", "make it indigo", "in indigo"], 245),
+            (["more purple", "make it purple", "in purple"], 275),
+            (["more magenta", "make it magenta", "in magenta"], 315),
+            (["more pink", "make it pink", "in pink", "pinker"], 335),
         };
 
         foreach (var (phrases, hue) in cues)
