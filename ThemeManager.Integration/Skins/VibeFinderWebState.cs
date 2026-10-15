@@ -92,6 +92,13 @@ public static class VibeFinderWebState
                 return;
             }
 
+            if (!fromVisibleEmbed && VibeFinderPreviewPlayer.HasSource &&
+                type is "VIBEFINDER_RESULTS" or "VIBEFINDER_STATE" or "VIBEFINDER_ANALYSIS_COMPLETE" or "VIBEFINDER_PLAYBACK_RESET" or "VIBEFINDER_PROFILE")
+            {
+                _logger.LogTrace("VibeFinderWebState: ignored {Type} from hidden prewarm embed while the native preview owns the playback source", type);
+                return;
+            }
+
             if (type == "VIBEFINDER_RESULTS") { HandleResults(root); return; }
             if (type == "VIBEFINDER_STATE") { HandlePlayerState(root); return; }
             if (type == "VIBEFINDER_ANALYSIS_COMPLETE") { HandleAnalysisComplete(root); return; }
