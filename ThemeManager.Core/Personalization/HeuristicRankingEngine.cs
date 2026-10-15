@@ -96,9 +96,19 @@ public class HeuristicRankingEngine
         if (wantsSpace) score += theme.DensityScale >= 1.02 ? 1.8f : -0.8f;
         if (wantsMaximal) score += ColorMath.HexToOklch(theme.AccentPrimary).C >= 0.12f ? 2f : -1f;
 
-        var accentChroma = ColorMath.HexToOklch(theme.AccentPrimary).C;
-        if (wantsMuted) score += accentChroma <= 0.14f ? 1.5f : -0.6f;
-        if (wantsVibrant) score += accentChroma >= 0.12f ? 1.5f : -0.6f;
+        // Evaluate the palette as a whole, not only AccentPrimary. Some intentionally bold
+        // styles (e.g. Brat Summer) use an acid background with a dark ink accent; judging only
+        // that accent would incorrectly classify the entire palette as muted.
+        var paletteChroma = new[]
+        {
+            ColorMath.HexToOklch(theme.BackgroundBase).C,
+            ColorMath.HexToOklch(theme.BackgroundAlt).C,
+            ColorMath.HexToOklch(theme.Surface).C,
+            ColorMath.HexToOklch(theme.AccentPrimary).C,
+            ColorMath.HexToOklch(theme.AccentStrong).C
+        }.Average();
+        if (wantsMuted) score += paletteChroma <= 0.105 ? 1.5f : -0.6f;
+        if (wantsVibrant) score += paletteChroma >= 0.105 ? 1.5f : -0.6f;
 
         // Profile History and explicit color preferences.
         if (profile.LikedThemeIds.Contains(theme.Id)) score += 10f;
