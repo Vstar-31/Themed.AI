@@ -89,7 +89,7 @@ public static class PaletteHarmonizer
     /// </summary>
     public static GeneratedPalette FromAccentHex(string accentHex, bool? preferDark = null)
     {
-        var (accentL, accentC, accentHue) = ColorMath.HexToOklch(accentHex);
+        var (_, accentC, accentHue) = ColorMath.HexToOklch(accentHex);
         bool isDark = preferDark ?? accentL >= 0.60f;
 
         var synth = new VibeSignal
