@@ -281,6 +281,32 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void Analyze_ExplicitNavyAndCoral_KeepsTwoHueAnchors()
+    {
+        var signal = VibeAnalyzer.Analyze("navy and coral");
+
+        Assert.True(signal.HasPrimaryPaletteHue);
+        Assert.True(signal.HasSecondaryPaletteHue);
+        Assert.InRange(signal.PrimaryPaletteHue, 190f, 245f);
+        Assert.True(signal.SecondaryPaletteHue >= 330f || signal.SecondaryPaletteHue <= 30f,
+            $"Expected a coral/red counterpoint, got {signal.SecondaryPaletteHue:F0}°.");
+    }
+
+    [Fact]
+    public void Generate_ExplicitNavyAndCoral_PreservesBlueAndCoralAccentRoles()
+    {
+        var theme = _gen.Generate("navy and coral");
+        var primaryHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentPrimary).H;
+        var strongHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentStrong).H;
+
+        Assert.InRange(primaryHue, 185f, 255f);
+        Assert.True(strongHue >= 330f || strongHue <= 35f,
+            $"Expected the secondary accent to remain coral/red, got {strongHue:F0}°.");
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
     public void Generate_BlendedAestheticPrompt_ComposesBothProfilesAndPassesContrast()
     {
         const string prompt = "Frutiger Aero meets Neo Deco";
