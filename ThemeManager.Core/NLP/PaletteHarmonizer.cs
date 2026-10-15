@@ -89,44 +89,37 @@ public static class PaletteHarmonizer
     }
 
     /// <summary>
-    /// Harmony-lock entry point: given a chosen AccentPrimary hex, back-calculate
-    /// an approximate base HSL and re-derive all 8 palette slots.
-    ///
-    /// Used by <see cref="ThemeEditorViewModel"/> when HarmonyLocked = true and
-    /// the user drags AccentPrimary — the rest of the palette follows automatically.
+    /// Harmony-lock entry point: derives an art-directed palette from the chosen accent while
+    /// preserving the caller's existing light/dark direction. Because accent colors are often
+    /// intentionally bright on dark palettes or dark on light palettes, polarity should be supplied
+    /// by the edited theme rather than guessed from the accent alone.
     /// </summary>
-    public static GeneratedPalette FromAccentHex(string accentHex)
+    public static GeneratedPalette FromAccentHex(string accentHex, bool? preferDark = null)
     {
-        var (h, s, l) = ColorMath.HexToHsl(accentHex);
+        var (accentL, accentC, accentHue) = ColorMath.HexToOklch(accentHex);
+        bool isDark = preferDark ?? accentL >= 0.60f;
 
-        // Infer whether the user wants a dark or light palette from the accent lightness.
-        bool isDark = l < 0.40f;
-
-        // Back-project the accent HSL into an approximate "base" lightness
-        // by reversing the offset applied in Generate():
-        //   accentPrimary = ToHex(h, s * 0.75, l - 0.32)  →  base l ≈ accent_l + 0.32
-        float baseL = isDark
-            ? Math.Clamp(l - 0.30f, 0.05f, 0.38f)
-            : Math.Clamp(l + 0.32f, 0.55f, 0.92f);
-
-        float baseS = isDark
-            ? Math.Clamp(s / 0.80f, 0.08f, 0.60f)
-            : Math.Clamp(s / 0.75f, 0.05f, 0.55f);
-
-        // Synthesise a minimal VibeSignal so we can reuse the same Generate() path.
         var synth = new VibeSignal
         {
-            Hue        = h,
-            Lightness  = baseL,
-            Saturation = baseS,
-            Warmth     = 0f,
+            Hue = accentHue,
+            PrimaryPaletteHue = accentHue,
+            HasPrimaryPaletteHue = true,
+            Lightness = isDark ? 0.38f : 0.68f,
+            Saturation = Math.Clamp(accentC / 0.22f, 0.12f, 0.95f),
+            Warmth = 0f,
             SentimentValence = 0f,
         };
-        // Force a dummy keyword so HasSignal = true.
         synth.MatchedKeywords.Add("custom");
         synth.KeywordCategories["custom"] = "color";
 
-        return Generate(synth);
+        var palette = Generate(synth);
+        // Harmony lock means the chosen accent is the anchor; return it exactly and let the shared
+        // quality validator adjust only if the user's chosen contrast makes that necessary.
+        return palette with
+        {
+            AccentPrimary = CozyTheme.NormalizeHex(accentHex),
+            IsDark = isDark
+        };
     }
 
     // ── HSL → RGB → Hex conversion ────────────────────────────────────────────
