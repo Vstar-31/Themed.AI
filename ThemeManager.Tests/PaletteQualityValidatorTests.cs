@@ -58,6 +58,37 @@ public class PaletteQualityValidatorTests
     }
 
     [Fact]
+    public void ValidateAndRepair_PreservesArtDirectedButtonFillAndChoosesReadableText()
+    {
+        var theme = new CozyTheme
+        {
+            Name = "Night Market",
+            BackgroundBase = "#0B0616",
+            BackgroundAlt = "#160D27",
+            Surface = "#24113A",
+            AccentPrimary = "#FF4FD8",
+            AccentStrong = "#7B6A00", // 3:1 non-text contrast, but not 4.5:1 text contrast on every surface
+            TextPrimary = "#F7EFFF",
+            TextMuted = "#C8B8D8",
+            BorderSubtle = "#4A2A63"
+        };
+        var originalButtonFill = theme.AccentStrong;
+
+        var report = PaletteQualityValidator.ValidateAndRepair(theme, preferDark: true);
+
+        Assert.True(report.PassesAA, $"{report.PassingPairs}/{report.TotalPairs} text pairs passed.");
+        Assert.Equal(originalButtonFill, theme.AccentStrong);
+        Assert.All(new[] { theme.BackgroundBase, theme.BackgroundAlt, theme.Surface }, surface =>
+            Assert.True(ColorMath.ContrastRatio(theme.AccentStrong, surface) >= PaletteQualityValidator.MinimumComponentContrast,
+                $"Primary button fill only has {ColorMath.ContrastRatio(theme.AccentStrong, surface):F2}:1 against {surface}."));
+
+        var buttonTextPair = Assert.Single(ContrastChecker.Check(theme),
+            pair => pair.PairName == "Primary-button text / Strong Accent");
+        Assert.Equal(ContrastChecker.BestBlackOrWhiteForeground(theme.AccentStrong), buttonTextPair.ForegroundHex);
+        Assert.True(buttonTextPair.PassesAA);
+    }
+
+    [Fact]
     public void ValidateAndRepair_IsIdempotentAfterFirstRepair()
     {
         var theme = new CozyTheme
