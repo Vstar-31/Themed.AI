@@ -88,7 +88,7 @@ public sealed partial class ThemeEditorPage : Page
         => await ViewModel.SaveAsync();
 
     private void RevertButton_Click(object sender, RoutedEventArgs e)
-        => ViewModel.RevertToDefault();
+        => ViewModel.RevertPaletteChanges();
 
     private void UndoButton_Click(object sender, RoutedEventArgs e)
         => ViewModel.Undo();
