@@ -508,6 +508,15 @@ public class VibeNlpPipelineTests
             Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
     }
 
+    [Fact]
+    public void Analyze_SingleTargetNegationDoesNotSuppressFollowingColor()
+    {
+        var analysis = VibeAnalyzer.Analyze("not too bright cyan accent");
+
+        Assert.Contains(analysis.MatchedKeywords,
+            word => word.Equals("cyan", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Theory]
     [InlineData("not neon but cyan", "neon", "cyan")]
     [InlineData("no blue, use coral", "blue", "coral")]
