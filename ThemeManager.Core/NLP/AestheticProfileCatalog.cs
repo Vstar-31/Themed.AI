@@ -542,8 +542,13 @@ public static class AestheticProfileCatalog
             h1 + hueDelta * amount);
     }
 
-    private static void ApplyPromptModifiers(CozyTheme theme, string prompt)
+    /// <summary>
+    /// Applies compositional and visual-language modifiers to a palette generated from free-form
+    /// color NLP, not only palettes anchored to a named aesthetic profile.
+    /// </summary>
+    public static void ApplyPromptModifiers(CozyTheme theme, string prompt)
     {
+        ArgumentNullException.ThrowIfNull(theme);
         var text = Normalize(prompt);
 
         // Use OKLCH for all prompt-relative edits so the same "lighter", "muted" or hue shift
