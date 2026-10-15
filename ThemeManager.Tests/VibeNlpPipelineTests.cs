@@ -1,5 +1,6 @@
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Utilities;
+using ThemeManager.Core.Personalization;
 
 namespace ThemeManager.Tests;
 
@@ -489,6 +490,28 @@ public class VibeNlpPipelineTests
         Assert.True(glass.CornerRadiusScale >= baseline.CornerRadiusScale);
         Assert.True(glass.DensityScale > baseline.DensityScale);
         Assert.All(ContrastChecker.Check(glass), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void PersonalizationPipeline_FinalSelectedThemePassesPaletteGateAndAnalysisMatches()
+    {
+        var profilePath = Path.Combine(Path.GetTempPath(), $"themed-ai-test-profile-{Guid.NewGuid():N}.json");
+        var orchestrator = new PersonalizationOrchestrator(profilePath);
+        var candidate = orchestrator.GenerateBestTheme(new GenerationContext
+        {
+            Prompt = "Neon Afterglow with cyan accents",
+            Constraints = new GenerationConstraints { MustBeDarkTheme = true }
+        });
+
+        Assert.NotNull(candidate.Theme);
+        Assert.NotNull(candidate.Analysis);
+        Assert.Equal(candidate.Theme.Name, candidate.Analysis!.GeneratedName);
+        Assert.Equal(
+            new[] { candidate.Theme.BackgroundBase, candidate.Theme.BackgroundAlt, candidate.Theme.Surface,
+                candidate.Theme.AccentPrimary, candidate.Theme.AccentStrong },
+            candidate.Analysis.Swatches);
+        Assert.All(ContrastChecker.Check(candidate.Theme), check =>
             Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
     }
 }
