@@ -48,9 +48,9 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_ThemeChanged(object? sender, ThemeManager.Core.Models.CozyTheme theme)
     {
-        if (VibeFinderWebState.IsVisibleEmbedActive)
+        if (VibeFinderWebState.IsVisibleEmbedActive || VibeFinderPreviewPlayer.HasSource)
         {
-            _logger.LogTrace("VibeFinder theme sync skipped for hidden prewarm; primary page owns the live session");
+            _logger.LogTrace("VibeFinder theme sync skipped; the cached primary page or native preview owns playback");
             return;
         }
         if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
