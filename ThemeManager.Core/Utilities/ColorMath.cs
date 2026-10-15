@@ -157,6 +157,88 @@ public static class ColorMath
         return (lighter + 0.05f) / (darker + 0.05f);
     }
 
+    // ── OKLCH (perceptual hue/chroma/lightness) ───────────────────────────────
+
+    /// <summary>
+    /// Converts an sRGB hex color to OKLCH. Unlike HSL, OKLCH's lightness is designed to track
+    /// perceived brightness more consistently across hues; it is used by the free-form palette
+    /// composer to avoid lumpy ramps between blue, yellow, red and other color families.
+    /// Returns (lightness 0..1, chroma 0..~0.4, hue degrees).
+    /// </summary>
+    public static (float L, float C, float H) HexToOklch(string hex)
+    {
+        var (r8, g8, b8) = HexToRgb(hex);
+        static float Linearize(float c)
+            => c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
+
+        float r = Linearize(r8), g = Linearize(g8), b = Linearize(b8);
+        float l = MathF.Cbrt(0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * b);
+        float m = MathF.Cbrt(0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * b);
+        float s = MathF.Cbrt(0.0883024619f * r + 0.2817188376f * g + 0.6299787005f * b);
+
+        float L = 0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s;
+        float a = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
+        float bb = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
+        float C = MathF.Sqrt(a * a + bb * bb);
+        float H = C < 1e-7f ? 0f : MathF.Atan2(bb, a) * 180f / MathF.PI;
+        if (H < 0) H += 360f;
+        return (Math.Clamp(L, 0f, 1f), C, H);
+    }
+
+    /// <summary>
+    /// Converts OKLCH to sRGB hex with chroma-reduction gamut mapping. It preserves the requested
+    /// perceptual lightness/hue as far as the sRGB gamut allows, rather than clipping channels and
+    /// unexpectedly shifting neon hues at the edges of the displayable color space.
+    /// </summary>
+    public static string OklchToHex(float lightness, float chroma, float hueDeg)
+    {
+        lightness = Math.Clamp(lightness, 0f, 1f);
+        chroma = Math.Clamp(chroma, 0f, 0.5f);
+        hueDeg = ((hueDeg % 360f) + 360f) % 360f;
+
+        for (int attempt = 0; attempt < 40; attempt++)
+        {
+            var (r, g, b) = OklchToLinearRgb(lightness, chroma, hueDeg);
+            if (r >= 0f && r <= 1f && g >= 0f && g <= 1f && b >= 0f && b <= 1f)
+            {
+                static float Encode(float linear)
+                    => linear <= 0.0031308f
+                        ? 12.92f * linear
+                        : 1.055f * MathF.Pow(linear, 1f / 2.4f) - 0.055f;
+                return RgbToHex(Encode(r), Encode(g), Encode(b));
+            }
+
+            chroma *= 0.90f;
+        }
+
+        // At C≈0 every OKLCH lightness is in-gamut; this fallback mainly protects floating-point
+        // edge cases at pure black/white.
+        var (rr, gg, bb) = OklchToLinearRgb(lightness, 0f, hueDeg);
+        static float Gamma(float linear)
+            => linear <= 0.0031308f ? 12.92f * linear : 1.055f * MathF.Pow(Math.Max(0f, linear), 1f / 2.4f) - 0.055f;
+        return RgbToHex(Gamma(rr), Gamma(gg), Gamma(bb));
+    }
+
+    private static (float R, float G, float B) OklchToLinearRgb(float lightness, float chroma, float hueDeg)
+    {
+        float radians = hueDeg * MathF.PI / 180f;
+        float a = chroma * MathF.Cos(radians);
+        float b = chroma * MathF.Sin(radians);
+
+        float l_ = lightness + 0.3963377774f * a + 0.2158037573f * b;
+        float m_ = lightness - 0.1055613458f * a - 0.0638541728f * b;
+        float s_ = lightness - 0.0894841775f * a - 1.2914855480f * b;
+
+        float l = l_ * l_ * l_;
+        float m = m_ * m_ * m_;
+        float s = s_ * s_ * s_;
+
+        float r = 4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
+        float g = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
+        float blue = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+        return (r, g, blue);
+    }
+
     // ── Interpolation ─────────────────────────────────────────────────────────
 
     /// <summary>
