@@ -820,10 +820,10 @@ public sealed partial class SkinHostWindow : Window
 
         var icon = new FontIcon
         {
-            // These code points (E100/E101/E768/E769/E946) are Segoe MDL2 Assets glyphs.
-            // Relying on the platform fallback can render the same tiny outlined boxes seen on
-            // some Windows setups, so bind the glyph font explicitly in the live widget renderer.
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+            // Use the Windows 11 symbol font explicitly. The app's icon catalogue includes
+            // current Fluent glyphs as well as the compatible Play/Pause/transport code points;
+            // forcing MDL2 can turn Fluent-only glyphs into the tiny outlined missing-glyph boxes.
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"),
             Glyph = vm.Glyph,
             Width = vm.Width,
             Height = vm.Height,
