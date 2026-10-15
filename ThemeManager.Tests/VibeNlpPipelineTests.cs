@@ -508,6 +508,21 @@ public class VibeNlpPipelineTests
             Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
     }
 
+    [Theory]
+    [InlineData("not neon but cyan", "neon", "cyan")]
+    [InlineData("no blue, use coral", "blue", "coral")]
+    [InlineData("not dark academia, use cyan", "dark", "cyan")]
+    public void Analyze_NegatedColorsDoNotPollutePositiveColorSignals(
+        string prompt, string rejectedColor, string acceptedColor)
+    {
+        var analysis = VibeAnalyzer.Analyze(prompt);
+
+        Assert.DoesNotContain(analysis.MatchedKeywords,
+            word => word.Equals(rejectedColor, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.MatchedKeywords,
+            word => word.Equals(acceptedColor, StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void Generate_MinimalArtDirectionIncreasesWhitespaceInsteadOfTighteningLayout()
     {
