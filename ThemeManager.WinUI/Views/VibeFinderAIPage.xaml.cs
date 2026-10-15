@@ -74,11 +74,11 @@ public sealed partial class VibeFinderAIPage : Page
                     // The pending flag makes repeated APP_READY notifications safe.
                     if (hasToken && !_initialAnalysisTriggered)
                     {
-                        if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.IsPlaying)
+                        if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
                         {
                             _initialAnalysisDeferredForNativePreview = true;
                             PushVibePromptAndTrackLimit(triggerRun: false);
-                            _logger.LogInformation("VibeFinderAIPage: initial analysis deferred until native preview ends");
+                            _logger.LogInformation("VibeFinderAIPage: initial analysis deferred while a native preview source is loaded");
                         }
                         else if (!_initialAnalysisDeferredForNativePreview)
                         {
@@ -400,11 +400,11 @@ public sealed partial class VibeFinderAIPage : Page
             _logger.LogInformation("VibeFinderAIPage: embed login succeeded");
             if (!_initialAnalysisTriggered && !_initialAnalysisDeferredForNativePreview)
             {
-                if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.IsPlaying)
+                if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
                 {
                     _initialAnalysisDeferredForNativePreview = true;
                     PushVibePromptAndTrackLimit(triggerRun: false);
-                    _logger.LogInformation("VibeFinderAIPage: initial analysis deferred after login until native preview ends");
+                    _logger.LogInformation("VibeFinderAIPage: initial analysis deferred after login while native preview source remains loaded");
                 }
                 else
                 {
