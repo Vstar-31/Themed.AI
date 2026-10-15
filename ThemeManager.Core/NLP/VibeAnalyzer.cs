@@ -37,15 +37,16 @@ public static class VibeAnalyzer
         // Track which indices have already been consumed by a bigram
         // so we don't double-count them as unigrams.
         var consumed = new HashSet<int>();
-        var chromaticAnchors = new List<(ColorSignal Signal, float Weight, string Word)>();
+        var chromaticAnchors = new List<(ColorSignal Signal, float Weight)>();
 
         void Accumulate(ColorSignal s, float freqBoost, string displayWord, string category)
         {
             // Keep strong, concrete color signals as separate anchors. Hue averaging is useful for
             // a single-family prompt but destroys intentional pairs like "navy and coral"; a second
             // hue is therefore retained for accent design when it is genuinely distinct.
-            if (s.HueWeight >= 0.65f && category is "color" or "environment" or "material")
-                chromaticAnchors.Add((s, s.HueWeight * freqBoost, displayWord));
+            if (s.HueWeight >= 0.65f &&
+                (category == "color" || category == "environment" || category == "material"))
+                chromaticAnchors.Add((s, s.HueWeight * freqBoost));
 
             double hueRad = s.HueDeg * Math.PI / 180.0;
             double hw = s.HueWeight * freqBoost;
