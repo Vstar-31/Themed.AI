@@ -39,6 +39,7 @@ public sealed partial class VibeFinderAIPage : Page
 
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
+            ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
                 var json = args.TryGetWebMessageAsString();
@@ -57,6 +58,7 @@ public sealed partial class VibeFinderAIPage : Page
                 {
                     _embedReady = true;
                     _embedHasToken = hasToken;
+                    ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(hasToken);
                     StatusText.Text = hasToken
                         ? "Connected to VibeFinder AI ✓"
                         : "VibeFinder AI loaded — signing in…";
@@ -152,6 +154,7 @@ public sealed partial class VibeFinderAIPage : Page
         }
         var uri = sender.Source;
         if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+        ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
         BindVisibleEmbedBridge();
         _logger.LogDebug("VibeFinderAIPage: navigation completed for {Uri}", uri);
         string user = UsernameBox.Text?.Trim() ?? "";
@@ -390,6 +393,7 @@ public sealed partial class VibeFinderAIPage : Page
         {
             _embedReady = true;
             _embedHasToken = true;
+            ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(true);
             StatusText.Text = "Connected to VibeFinder AI ✓";
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
             StatusText.Visibility = Visibility.Visible;
@@ -416,6 +420,7 @@ public sealed partial class VibeFinderAIPage : Page
             return;
         }
 
+        ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
         _logger.LogWarning("VibeFinderAIPage: embed login failed, reason={Reason}", reason ?? "(unspecified)");
         if (reason == "network")
         {
