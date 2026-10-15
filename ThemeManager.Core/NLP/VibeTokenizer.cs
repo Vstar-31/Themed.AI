@@ -107,7 +107,11 @@ public static class VibeTokenizer
 
             if (IsNegationOperator(word))
             {
-                negationBudget = 2;
+                // Negation normally applies to its next semantic target only. Extend it to two
+                // targets when those words form a known compound in the color lexicon (e.g.
+                // "dark academia", "rose gold", "sky blue"). This avoids suppressing a requested
+                // positive color in prompts like "not too bright cyan".
+                negationBudget = HasUpcomingColorBigram(matches, i, IsNegationOperator, IsContrastConnector) ? 2 : 1;
                 continue;
             }
 
@@ -120,6 +124,33 @@ public static class VibeTokenizer
         }
 
         return new TokenizeResult(stemmed, raw, hadEmoji, negatedTokens);
+    }
+
+    private static bool HasUpcomingColorBigram(
+        MatchCollection matches,
+        int operatorIndex,
+        Func<string, bool> isNegationOperator,
+        Func<string, bool> isContrastConnector)
+    {
+        var next = new List<string>(2);
+        for (int i = operatorIndex + 1; i < matches.Count; i++)
+        {
+            string word = matches[i].Value;
+            if (word.Length == 1 && word[0] is ',' or ';' or '.' or '!' or '?' or ':')
+                break;
+            if (isContrastConnector(word) || isNegationOperator(word))
+                break;
+            if (Stopwords.Contains(word))
+                continue;
+
+            next.Add(word);
+            if (next.Count == 2) break;
+        }
+
+        return next.Count == 2 &&
+               BigramLexicon.Lookup(
+                   PorterStemmer.Stem(next[0]),
+                   PorterStemmer.Stem(next[1])) is not null;
     }
 
     /// <summary>Stemmed tokens only — kept for backward compat with VibeAnalyzer v1.</summary>
