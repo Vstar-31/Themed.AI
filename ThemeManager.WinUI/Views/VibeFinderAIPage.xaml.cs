@@ -107,6 +107,8 @@ public sealed partial class VibeFinderAIPage : Page
             };
             BindVisibleEmbedBridge();
             ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
+            VibeFinderWebView.CoreWebView2.NavigationStarting += (_, _) =>
+                ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
 
@@ -154,7 +156,6 @@ public sealed partial class VibeFinderAIPage : Page
         }
         var uri = sender.Source;
         if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
-        ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
         BindVisibleEmbedBridge();
         _logger.LogDebug("VibeFinderAIPage: navigation completed for {Uri}", uri);
         string user = UsernameBox.Text?.Trim() ?? "";
