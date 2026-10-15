@@ -382,12 +382,18 @@ public sealed partial class SkinHostWindow : Window
                         bool webEmbedActive =
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
                             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
+                        // A native preview can be playing (or paused with its source loaded) before
+                        // the cached VibeFinder page takes over. Keep all widget commands on that
+                        // player until its source is cleared; switching control planes mid-track made
+                        // Pause/Next operate on a different, silent browser player.
+                        bool useWebPlayback = webEmbedActive &&
+                            !VibeFinderPreviewPlayer.HasSource;
 
                         if (vibeMeasure is null)
                         {
                             _logger.LogWarning("Skin \"{Skin}\": clicked a VibeFinder preview URL but this widget has no VibeFinderMeasure", _viewModel.Definition.Name);
                         }
-                        else if (webEmbedActive)
+                        else if (useWebPlayback)
                         {
                             if (!ThemeManager.Integration.Skins.VibeFinderWebState.IsPlaying)
                             {
@@ -403,9 +409,13 @@ public sealed partial class SkinHostWindow : Window
                         }
                         else
                         {
-                            _logger.LogDebug("Skin \"{Skin}\": preview-play click -> native preview {Url}",
-                                _viewModel.Definition.Name, vibeMeasure.CurrentPreviewUrl ?? "(null)");
-                            VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
+                            _logger.LogDebug("Skin \"{Skin}\": preview-play click -> native preview {Url} (hasSource={HasSource})",
+                                _viewModel.Definition.Name, vibeMeasure.CurrentPreviewUrl ?? "(null)",
+                                VibeFinderPreviewPlayer.HasSource);
+                            if (VibeFinderPreviewPlayer.HasSource)
+                                VibeFinderPreviewPlayer.TogglePause(vibeMeasure.CurrentPreviewUrl);
+                            else
+                                VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
                         }
                     }
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
@@ -415,6 +425,12 @@ public sealed partial class SkinHostWindow : Window
                         bool webEmbedActive =
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
                             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
+                        // A native preview can be playing (or paused with its source loaded) before
+                        // the cached VibeFinder page takes over. Keep all widget commands on that
+                        // player until its source is cleared; switching control planes mid-track made
+                        // Pause/Next operate on a different, silent browser player.
+                        bool useWebPlayback = webEmbedActive &&
+                            !VibeFinderPreviewPlayer.HasSource;
 
                         _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webBridgeActive={WebActive}, visibleEmbed={VisibleEmbed}, playerActive={PlayerActive})",
                             _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive,
@@ -425,7 +441,7 @@ public sealed partial class SkinHostWindow : Window
                         {
                             if (vibeMeasure != null)
                             {
-                                if (webEmbedActive)
+                                if (useWebPlayback)
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"playpause\"}");
                                 else
                                     VibeFinderPreviewPlayer.TogglePause(vibeMeasure.CurrentPreviewUrl);
@@ -437,7 +453,7 @@ public sealed partial class SkinHostWindow : Window
                         {
                             if (vibeMeasure != null)
                             {
-                                if (webEmbedActive)
+                                if (useWebPlayback)
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"next\"}");
                                 else
                                 {
@@ -452,7 +468,7 @@ public sealed partial class SkinHostWindow : Window
                         {
                             if (vibeMeasure != null)
                             {
-                                if (webEmbedActive)
+                                if (useWebPlayback)
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"prev\"}");
                                 else
                                 {
