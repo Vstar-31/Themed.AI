@@ -216,30 +216,36 @@ public static class AestheticProfileCatalog
     private static void ApplyPromptModifiers(CozyTheme theme, string prompt)
     {
         var text = Normalize(prompt);
-        var (baseH, baseS, baseL) = ColorMath.HexToHsl(theme.BackgroundBase);
-        var (altH, altS, altL) = ColorMath.HexToHsl(theme.BackgroundAlt);
-        var (surfaceH, surfaceS, surfaceL) = ColorMath.HexToHsl(theme.Surface);
-        var (primaryH, primaryS, primaryL) = ColorMath.HexToHsl(theme.AccentPrimary);
-        var (strongH, strongS, strongL) = ColorMath.HexToHsl(theme.AccentStrong);
-        var (borderH, borderS, borderL) = ColorMath.HexToHsl(theme.BorderSubtle);
+
+        // Use OKLCH for all prompt-relative edits so the same "lighter", "muted" or hue shift
+        // behaves more predictably across blue, yellow, magenta and green palettes.
+        var baseColor = ColorMath.HexToOklch(theme.BackgroundBase);
+        var altColor = ColorMath.HexToOklch(theme.BackgroundAlt);
+        var surfaceColor = ColorMath.HexToOklch(theme.Surface);
+        var primaryColor = ColorMath.HexToOklch(theme.AccentPrimary);
+        var strongColor = ColorMath.HexToOklch(theme.AccentStrong);
+        var borderColor = ColorMath.HexToOklch(theme.BorderSubtle);
 
         var lightnessDelta = 0f;
         if (HasAny(text, "darker", "make it darker", "darken the palette", "less bright", "dim it"))
-            lightnessDelta = -0.055f;
+            lightnessDelta = -0.045f;
         else if (HasAny(text, "lighter", "make it lighter", "lighten the palette", "brighter background"))
-            lightnessDelta = 0.055f;
+            lightnessDelta = 0.045f;
 
-        var saturationDelta = 0f;
+        // OKLCH chroma is not HSL saturation; small numeric changes have a more direct,
+        // controlled impact on perceived intensity, so avoid applying the old 0.13 HSL delta here.
+        var chromaDelta = 0f;
         if (HasAny(text, "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer"))
-            saturationDelta = -0.13f;
+            chromaDelta = -0.025f;
         else if (HasAny(text, "more vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon"))
-            saturationDelta = 0.13f;
+            chromaDelta = 0.025f;
 
         var hueShift = 0f;
         var hueTarget = MatchHueModifier(text);
+        var baseHue = baseColor.H;
         if (hueTarget is { } target)
         {
-            var delta = target - baseH;
+            var delta = target - baseHue;
             if (delta > 180) delta -= 360;
             if (delta < -180) delta += 360;
             hueShift = delta;
@@ -249,12 +255,18 @@ public static class AestheticProfileCatalog
         else if (HasAny(text, "cooler", "more cool", "cooler tones", "make it icy"))
             hueShift = -10;
 
-        theme.BackgroundBase = ColorMath.HslToHex(baseH + hueShift, baseS, baseL + lightnessDelta);
-        theme.BackgroundAlt = ColorMath.HslToHex(altH + hueShift, altS, altL + lightnessDelta);
-        theme.Surface = ColorMath.HslToHex(surfaceH + hueShift, surfaceS, surfaceL + lightnessDelta);
-        theme.AccentPrimary = ColorMath.HslToHex(primaryH + hueShift, primaryS + saturationDelta, primaryL + lightnessDelta);
-        theme.AccentStrong = ColorMath.HslToHex(strongH + hueShift, strongS + saturationDelta, strongL + lightnessDelta);
-        theme.BorderSubtle = ColorMath.HslToHex(borderH + hueShift, borderS, borderL + lightnessDelta);
+        theme.BackgroundBase = ColorMath.OklchToHex(
+            baseColor.L + lightnessDelta * 0.7f, baseColor.C + chromaDelta * 0.20f, baseColor.H + hueShift);
+        theme.BackgroundAlt = ColorMath.OklchToHex(
+            altColor.L + lightnessDelta * 0.7f, altColor.C + chromaDelta * 0.25f, altColor.H + hueShift);
+        theme.Surface = ColorMath.OklchToHex(
+            surfaceColor.L + lightnessDelta * 0.7f, surfaceColor.C + chromaDelta * 0.35f, surfaceColor.H + hueShift);
+        theme.AccentPrimary = ColorMath.OklchToHex(
+            primaryColor.L + lightnessDelta, primaryColor.C + chromaDelta, primaryColor.H + hueShift);
+        theme.AccentStrong = ColorMath.OklchToHex(
+            strongColor.L + lightnessDelta, strongColor.C + chromaDelta, strongColor.H + hueShift);
+        theme.BorderSubtle = ColorMath.OklchToHex(
+            borderColor.L + lightnessDelta * 0.5f, borderColor.C + chromaDelta * 0.15f, borderColor.H + hueShift);
     }
 
     private static float? MatchHueModifier(string text)
