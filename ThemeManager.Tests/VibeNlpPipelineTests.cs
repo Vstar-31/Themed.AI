@@ -252,6 +252,22 @@ public class VibeNlpPipelineTests
     [InlineData("Studio Ghibli forest", "Storybook Forest")]
     [InlineData("Star Wars cockpit", "Space Opera")]
     [InlineData("Minecraft Cherry Grove", "Cherry Grove")]
+    [InlineData("Brooched vintage jewellery", "Brooched")]
+    [InlineData("Scent Stacking amber vanilla", "Scent Stacking")]
+    [InlineData("Darecations mountain escape", "Darecations")]
+    [InlineData("Cabbage Crush garden green", "Cabbage Crush")]
+    [InlineData("Cool Blue glacier aesthetic", "Cool Blue")]
+    [InlineData("FunHaus playful Bauhaus", "FunHaus")]
+    [InlineData("Khaki Coded expedition kit", "Khaki Coded")]
+    [InlineData("Mystic Outlands fantasy", "Mystic Outlands")]
+    [InlineData("Afrohemian Decor", "Afrohemian Decor")]
+    [InlineData("Laced Up lacecore", "Laced Up")]
+    [InlineData("Throwback Kid", "Throwback Kid")]
+    [InlineData("Wednesday Addams", "Wednesday Goth")]
+    [InlineData("Pip-Boy Fallout terminal", "Retro-Future Terminal")]
+    [InlineData("Blade Runner 2049", "Rain City 2049")]
+    [InlineData("Tron Legacy", "Digital Grid")]
+    [InlineData("K-pop comeback stage", "K-Pop Stage")]
     public void Generate_RecognizedAesthetics_UsesCuratedProfileAndPassesContrast(string prompt, string expectedName)
     {
         var (theme, analysis) = _gen.GenerateAndExplain(prompt);
