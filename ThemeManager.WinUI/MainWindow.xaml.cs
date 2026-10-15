@@ -62,6 +62,12 @@ public sealed partial class MainWindow : Window
 
     public async void EnsureVibeFinderPrewarm()
     {
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("EnsureVibeFinderPrewarm: cached primary VibeFinder page owns playback; hidden prewarm is not restarted");
+            return;
+        }
+
         if (_vibeFinderPrewarmStarted)
         {
             RebindVibeFinderPrewarmBridge();
@@ -115,6 +121,11 @@ public sealed partial class MainWindow : Window
                 if (TryParseAppReady(json, out bool hasToken))
                 {
                     _logger.LogInformation("VibeFinder prewarm: embed ready (hasToken={HasToken})", hasToken);
+                    if (VibeFinderWebState.IsVisibleEmbedActive)
+                    {
+                        _logger.LogTrace("VibeFinder prewarm: ignoring readiness while the cached primary page owns playback");
+                        return;
+                    }
                     if (hasToken)
                         PushVibePromptAndTrackLimit();
                     return;
@@ -151,6 +162,12 @@ public sealed partial class MainWindow : Window
 
     public void ResetVibeFinderPrewarm()
     {
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogDebug("VibeFinder prewarm reset skipped; the cached primary page will receive the updated credentials and prompt");
+            return;
+        }
+
         _vibeFinderPrewarmStarted = false;
         EnsureVibeFinderPrewarm();
     }
@@ -187,6 +204,11 @@ public sealed partial class MainWindow : Window
 
     private void PushVibePromptAndTrackLimit()
     {
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("VibeFinder prewarm prompt push skipped; primary page owns results and playback");
+            return;
+        }
         if (VibeFinderPrewarmWebView.CoreWebView2 is null) return;
 
         string rawPrompt = "";
