@@ -248,20 +248,24 @@ public static class AestheticProfileCatalog
                     if (index < 0) break;
                     int aliasStart = index + 1;
                     var prefix = padded[..aliasStart].TrimEnd();
+                    // Normalize exact and fuzzy match positions to zero-based word indices. The
+                    // prior exact matcher stored a character offset while fuzzy matches stored a
+                    // word index, which could reorder blends whenever one reference was misspelled.
+                    int tokenPosition = prefix.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
                     searchFrom = index + paddedAlias.Length;
 
                     if (IsNegatedReference(prefix)) continue;
 
-                    // Prefer the most specific alias: "Neon Afterglow" beats "neon", and a
-                    // franchise/sub-aesthetic phrase beats an incidental one-word mention.
+                    // Prefer the most specific alias for a single aesthetic: a franchise/sub-style
+                    // phrase wins over an incidental mention of a broad parent term.
                     int tokenCount = normalizedAlias.Count(ch => ch == ' ') + 1;
                     int score = tokenCount * 1000 + normalizedAlias.Length;
                     if (normalized.Equals(normalizedAlias, StringComparison.Ordinal)) score += 10000;
 
-                    if (score > bestScore || (score == bestScore && index < bestPosition))
+                    if (score > bestScore || (score == bestScore && tokenPosition < bestPosition))
                     {
                         bestScore = score;
-                        bestPosition = index;
+                        bestPosition = tokenPosition;
                     }
                 }
             }
@@ -295,7 +299,13 @@ public static class AestheticProfileCatalog
         // The published 2026 Palette pair is named in color order; duplicate phrase aliases can
         // tie on score/position, so preserve that canonical order for the blended theme name.
         var normalizedPrompt = Normalize(prompt);
-        if (normalizedPrompt.Contains("persimmon plum", StringComparison.Ordinal))
+        if (normalizedPrompt.Contains("cool wasabi", StringComparison.Ordinal))
+        {
+            orderedProfiles = orderedProfiles
+                .OrderBy(profile => profile.Id == "cool-blue" ? 0 : profile.Id == "wasabi-palette" ? 1 : 2)
+                .ToList();
+        }
+        else if (normalizedPrompt.Contains("persimmon plum", StringComparison.Ordinal))
         {
             orderedProfiles = orderedProfiles
                 .OrderBy(profile => profile.Id == "persimmon-palette" ? 0 : profile.Id == "plum-noir" ? 1 : 2)
@@ -485,7 +495,14 @@ public static class AestheticProfileCatalog
     public static CozyTheme CreateTheme(Profile profile, string prompt)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var theme = new CozyTheme
+        var theme = CreateProfileBaseTheme(profile);
+        ApplyPromptModifiers(theme, prompt);
+        PaletteQualityValidator.ValidateAndRepair(theme);
+        return theme;
+    }
+
+    private static CozyTheme CreateProfileBaseTheme(Profile profile)
+        => new()
         {
             Id = Guid.NewGuid().ToString(),
             Name = profile.Name,
@@ -502,11 +519,6 @@ public static class AestheticProfileCatalog
             BorderSubtle = profile.BorderSubtle,
         };
 
-        ApplyPromptModifiers(theme, prompt);
-        PaletteQualityValidator.ValidateAndRepair(theme);
-        return theme;
-    }
-
     /// <summary>
     /// Blends two curated references by role: the primary profile owns the background identity,
     /// while the secondary profile lends more of its surface and accent character. OKLCH blending
@@ -517,8 +529,14 @@ public static class AestheticProfileCatalog
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(secondary);
 
-        var first = CreateTheme(primary, prompt);
-        var second = CreateTheme(secondary, prompt);
+        // Blend the unmodified reference palettes, then apply the prompt's art direction once
+        // to the composed result. Applying modifiers to both inputs before blending diluted hue
+        // intent, duplicated description metadata, and sometimes softened hard-edge requests.
+        var first = CreateProfileBaseTheme(primary);
+        var second = CreateProfileBaseTheme(secondary);
+        bool usesFrutigerGeometry =
+            primary.Id.Equals("frutiger-aero", StringComparison.OrdinalIgnoreCase) ||
+            secondary.Id.Equals("frutiger-aero", StringComparison.OrdinalIgnoreCase);
         var blended = new CozyTheme
         {
             Id = Guid.NewGuid().ToString(),
@@ -534,12 +552,11 @@ public static class AestheticProfileCatalog
             TextPrimary = BlendOklch(first.TextPrimary, second.TextPrimary, 0.12f),
             TextMuted = BlendOklch(first.TextMuted, second.TextMuted, 0.20f),
             BorderSubtle = BlendOklch(first.BorderSubtle, second.BorderSubtle, 0.25f),
-            // CreateTheme has already interpreted the prompt's visual language. Preserve that
-            // geometry/density rather than overwriting it with defaults during color blending.
-            CornerRadiusScale = first.CornerRadiusScale,
-            DensityScale = first.DensityScale
+            CornerRadiusScale = usesFrutigerGeometry ? 1.25 : 1.0,
+            DensityScale = 1.0
         };
 
+        ApplyPromptModifiers(blended, prompt);
         PaletteQualityValidator.ValidateAndRepair(blended);
         return blended;
     }
@@ -642,7 +659,9 @@ public static class AestheticProfileCatalog
         if (HasAny(text, "glass", "glassy", "glassmorphism", "liquid glass", "frutiger aero", "holographic", "glossy", "chrome"))
         {
             theme.CornerRadiusScale = Math.Max(theme.CornerRadiusScale, 1.22);
-            theme.DensityScale = Math.Clamp(theme.DensityScale * 0.96, 0.5, 2.0);
+            // Glass-like surfaces read better with breathing room; DensityScale scales spacing
+            // tokens upward, so values below 1.0 would make these layouts cramped.
+            theme.DensityScale = Math.Clamp(theme.DensityScale * 1.04, 0.5, 2.0);
             theme.Surface = SetOklchLightness(theme.Surface, Math.Min(0.92f, ColorMath.HexToOklch(theme.Surface).L + 0.025f));
             artDirection.Add("glossy, glass-like surfaces");
         }
@@ -653,7 +672,9 @@ public static class AestheticProfileCatalog
         }
         if (HasAny(text, "minimal", "minimalist", "clean girl", "quiet luxury", "less clutter", "focus desk"))
         {
-            theme.DensityScale = Math.Clamp(theme.DensityScale * 0.90, 0.5, 2.0);
+            // DensityScale scales spacing tokens, so a minimal composition needs more
+            // whitespace rather than the tighter spacing created by a value below 1.0.
+            theme.DensityScale = Math.Clamp(theme.DensityScale * 1.10, 0.5, 2.0);
             artDirection.Add("restrained, spacious composition");
         }
         if (HasAny(text, "spacious", "airy layout", "breathing room", "lots of whitespace"))
