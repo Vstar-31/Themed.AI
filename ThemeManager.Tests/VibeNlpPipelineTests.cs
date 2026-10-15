@@ -319,10 +319,13 @@ public class VibeNlpPipelineTests
             Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
     }
 
-    [Fact]
-    public void Generate_NegatedAestheticDoesNotWinOverPositiveReference()
+    [Theory]
+    [InlineData("not cyberpunk, make it cottagecore")]
+    [InlineData("don't want cyberpunk, make it cottagecore")]
+    [InlineData("without cyberpunk, make it cottagecore")]
+    public void Generate_NegatedAestheticDoesNotWinOverPositiveReference(string prompt)
     {
-        var theme = _gen.Generate("not cyberpunk, make it cottagecore");
+        var theme = _gen.Generate(prompt);
 
         Assert.Equal("Cottagecore", theme.Name);
         Assert.All(ContrastChecker.Check(theme), check =>
