@@ -23,10 +23,18 @@ public sealed class VibeThemeGenerator
     public (CozyTheme Theme, VibeAnalysisResult Analysis) GenerateAndExplain(string vibeText)
     {
         var signal = VibeAnalyzer.Analyze(vibeText);
-        var profile = AestheticProfileCatalog.Find(vibeText);
+        var profiles = AestheticProfileCatalog.FindAll(vibeText);
+        var profile = profiles.FirstOrDefault();
+        var secondaryProfile = AestheticProfileCatalog.RequestsBlend(vibeText, profiles) && profiles.Count > 1
+            ? profiles[1]
+            : null;
 
         CozyTheme theme;
-        if (profile is not null)
+        if (profile is not null && secondaryProfile is not null)
+        {
+            theme = AestheticProfileCatalog.CreateBlendedTheme(profile, secondaryProfile, vibeText);
+        }
+        else if (profile is not null)
         {
             theme = AestheticProfileCatalog.CreateTheme(profile, vibeText);
         }
@@ -52,14 +60,15 @@ public sealed class VibeThemeGenerator
             PaletteQualityValidator.ValidateAndRepair(theme, signal.HasSignal ? signal.IsDark : null);
         }
 
-        var analysis = BuildAnalysis(signal, theme, profile);
+        var analysis = BuildAnalysis(signal, theme, profile, secondaryProfile);
         return (theme, analysis);
     }
 
     private static VibeAnalysisResult BuildAnalysis(
         VibeSignal signal,
         CozyTheme theme,
-        AestheticProfileCatalog.Profile? profile)
+        AestheticProfileCatalog.Profile? profile,
+        AestheticProfileCatalog.Profile? secondaryProfile)
     {
         var keywords = signal.MatchedKeywords.ToList();
         var categories = new Dictionary<string, string>(signal.KeywordCategories, StringComparer.OrdinalIgnoreCase);
@@ -68,11 +77,19 @@ public sealed class VibeThemeGenerator
 
         if (profile is not null)
         {
-            // Surface the detected visual language in the insight panel even when the alias itself
-            // is not a color-lexicon word (e.g. "Neo Deco", "Frutiger Aero", or "Gimme Gummy").
+            // Surface detected art direction in the insight panel even when a name is not a
+            // traditional color-lexicon term. For blends, retain both source aesthetics so the UI
+            // can explain how the generated visual language was composed.
             if (!keywords.Contains(profile.Name, StringComparer.OrdinalIgnoreCase))
                 keywords.Insert(0, profile.Name);
             categories[profile.Name] = "aesthetic profile";
+        }
+
+        if (secondaryProfile is not null)
+        {
+            if (!keywords.Contains(secondaryProfile.Name, StringComparer.OrdinalIgnoreCase))
+                keywords.Insert(Math.Min(1, keywords.Count), secondaryProfile.Name);
+            categories[secondaryProfile.Name] = "blended aesthetic";
         }
 
         var (hue, saturation, _) = ColorMath.HexToHsl(theme.AccentPrimary);
