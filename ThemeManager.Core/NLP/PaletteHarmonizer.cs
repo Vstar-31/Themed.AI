@@ -5,7 +5,7 @@ namespace ThemeManager.Core.NLP;
 
 /// <summary>
 /// Converts a <see cref="VibeSignal"/> into the 8 hex color tokens of a <see cref="CozyTheme"/>
-/// using perceptual color theory in HSL space.
+/// using perceptually uniform OKLCH space for the tonal ramp.
 ///
 /// Design rules baked in:
 ///   • BackgroundBase — primary hue, high L, low S (airy, readable base)
@@ -24,7 +24,8 @@ public static class PaletteHarmonizer
     // ── Public API ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds a complete palette from a <see cref="VibeSignal"/>.
+    /// Builds a complete palette from a <see cref="VibeSignal"/> using OKLCH roles and hue
+    /// relationships. Final WCAG contrast repair is performed by PaletteQualityValidator upstream.
     /// All returned hex strings are in #RRGGBB format.
     /// </summary>
     public static GeneratedPalette Generate(VibeSignal signal)
@@ -38,55 +39,44 @@ public static class PaletteHarmonizer
         float warmNudge = signal.Warmth * 18f;
         h = WrapHue(h + warmNudge);
 
-        // ── Dark mode vs light mode ────────────────────────────────────────────
+        // ── Perceptual light/dark composition ─────────────────────────────────
+        // Hue comes from the weighted NLP signal; OKLCH lightness/chroma control how strongly
+        // each role appears. These tonal relationships are more consistent across colors than
+        // the old HSL-only lightness offsets (especially for yellow vs. blue).
         bool isDark = signal.IsDark;
+        float inputLightness = Math.Clamp(l, 0f, 1f);
+        float inputSaturation = Math.Clamp(s, 0f, 1f);
 
-        // Clamp base lightness to readable ranges.
-        if (isDark)
-        {
-            l = Math.Clamp(l, 0.05f, 0.38f);
-            s = Math.Clamp(s, 0.08f, 1.0f); // Allow full saturation for neon dark themes!
-        }
-        else
-        {
-            l = Math.Clamp(l, 0.55f, 0.92f);
-            s = Math.Clamp(s, 0.05f, 1.0f); // Allow full saturation
-        }
+        float backgroundL = isDark
+            ? Math.Clamp(0.115f + inputLightness * 0.085f, 0.105f, 0.16f)
+            : Math.Clamp(0.925f + (inputLightness - 0.55f) * 0.08f, 0.90f, 0.96f);
+        float backgroundChroma = 0.015f + inputSaturation * 0.045f;
+        float accentChroma = 0.105f + inputSaturation * 0.105f;
+        float strongChroma = 0.075f + inputSaturation * 0.085f;
+        float textHue = WrapHue(h + (signal.Warmth < -0.15f ? 188f : 165f));
+        float highlightHue = WrapHue(h + (signal.Warmth >= 0f ? 34f : -34f));
 
-        // ── Generate the 8 palette slots ──────────────────────────────────────
-        string bgBase, bgAlt, surface, accentPrimary, accentStrong,
-               textPrimary, textMuted, borderSubtle;
+        string bgBase = ColorMath.OklchToHex(backgroundL, backgroundChroma, h);
+        string bgAlt = ColorMath.OklchToHex(
+            isDark ? backgroundL + 0.035f : backgroundL - 0.035f,
+            backgroundChroma + 0.008f, WrapHue(h + 8f));
+        string surface = ColorMath.OklchToHex(
+            isDark ? backgroundL + 0.070f : backgroundL - 0.075f,
+            backgroundChroma + 0.020f, WrapHue(h + 18f));
 
-        if (isDark)
-        {
-            // Dark palette — backgrounds are dark, accents glow
-            bgBase        = ToHex(h,           s * 0.30f, l);
-            bgAlt         = ToHex(WrapHue(h + 8f),  s * 0.38f, Clamp(l + 0.06f));
-            surface       = ToHex(WrapHue(h + 18f), s * 0.55f, Clamp(l + 0.14f));
-            accentPrimary = ToHex(h,           s * 0.80f, Clamp(l + 0.30f));
-            accentStrong  = ToHex(h,           s * 0.95f, Clamp(l + 0.48f));
+        string accentPrimary = ColorMath.OklchToHex(
+            isDark ? 0.73f : 0.48f,
+            accentChroma, h);
+        string accentStrong = ColorMath.OklchToHex(
+            isDark ? 0.82f : 0.36f,
+            strongChroma, highlightHue);
 
-            // Text on dark: near-complementary hue, very high lightness
-            float textH   = WrapHue(h + 175f);
-            textPrimary   = ToHex(textH, s * 0.12f, 0.88f);
-            textMuted     = ToHex(textH, s * 0.08f, 0.58f);
-            borderSubtle  = ToHex(WrapHue(h + 8f), s * 0.20f, Clamp(l + 0.18f));
-        }
-        else
-        {
-            // Light palette — soft backgrounds, rich accents
-            bgBase        = ToHex(h,           s * 0.18f, l);
-            bgAlt         = ToHex(WrapHue(h + 10f), s * 0.26f, Clamp(l - 0.08f));
-            surface       = ToHex(WrapHue(h + 22f), s * 0.50f, Clamp(l - 0.20f));
-            accentPrimary = ToHex(h,           s * 0.75f, Clamp(l - 0.32f));
-            accentStrong  = ToHex(h,           s * 0.90f, Clamp(l - 0.45f));
-
-            // Text on light: near-complementary, very dark
-            float textH   = WrapHue(h + 175f);
-            textPrimary   = ToHex(textH, s * 0.25f, 0.14f);
-            textMuted     = ToHex(textH, s * 0.12f, 0.46f);
-            borderSubtle  = ToHex(WrapHue(h + 10f), s * 0.15f, Clamp(l - 0.10f));
-        }
+        string textPrimary = ColorMath.OklchToHex(
+            isDark ? 0.965f : 0.22f, 0.012f, textHue);
+        string textMuted = ColorMath.OklchToHex(
+            isDark ? 0.82f : 0.40f, 0.020f, textHue);
+        string borderSubtle = ColorMath.OklchToHex(
+            isDark ? 0.33f : 0.74f, 0.025f, WrapHue(h + 8f));
 
         return new GeneratedPalette(
             bgBase, bgAlt, surface,
