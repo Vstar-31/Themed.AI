@@ -517,6 +517,38 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void ArtDirectionCues_RespectNegationAndWholePhraseBoundaries()
+    {
+        Assert.False(AestheticProfileCatalog.ContainsPositiveCue("not neon but use cyan", "neon"));
+        Assert.True(AestheticProfileCatalog.ContainsPositiveCue("not neon but use cyan", "cyan"));
+        Assert.False(AestheticProfileCatalog.ContainsPositiveCue("the software interface", "soft"));
+        Assert.False(AestheticProfileCatalog.ContainsPositiveCue("avoid using chrome", "chrome"));
+        Assert.True(AestheticProfileCatalog.ContainsPositiveCue("use glossy chrome panels", "chrome"));
+    }
+
+    [Fact]
+    public void RankThemes_NegatedGlassDoesNotPreferRoundedCandidate()
+    {
+        var seed = _gen.Generate("a calm violet interface");
+        var square = seed.Duplicate();
+        square.Name = "Square";
+        square.CornerRadiusScale = 0.55;
+        var rounded = seed.Duplicate();
+        rounded.Name = "Rounded Glass";
+        rounded.CornerRadiusScale = 1.35;
+
+        var ranking = new HeuristicRankingEngine().RankThemes(
+            [
+                new ThemeCandidate { Theme = square },
+                new ThemeCandidate { Theme = rounded }
+            ],
+            new UserProfile(),
+            new GenerationContext { Prompt = "not glass interface" });
+
+        Assert.Equal("Square", ranking[0].Theme.Name);
+    }
+
+    [Fact]
     public void ValidateAndRepair_UsesFilledButtonForegroundForStrongAccent()
     {
         var theme = AestheticProfileCatalog.CreateTheme(
