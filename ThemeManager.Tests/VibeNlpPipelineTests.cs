@@ -480,6 +480,23 @@ public class VibeNlpPipelineTests
             Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
     }
 
+    [Theory]
+    [InlineData("Neon Afterglw meets Frutiger Aro", "Neon Afterglow", "Frutiger Aero")]
+    [InlineData("Frutiger Aro meets Neon Afterglw", "Frutiger Aero", "Neon Afterglow")]
+    public void Generate_TypoTolerantBlendsPreserveRequestedReferenceOrder(
+        string prompt, string firstName, string secondName)
+    {
+        var profiles = AestheticProfileCatalog.FindAll(prompt);
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, profiles));
+        Assert.Equal(new[] { firstName, secondName }, profiles.Take(2).Select(p => p.Name));
+
+        var theme = _gen.Generate(prompt);
+        Assert.Equal($"{firstName} × {secondName}", theme.Name);
+        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
+        Assert.True(quality.PassesAA,
+            $"{prompt}: only {quality.PassingPairs}/{quality.TotalPairs} text pairs passed.");
+    }
+
     [Fact]
     public void Generate_BlendedAestheticsPreserveCompositionModifiers()
     {
