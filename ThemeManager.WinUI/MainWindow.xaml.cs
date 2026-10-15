@@ -481,7 +481,14 @@ public sealed partial class MainWindow : Window
     private void NavWidgets_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(SkinsPage)); SetActiveNav(NavWidgets); }
     private void NavWidgetVibe_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(WidgetGeneratorPage)); SetActiveNav(NavMore); }
     private void NavGallery_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(GalleryPage)); SetActiveNav(NavMore); }
-    private void NavVibeFinderAI_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(VibeFinderAIPage)); SetActiveNav(NavMore); }
+    private void NavVibeFinderAI_Click(object sender, RoutedEventArgs e)
+    {
+        // Clicking the already-open destination is a no-op. In particular, never re-navigate the
+        // VibeFinder page just to highlight the active sidebar item; WebView2 playback must stay put.
+        if (ContentFrame.Content is not VibeFinderAIPage)
+            ContentFrame.Navigate(typeof(VibeFinderAIPage));
+        SetActiveNav(NavVibeFinderAI);
+    }
 
     public void NavigateToThemeGenerator()
     {
