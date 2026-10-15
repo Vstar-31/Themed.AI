@@ -79,14 +79,14 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
             CurrentPreviewUrl = VibeFinderWebState.PreviewUrl;
             CurrentVideoId = null;
 
-            // When the visible web MusicPlayer is not open, SkinHostWindow deliberately uses
-            // the native 30s preview player so widget clicks still produce real audio even if
-            // browser autoplay is blocked. Mirror that native player here for state/progress;
-            // once the web player becomes active, the browser remains the sole playback authority.
-            bool nativePreviewActive = !VibeFinderWebState.IsPlayerActive;
+            // A loaded native preview remains authoritative while it is playing or paused,
+            // even if the WebView has emitted an initial PAUSED snapshot. The web player takes
+            // over only after the native source has ended/been cleared or a real web PLAYING event
+            // explicitly stops it.
+            bool nativePreviewActive = VibeFinderPreviewPlayer.HasSource;
             bool playing = nativePreviewActive
                 ? VibeFinderPreviewPlayer.IsPlaying
-                : VibeFinderWebState.IsPlaying;
+                : VibeFinderWebState.IsPlayerActive && VibeFinderWebState.IsPlaying;
 
             Text = _type switch
             {
