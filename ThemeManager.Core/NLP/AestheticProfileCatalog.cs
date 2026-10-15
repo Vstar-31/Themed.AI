@@ -235,7 +235,7 @@ public static class AestheticProfileCatalog
         {
             int bestScore = -1;
             int bestPosition = int.MaxValue;
-            foreach (var alias in profile.Aliases)
+            foreach (var alias in profile.Aliases.Prepend(profile.Name).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var normalizedAlias = Normalize(alias);
                 if (normalizedAlias.Length == 0) continue;
@@ -281,7 +281,7 @@ public static class AestheticProfileCatalog
         bool hasBlendConnector = HasBlendConnector(normalized);
         if (matches.Count == 0 || (hasBlendConnector && matches.Count < 2))
         {
-            var fuzzyMatches = FindFuzzyProfiles(normalized);
+            var fuzzyMatches = FindFuzzyProfiles(normalized, allowMultiple: hasBlendConnector);
             foreach (var match in fuzzyMatches)
             {
                 if (matches.All(existing => !existing.Profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase)))
@@ -315,7 +315,7 @@ public static class AestheticProfileCatalog
         return orderedProfiles;
     }
 
-    private static List<(Profile Profile, int Score, int Position)> FindFuzzyProfiles(string normalized)
+    private static List<(Profile Profile, int Score, int Position)> FindFuzzyProfiles(string normalized, bool allowMultiple = false)
     {
         var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var matches = new List<(Profile Profile, int Score, int Position, int Edits)>();
@@ -391,7 +391,12 @@ public static class AestheticProfileCatalog
             .ThenBy(m => m.Position)
             .ToList();
         if (ordered.Count == 0) return new List<(Profile, int, int)>();
-        if (ordered.Count > 1 && ordered[0].Score - ordered[1].Score < 180)
+
+        // A single-reference prompt must have a clear best match. For an explicit blend, however,
+        // equally plausible results often represent the two requested references (e.g. two names
+        // with one typo each), so return ranked matches and let FindAll collect the first two
+        // distinct profiles in prompt order.
+        if (!allowMultiple && ordered.Count > 1 && ordered[0].Score - ordered[1].Score < 180)
             return new List<(Profile, int, int)>();
         return ordered.Select(m => (m.Profile, m.Score, m.Position)).ToList();
     }
