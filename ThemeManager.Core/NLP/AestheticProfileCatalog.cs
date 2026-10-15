@@ -279,20 +279,38 @@ public static class AestheticProfileCatalog
         // This is deliberately separate from ColorLexicon fuzzy matching: aesthetic names are
         // multi-token concepts and should not collapse into a random nearest colour word.
         bool hasBlendConnector = HasBlendConnector(normalized);
-        if (matches.Count == 0 || (hasBlendConnector && matches.Count < 2))
+        bool hasSpecificExactMatch = matches.Any(match => match.Score >= 2000);
+        if (matches.Count == 0 || hasBlendConnector || !hasSpecificExactMatch)
         {
             var fuzzyMatches = FindFuzzyProfiles(normalized, allowMultiple: hasBlendConnector);
-            foreach (var match in fuzzyMatches)
+            if (hasBlendConnector)
             {
-                if (matches.All(existing => !existing.Profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase)))
-                    matches.Add(match);
-                if (matches.Count >= (hasBlendConnector ? 2 : 1))
-                    break;
+                // Explicit blends may contain incidental one-word aliases alongside a misspelled
+                // full reference. Merge both paths, then keep the strongest match at each token
+                // position before taking the first two references in the prompt.
+                foreach (var match in fuzzyMatches)
+                {
+                    if (matches.All(existing =>
+                        !existing.Profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase) ||
+                        existing.Position != match.Position))
+                        matches.Add(match);
+                }
+            }
+            else if (fuzzyMatches.Count > 0 &&
+                     (matches.Count == 0 || fuzzyMatches[0].Score > matches.Max(match => match.Score)))
+            {
+                // "Neon Afterglw" can still match the broad alias "neon" exactly. Prefer the
+                // stronger multiword fuzzy match so the named aesthetic isn't lost.
+                matches.Clear();
+                matches.Add(fuzzyMatches[0]);
             }
         }
 
         var orderedMatches = hasBlendConnector
-            ? matches.OrderBy(match => match.Position).ThenByDescending(match => match.Score)
+            ? matches.GroupBy(match => match.Position)
+                .Select(group => group.OrderByDescending(match => match.Score).First())
+                .OrderBy(match => match.Position)
+                .Take(2)
             : matches.OrderByDescending(match => match.Score).ThenBy(match => match.Position);
         var orderedProfiles = orderedMatches.Select(match => match.Profile).ToList();
 
@@ -366,14 +384,12 @@ public static class AestheticProfileCatalog
                     var prefix = string.Join(' ', words.Take(start));
                     if (IsNegatedReference(prefix)) continue;
 
-                    int score = aliasWords.Length * 1000 + Normalize(alias).Length - 2800 - edits * 450;
-                    int characterPosition = start == 0
-                        ? 0
-                        : words.Take(start).Sum(word => word.Length) + start;
-                    if (score > bestScore || (score == bestScore && characterPosition < bestPosition))
+                    int score = aliasWords.Length * 1000 + Normalize(alias).Length - edits * 450;
+                    // Use zero-based word indices here, matching the exact-alias matcher above.
+                    if (score > bestScore || (score == bestScore && start < bestPosition))
                     {
                         bestScore = score;
-                        bestPosition = characterPosition;
+                        bestPosition = start;
                         bestEdits = edits;
                     }
                 }
