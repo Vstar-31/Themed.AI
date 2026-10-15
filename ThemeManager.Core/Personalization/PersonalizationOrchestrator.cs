@@ -58,7 +58,7 @@ public class PersonalizationOrchestrator
         var quality = PaletteQualityValidator.ValidateAndRepair(selected.Theme, preferredPolarity);
         if (selected.Analysis is { } analysis)
         {
-            var (hue, saturation, lightness) = ColorMath.HexToHsl(selected.Theme.AccentPrimary);
+            var (hue, saturation, _) = ColorMath.HexToHsl(selected.Theme.AccentPrimary);
             selected.Analysis = analysis with
             {
                 GeneratedName = selected.Theme.Name,
