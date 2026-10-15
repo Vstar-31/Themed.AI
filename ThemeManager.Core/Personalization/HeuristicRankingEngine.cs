@@ -82,7 +82,7 @@ public class HeuristicRankingEngine
         // Art-direction preferences are semantic ranking features, not just generation-time
         // tweaks. Reward candidates whose surfaces, density and chroma match the language of the
         // prompt; this matters when several safe variants all pass contrast.
-        var prompt = AestheticProfileCatalog.NormalizeForMatching(context.Prompt);
+        var prompt = context.Prompt;
         bool wantsGlass = HasAny(prompt, "glass", "glassmorphism", "liquid glass", "frutiger aero", "holographic", "glossy", "chrome");
         bool wantsHardEdges = HasAny(prompt, "brutalist", "brutalism", "hard edges", "industrial", "terminal ui");
         bool wantsMinimal = HasAny(prompt, "minimal", "minimalist", "clean girl", "quiet luxury", "focus desk", "less clutter");
@@ -120,7 +120,7 @@ public class HeuristicRankingEngine
     }
 
     private static bool HasAny(string text, params string[] phrases)
-        => phrases.Any(phrase => text.Contains(phrase, StringComparison.Ordinal));
+        => phrases.Any(phrase => AestheticProfileCatalog.ContainsPositiveCue(text, phrase));
 
     private float ScoreWidget(WidgetCandidate candidate, UserProfile profile, GenerationContext context)
     {
