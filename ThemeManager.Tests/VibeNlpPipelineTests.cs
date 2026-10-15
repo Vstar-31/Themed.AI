@@ -557,6 +557,28 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void RankThemes_MinimalPromptPrefersSpaciousCandidate()
+    {
+        var seed = _gen.Generate("a calm violet interface");
+        var cramped = seed.Duplicate();
+        cramped.Name = "Cramped";
+        cramped.DensityScale = 0.82;
+        var spacious = seed.Duplicate();
+        spacious.Name = "Spacious Minimal";
+        spacious.DensityScale = 1.12;
+
+        var ranking = new HeuristicRankingEngine().RankThemes(
+            [
+                new ThemeCandidate { Theme = cramped },
+                new ThemeCandidate { Theme = spacious }
+            ],
+            new UserProfile(),
+            new GenerationContext { Prompt = "minimal interface" });
+
+        Assert.Equal("Spacious Minimal", ranking[0].Theme.Name);
+    }
+
+    [Fact]
     public void ArtDirectionCues_RespectNegationAndWholePhraseBoundaries()
     {
         Assert.False(AestheticProfileCatalog.ContainsPositiveCue("not neon but use cyan", "neon"));
