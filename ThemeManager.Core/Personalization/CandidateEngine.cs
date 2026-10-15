@@ -47,7 +47,7 @@ public class CandidateEngine
             candidates.Add(new ThemeCandidate
             {
                 Theme = softTheme,
-                Analysis = AnalysisForVariant(baseAnalysis, softTheme),
+                Analysis = baseAnalysis is null ? null : AnalysisForVariant(baseAnalysis, softTheme),
                 GenerationSource = "SoftFocusVariant"
             });
         }
@@ -69,7 +69,7 @@ public class CandidateEngine
             candidates.Add(new ThemeCandidate
             {
                 Theme = electricTheme,
-                Analysis = AnalysisForVariant(baseAnalysis, electricTheme),
+                Analysis = baseAnalysis is null ? null : AnalysisForVariant(baseAnalysis, electricTheme),
                 GenerationSource = "ElectricCutVariant"
             });
         }
