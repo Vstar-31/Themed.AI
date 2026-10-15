@@ -3,6 +3,7 @@ using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
+using ThemeManager.Core.Utilities;
 using Microsoft.Extensions.Logging;
 using ThemeManager.WinUI;
 
@@ -141,21 +142,21 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     // ── Suggestion chips ──────────────────────────────────────────────────────
     public ObservableCollection<string> SuggestionChips { get; } = new()
     {
-        "midnight ocean storm",
-        "cozy autumn library",
-        "neon tokyo night",
-        "golden desert sunset",
-        "nordic winter frost",
-        "dark espresso noir",
-        "cherry blossom spring",
-        "emerald forest mist",
-        "velvet midnight jazz",
-        "terracotta tuscan noon",
-        "soft lavender dream",
-        "copper ember glow",
-        "arctic glacier dawn",
-        "moody rainy evening",
-        "vibrant tropical reef",
+        "Neon Afterglow",
+        "Frutiger Aero glass ocean",
+        "Neo Deco with brass and plum",
+        "Extra Celestial opalescent orbit",
+        "Poetcore sunlit notebook",
+        "Vamp Romantic after dark",
+        "Gimme Gummy jelly glass",
+        "Arcane violet and brass",
+        "Studio Ghibli forest",
+        "City Pop Afterhours",
+        "Wilderkind botanical forest",
+        "Barbiecore glossy pink",
+        "Cool Blue glacier glass",
+        "Glamoratti 80s luxury",
+        "Solapunk Garden",
     };
 
     // ── Status message ────────────────────────────────────────────────────────
@@ -216,7 +217,8 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 PreviewSwatches.Add(refined.AccentPrimary);
                 PreviewSwatches.Add(refined.AccentStrong);
 
-                Status = $"Refined \"{refined.Name}\".";
+                var quality = ContrastChecker.Summary(refined);
+                Status = $"Refined \"{refined.Name}\" · palette contrast {quality.Passing}/{quality.Total} AA checks.";
                 _logger.LogInformation("Theme refinement applied: {ThemeName}", refined.Name);
             }
             else
@@ -269,7 +271,8 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 else
                 {
                     HasResult = true;
-                    Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
+                    var quality = ContrastChecker.Summary(theme);
+                    Status = $"Generated \"{theme.Name}\" · palette contrast {quality.Passing}/{quality.Total} AA checks.";
                     _logger.LogInformation("Vibe generation succeeded via personalization pipeline. Generated theme: {ThemeName}, Source: {Source}", theme.Name, candidate.GenerationSource);
 
                     // NOTE: Do NOT call SetActiveTheme here. Applying the generated
