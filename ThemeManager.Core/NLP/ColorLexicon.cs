@@ -304,6 +304,7 @@ public static class ColorLexicon
         ["cyan"]    = C(180, 1.0f, .55f, .5f, .75f, .8f, -.4f, "color"),
         ["aqua"]    = C(184, .9f, .66f, .5f, .60f, .7f, -.3f, "color"),
         ["blue"]    = C(220, 1.0f, .50f, .5f, .72f, .8f, -.6f, "color"),
+        ["navy"]    = C(222, .95f, .20f, .7f, .64f, .8f, -.5f, "color"),
         ["navi"]    = C(222, .95f, .20f, .7f, .64f, .8f, -.5f, "color"),
         ["cerulean"]= C(205, .9f, .48f, .5f, .78f, .8f, -.4f, "color"),
         ["ultramarin"]=C(231,.9f, .30f, .6f, .80f, .8f, -.5f, "color"),
