@@ -6,6 +6,8 @@ public sealed partial class VibeFinderAIPage
 {
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
+        _isPageVisible = true;
+
         // Rebind only when the cached browser is actually ready. Claim authority after the
         // command sink exists so widget clicks can never be routed to a half-initialized WebView.
         if (VibeFinderWebView.CoreWebView2 is not null)
