@@ -25,6 +25,9 @@ public static class VibeFinderPreviewPlayer
     private static long _durationTicks;
 
     public static bool IsPlaying => Volatile.Read(ref _isPlaying) != 0;
+    /// <summary>True while a native preview clip remains loaded, including while paused.</summary>
+    public static bool HasSource => Volatile.Read(ref _hasSource) != 0;
+    public static event Action? PreviewEnded;
     public static double CurrentTime => TimeSpan.FromTicks(Math.Max(0, Volatile.Read(ref _positionTicks))).TotalSeconds;
     public static double Duration => TimeSpan.FromTicks(Math.Max(0, Volatile.Read(ref _durationTicks))).TotalSeconds;
     public static double Progress => Duration > 0 ? Math.Clamp(CurrentTime / Duration, 0, 1) : 0;
@@ -96,7 +99,10 @@ public static class VibeFinderPreviewPlayer
         _player.MediaEnded += (_, _) =>
         {
             Volatile.Write(ref _isPlaying, 0);
+            Volatile.Write(ref _positionTicks, Math.Max(0, Volatile.Read(ref _durationTicks)));
             _logger.LogDebug("VibeFinderPreviewPlayer: preview clip ended ({Url})", _currentUrl);
+            try { PreviewEnded?.Invoke(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "VibeFinderPreviewPlayer: preview-ended subscriber failed"); }
         };
     }
 
