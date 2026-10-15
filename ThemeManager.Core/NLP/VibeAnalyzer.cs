@@ -37,9 +37,16 @@ public static class VibeAnalyzer
         // Track which indices have already been consumed by a bigram
         // so we don't double-count them as unigrams.
         var consumed = new HashSet<int>();
+        var chromaticAnchors = new List<(ColorSignal Signal, float Weight, string Word)>();
 
         void Accumulate(ColorSignal s, float freqBoost, string displayWord, string category)
         {
+            // Keep strong, concrete color signals as separate anchors. Hue averaging is useful for
+            // a single-family prompt but destroys intentional pairs like "navy and coral"; a second
+            // hue is therefore retained for accent design when it is genuinely distinct.
+            if (s.HueWeight >= 0.65f && category is "color" or "environment" or "material")
+                chromaticAnchors.Add((s, s.HueWeight * freqBoost, displayWord));
+
             double hueRad = s.HueDeg * Math.PI / 180.0;
             double hw = s.HueWeight * freqBoost;
             sinSum += Math.Sin(hueRad) * hw;
@@ -127,11 +134,39 @@ public static class VibeAnalyzer
         signal.Warmth     = warmthWeightSum > 0
             ? (float)(warmthSum / warmthWeightSum) : 0f;
 
+        // Select the strongest concrete anchor first, then look for a second independent hue
+        // separated by at least 55 degrees. This avoids treating "navy blue" as two colors while
+        // preserving deliberate pairs such as "navy and coral" or "forest green and gold".
+        var orderedAnchors = chromaticAnchors
+            .OrderByDescending(anchor => anchor.Weight)
+            .ToList();
+        if (orderedAnchors.Count > 0)
+        {
+            var primary = orderedAnchors[0];
+            signal.HasPrimaryPaletteHue = true;
+            signal.PrimaryPaletteHue = primary.Signal.HueDeg;
+
+            var secondary = orderedAnchors
+                .Skip(1)
+                .FirstOrDefault(anchor => HueDistance(primary.Signal.HueDeg, anchor.Signal.HueDeg) >= 55f);
+            if (secondary.Signal is not null)
+            {
+                signal.HasSecondaryPaletteHue = true;
+                signal.SecondaryPaletteHue = secondary.Signal.HueDeg;
+            }
+        }
+
         // ── 6. Sentiment adjustment ───────────────────────────────────────────
         float v = signal.SentimentValence;
         signal.Lightness  = Math.Clamp(signal.Lightness  + v * 0.06f, 0.05f, 0.95f);
         signal.Saturation = Math.Clamp(signal.Saturation + v * 0.04f, 0.02f, 0.95f);
 
         return signal;
+    }
+
+    private static float HueDistance(float a, float b)
+    {
+        var distance = Math.Abs(a - b) % 360f;
+        return Math.Min(distance, 360f - distance);
     }
 }
