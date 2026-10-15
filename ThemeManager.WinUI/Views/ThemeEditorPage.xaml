@@ -64,6 +64,10 @@
                         IsEnabled="{x:Bind ViewModel.CanRedo, Mode=OneWay}"
                         Click="RedoButton_Click"
                         Padding="12,8,12,8" />
+                <Button Content="Repair palette"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Click="RepairPaletteButton_Click"
+                        ToolTipService.ToolTip="Adjust colors to pass the palette readability checks" />
                 <Button Content="Revert palette"
                         Style="{StaticResource GhostButtonStyle}"
                         Click="RevertButton_Click" />
