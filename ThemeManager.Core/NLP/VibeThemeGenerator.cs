@@ -130,51 +130,28 @@ public sealed class VibeThemeGenerator
         baseTheme.AccentPrimary  = AdjustColor(baseTheme.AccentPrimary, lightnessDelta, saturationDelta, warmthTargetHue);
         baseTheme.AccentStrong   = AdjustColor(baseTheme.AccentStrong,  lightnessDelta, saturationDelta, warmthTargetHue);
 
-        RepairTextContrast(baseTheme);
         PaletteQualityValidator.ValidateAndRepair(baseTheme);
         return baseTheme;
     }
 
-    /// <summary>Adjusts one hex color's lightness/saturation by a delta and, if a warmth target
-    /// is given, nudges its hue partway there along the shortest rotational path (20% per call,
-    /// not a snap — repeated "warmer" instructions converge on it gradually, same compounding
-    /// behavior as the widget side's repeated "bigger").</summary>
+    /// <summary>
+    /// Applies a small perceptual OKLCH adjustment. Chroma is changed independently from lightness,
+    /// so "more vibrant" won't unexpectedly wash the color out as HSL ramps often do.
+    /// </summary>
     private static string AdjustColor(string hex, double lightnessDelta, double saturationDelta, double? warmthTargetHue)
     {
-        var (h, s, l) = ColorMath.HexToHsl(hex);
-
+        var (lightness, chroma, hue) = ColorMath.HexToOklch(hex);
         if (warmthTargetHue is { } target)
         {
-            float dh = (float)target - h;
+            float dh = (float)target - hue;
             if (dh > 180f) dh -= 360f;
             if (dh < -180f) dh += 360f;
-            h += dh * 0.2f;
+            hue += dh * 0.2f;
         }
 
-        s = Math.Clamp(s + (float)saturationDelta, 0f, 1f);
-        l = Math.Clamp(l + (float)lightnessDelta, 0.05f, 0.95f);
-
-        return ColorMath.HslToHex(h, s, l);
-    }
-
-    /// <summary>After a refinement changes the backgrounds, text colors might no longer clear a
-    /// safe contrast ratio against them — nudge lightness away from the background (not toward
-    /// any specific target) until they do, bounded so this can never loop forever.</summary>
-    private static void RepairTextContrast(CozyTheme theme)
-    {
-        theme.TextPrimary = EnsureContrast(theme.TextPrimary, theme.BackgroundBase, minRatio: 4.5f);
-        theme.TextMuted    = EnsureContrast(theme.TextMuted,   theme.BackgroundBase, minRatio: 3.0f);
-    }
-
-    private static string EnsureContrast(string foregroundHex, string backgroundHex, float minRatio)
-    {
-        var (h, s, l) = ColorMath.HexToHsl(foregroundHex);
-        bool foregroundShouldBeDark = ColorMath.LuminanceFromHex(backgroundHex) > 0.5f;
-
-        for (int i = 0; i < 12 && ColorMath.ContrastRatio(ColorMath.HslToHex(h, s, l), backgroundHex) < minRatio; i++)
-            l = Math.Clamp(l + (foregroundShouldBeDark ? -0.05f : 0.05f), 0.02f, 0.98f);
-
-        return ColorMath.HslToHex(h, s, l);
+        float nextLightness = Math.Clamp(lightness + (float)lightnessDelta * 0.65f, 0.04f, 0.98f);
+        float nextChroma = Math.Clamp(chroma + (float)saturationDelta * 0.18f, 0f, 0.32f);
+        return ColorMath.OklchToHex(nextLightness, nextChroma, hue);
     }
 }
 
