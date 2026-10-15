@@ -47,8 +47,11 @@ public static class AestheticProfileCatalog
             ["light academia", "light academic", "romantic academia", "sunlit library"],
             "#F6F0E5", "#E8DDCB", "#D8C8AE", "#697A50", "#8D5C40", "#302A25", "#655A4F", "#C6B69C"),
         new("poetcore", "Poetcore", "Notebook cream, ink-blue, dried-rose leather and fountain-pen contrast for a quiet protagonist desk.",
-            ["poetcore", "poet core", "poet aesthetic", "writercore", "writer aesthetic", "pen pals", "pen pals trend", "booktok desk"],
+            ["poetcore", "poet core", "poet aesthetic", "writercore", "writer aesthetic", "booktok desk"],
             "#F4E9D8", "#E6D4BE", "#D4BDA2", "#824E43", "#304453", "#302923", "#65574B", "#C6B49C"),
+        new("pen-pals", "Pen Pals", "A tactile letter-writing desk: stationery cream, fountain-pen navy, postage red and a quiet botanical green.",
+            ["pen pals", "pen pals trend", "letter writing aesthetic", "snail mail", "stationery aesthetic", "handwritten letters", "cute stamps", "letter-writing renaissance"],
+            "#F8F0E2", "#E8DFC9", "#D6C8AB", "#A63D45", "#294B63", "#282B30", "#5C6264", "#C5B69C"),
         new("cottagecore", "Cottagecore", "Meadow sage, weathered cream and botanical greens: handmade, natural and softly sunlit.",
             ["cottagecore", "forestcore", "naturecore", "grandmacore", "cozy cottage", "cottage garden"],
             "#F0F3E6", "#DEE8D2", "#C5D5B8", "#4F7550", "#31543D", "#263529", "#5C6D5B", "#B5C5A9"),
@@ -159,33 +162,104 @@ public static class AestheticProfileCatalog
     public static IReadOnlyList<Profile> Profiles => AllProfiles;
 
     public static Profile? Find(string? prompt)
+        => FindAll(prompt).FirstOrDefault();
+
+    /// <summary>
+    /// Returns distinct recognized profiles ordered by phrase specificity and then first position
+    /// in the prompt. Negated references ("not cyberpunk", "without vaporwave") do not count as
+    /// positive aesthetic intent.
+    /// </summary>
+    public static IReadOnlyList<Profile> FindAll(string? prompt)
     {
         var normalized = Normalize(prompt);
-        if (normalized.Length == 0) return null;
+        if (normalized.Length == 0) return Array.Empty<Profile>();
+
         var padded = $" {normalized} ";
-
-        Profile? best = null;
-        var bestScore = -1;
+        var matches = new List<(Profile Profile, int Score, int Position)>();
         foreach (var profile in AllProfiles)
-        foreach (var alias in profile.Aliases)
         {
-            var normalizedAlias = Normalize(alias);
-            if (normalizedAlias.Length == 0 || !padded.Contains($" {normalizedAlias} ", StringComparison.Ordinal))
-                continue;
-
-            // Prefer the most specific alias: "Neon Afterglow" must beat the generic "neon"
-            // profile, and a franchise/sub-aesthetic phrase must beat a broad vibe label.
-            var tokenCount = normalizedAlias.Count(c => c == ' ') + 1;
-            var score = tokenCount * 1000 + normalizedAlias.Length;
-            if (normalized.Equals(normalizedAlias, StringComparison.Ordinal)) score += 10000;
-            if (score > bestScore)
+            int bestScore = -1;
+            int bestPosition = int.MaxValue;
+            foreach (var alias in profile.Aliases)
             {
-                best = profile;
-                bestScore = score;
+                var normalizedAlias = Normalize(alias);
+                if (normalizedAlias.Length == 0) continue;
+
+                var paddedAlias = $" {normalizedAlias} ";
+                int searchFrom = 0;
+                while (searchFrom < padded.Length)
+                {
+                    int index = padded.IndexOf(paddedAlias, searchFrom, StringComparison.Ordinal);
+                    if (index < 0) break;
+                    int aliasStart = index + 1;
+                    var prefix = padded[..aliasStart].TrimEnd();
+                    searchFrom = index + paddedAlias.Length;
+
+                    if (IsNegatedReference(prefix)) continue;
+
+                    // Prefer the most specific alias: "Neon Afterglow" beats "neon", and a
+                    // franchise/sub-aesthetic phrase beats an incidental one-word mention.
+                    int tokenCount = normalizedAlias.Count(ch => ch == ' ') + 1;
+                    int score = tokenCount * 1000 + normalizedAlias.Length;
+                    if (normalized.Equals(normalizedAlias, StringComparison.Ordinal)) score += 10000;
+
+                    if (score > bestScore || (score == bestScore && index < bestPosition))
+                    {
+                        bestScore = score;
+                        bestPosition = index;
+                    }
+                }
             }
+
+            if (bestScore >= 0)
+                matches.Add((profile, bestScore, bestPosition));
         }
 
-        return best;
+        return matches
+            .OrderByDescending(match => match.Score)
+            .ThenBy(match => match.Position)
+            .Select(match => match.Profile)
+            .ToList();
+    }
+
+    /// <summary>
+    /// A prompt that explicitly joins two aesthetic references asks for a blend rather than a
+    /// single nearest match. Ordinary descriptive prompts can mention incidental styles without
+    /// unintentionally turning into a mashup.
+    /// </summary>
+    public static bool RequestsBlend(string? prompt, IReadOnlyList<Profile> matches)
+    {
+        if (matches.Count < 2) return false;
+        var text = $" {Normalize(prompt)} ";
+        return HasAny(text,
+            " meets ", " x ", " + ", " blend ", " blended with ", " mix ", " mixed with ",
+            " mashup ", " mash up ", " fusion ", " fused with ", " and ");
+    }
+
+    private static bool IsNegatedReference(string prefix)
+    {
+        var words = prefix.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return false;
+
+        var last = words[^1];
+        if (last is "not" or "no" or "never" or "without" or "avoid" or "skip" or "exclude")
+            return true;
+
+        if (words.Length >= 2)
+        {
+            var pair = $"{words[^2]} {words[^1]}";
+            if (pair is "dont use" or "do not" or "not like" or "not really" or "rather than" or "instead of")
+                return true;
+        }
+
+        if (words.Length >= 3)
+        {
+            var triple = $"{words[^3]} {words[^2]} {words[^1]}";
+            if (triple is "do not use" or "dont want the" or "not a fan")
+                return true;
+        }
+
+        return false;
     }
 
     public static CozyTheme CreateTheme(Profile profile, string prompt)
@@ -211,6 +285,55 @@ public static class AestheticProfileCatalog
         ApplyPromptModifiers(theme, prompt);
         PaletteQualityValidator.ValidateAndRepair(theme);
         return theme;
+    }
+
+    /// <summary>
+    /// Blends two curated references by role: the primary profile owns the background identity,
+    /// while the secondary profile lends more of its surface and accent character. OKLCH blending
+    /// follows the shortest hue arc and the result is quality-checked after composition.
+    /// </summary>
+    public static CozyTheme CreateBlendedTheme(Profile primary, Profile secondary, string prompt)
+    {
+        ArgumentNullException.ThrowIfNull(primary);
+        ArgumentNullException.ThrowIfNull(secondary);
+
+        var first = CreateTheme(primary, prompt);
+        var second = CreateTheme(secondary, prompt);
+        var blended = new CozyTheme
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = $"{primary.Name} × {secondary.Name}",
+            Description = $"{primary.Description} Blended with {secondary.Description}",
+            IsBuiltIn = false,
+            LastModified = DateTimeOffset.UtcNow,
+            BackgroundBase = BlendOklch(first.BackgroundBase, second.BackgroundBase, 0.15f),
+            BackgroundAlt = BlendOklch(first.BackgroundAlt, second.BackgroundAlt, 0.23f),
+            Surface = BlendOklch(first.Surface, second.Surface, 0.34f),
+            AccentPrimary = BlendOklch(first.AccentPrimary, second.AccentPrimary, 0.45f),
+            AccentStrong = BlendOklch(first.AccentStrong, second.AccentStrong, 0.58f),
+            TextPrimary = BlendOklch(first.TextPrimary, second.TextPrimary, 0.12f),
+            TextMuted = BlendOklch(first.TextMuted, second.TextMuted, 0.20f),
+            BorderSubtle = BlendOklch(first.BorderSubtle, second.BorderSubtle, 0.25f),
+            CornerRadiusScale = (primary.Id == "frutiger-aero" || secondary.Id == "frutiger-aero") ? 1.25 : 1.0,
+            DensityScale = 1.0
+        };
+
+        PaletteQualityValidator.ValidateAndRepair(blended);
+        return blended;
+    }
+
+    private static string BlendOklch(string first, string second, float amount)
+    {
+        var (l1, c1, h1) = ColorMath.HexToOklch(first);
+        var (l2, c2, h2) = ColorMath.HexToOklch(second);
+        float hueDelta = h2 - h1;
+        if (hueDelta > 180f) hueDelta -= 360f;
+        if (hueDelta < -180f) hueDelta += 360f;
+
+        return ColorMath.OklchToHex(
+            l1 + (l2 - l1) * amount,
+            c1 + (c2 - c1) * amount,
+            h1 + hueDelta * amount);
     }
 
     private static void ApplyPromptModifiers(CozyTheme theme, string prompt)
