@@ -23,8 +23,10 @@ public static class VibeAnalyzer
         // ── 2. Tokenize (includes emoji expansion in Stage 0) ─────────────────
         var result  = VibeTokenizer.TokenizeFull(rawText);
         var stemmed = result.Stemmed;
-        var raw     = result.Raw;
+        var raw = result.Raw;
         signal.HadEmojiInput = result.HadEmoji;
+        bool IsNegatedAt(int index)
+            => result.NegatedTokens is { } flags && index >= 0 && index < flags.Count && flags[index];
 
         if (stemmed.Count == 0) return signal;
 
@@ -72,6 +74,10 @@ public static class VibeAnalyzer
         // ── Pass A: bigram scan (highest priority) ────────────────────────────
         for (int i = 0; i < stemmed.Count - 1; i++)
         {
+            // A negated compound such as "not dark academia" must not contribute the bigram,
+            // nor may a cross-clause pair like "not neon but cyan" create a phantom color signal.
+            if (IsNegatedAt(i) || IsNegatedAt(i + 1)) continue;
+
             var bsig = BigramLexicon.Lookup(stemmed[i], stemmed[i + 1]);
             if (bsig is null) continue;
 
@@ -92,7 +98,7 @@ public static class VibeAnalyzer
         // ── Pass B: unigram + fuzzy for remaining tokens ───────────────────────
         for (int i = 0; i < stemmed.Count; i++)
         {
-            if (consumed.Contains(i)) continue;
+            if (consumed.Contains(i) || IsNegatedAt(i)) continue;
 
             string rawWord = i < raw.Count ? raw[i] : stemmed[i];
             
