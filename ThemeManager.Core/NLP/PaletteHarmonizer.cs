@@ -30,12 +30,13 @@ public static class PaletteHarmonizer
     /// </summary>
     public static GeneratedPalette Generate(VibeSignal signal)
     {
-        float h = signal.Hue;
+        float h = signal.HasPrimaryPaletteHue ? signal.PrimaryPaletteHue : signal.Hue;
         float l = signal.Lightness;
         float s = signal.Saturation;
 
-        // Apply warmth bias — nudge hue toward warm (orange) or cool (cyan) pole.
-        // Max nudge ±18° so the palette stays in the right color family.
+        // Explicit multi-color prompts retain their strongest hue as the primary identity instead
+        // of circular-averaging two opposing colors into a third, unintended color family.
+        // Warmth still applies as a subtle art-direction nudge (capped at ±18°).
         float warmNudge = signal.Warmth * 18f;
         h = WrapHue(h + warmNudge);
 
@@ -54,7 +55,9 @@ public static class PaletteHarmonizer
         float accentChroma = 0.105f + inputSaturation * 0.105f;
         float strongChroma = 0.075f + inputSaturation * 0.085f;
         float textHue = WrapHue(h + (signal.Warmth < -0.15f ? 188f : 165f));
-        float highlightHue = WrapHue(h + (signal.Warmth >= 0f ? 34f : -34f));
+        float highlightHue = signal.HasSecondaryPaletteHue
+            ? WrapHue(signal.SecondaryPaletteHue + signal.Warmth * 8f)
+            : WrapHue(h + (signal.Warmth >= 0f ? 34f : -34f));
 
         string bgBase = ColorMath.OklchToHex(backgroundL, backgroundChroma, h);
         string bgAlt = ColorMath.OklchToHex(
