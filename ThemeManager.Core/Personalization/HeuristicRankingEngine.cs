@@ -79,6 +79,27 @@ public class HeuristicRankingEngine
         score += passing * 1.5f;
         score -= (contrast.Count - passing) * 8f;
 
+        // Art-direction preferences are semantic ranking features, not just generation-time
+        // tweaks. Reward candidates whose surfaces, density and chroma match the language of the
+        // prompt; this matters when several safe variants all pass contrast.
+        var prompt = AestheticProfileCatalog.NormalizeForMatching(context.Prompt);
+        bool wantsGlass = HasAny(prompt, "glass", "glassmorphism", "liquid glass", "frutiger aero", "holographic", "glossy", "chrome");
+        bool wantsHardEdges = HasAny(prompt, "brutalist", "brutalism", "hard edges", "industrial", "terminal ui");
+        bool wantsMinimal = HasAny(prompt, "minimal", "minimalist", "clean girl", "quiet luxury", "focus desk", "less clutter");
+        bool wantsSpace = HasAny(prompt, "spacious", "airy layout", "breathing room", "lots of whitespace");
+        bool wantsMaximal = HasAny(prompt, "maximalist", "dopamine", "eclectic", "camp", "brat", "hyperpop");
+        bool wantsMuted = HasAny(prompt, "muted", "pastel", "soft", "matte", "desaturated", "quiet luxury");
+        bool wantsVibrant = HasAny(prompt, "vibrant", "electric", "neon", "dopamine", "maximalist", "brat", "hyperpop");
+        if (wantsGlass) score += theme.CornerRadiusScale >= 1.18 ? 2.5f : -1.5f;
+        if (wantsHardEdges) score += theme.CornerRadiusScale <= 0.72 ? 2.5f : -1.5f;
+        if (wantsMinimal) score += theme.DensityScale <= 0.94 ? 1.8f : -0.8f;
+        if (wantsSpace) score += theme.DensityScale >= 1.02 ? 1.8f : -0.8f;
+        if (wantsMaximal) score += ColorMath.HexToOklch(theme.AccentPrimary).C >= 0.12f ? 2f : -1f;
+
+        var accentChroma = ColorMath.HexToOklch(theme.AccentPrimary).C;
+        if (wantsMuted) score += accentChroma <= 0.14f ? 1.5f : -0.6f;
+        if (wantsVibrant) score += accentChroma >= 0.12f ? 1.5f : -0.6f;
+
         // Profile History and explicit color preferences.
         if (profile.LikedThemeIds.Contains(theme.Id)) score += 10f;
         if (profile.DislikedThemeIds.Contains(theme.Id)) score -= 20f;
@@ -87,6 +108,9 @@ public class HeuristicRankingEngine
 
         return score;
     }
+
+    private static bool HasAny(string text, params string[] phrases)
+        => phrases.Any(phrase => text.Contains(phrase, StringComparison.Ordinal));
 
     private float ScoreWidget(WidgetCandidate candidate, UserProfile profile, GenerationContext context)
     {
