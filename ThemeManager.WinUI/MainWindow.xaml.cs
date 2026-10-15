@@ -340,15 +340,46 @@ public sealed partial class MainWindow : Window
             tb.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(0x30, 0, 0, 0);
             tb.ButtonForegroundColor = Windows.UI.Color.FromArgb(0xFF, 0x3B, 0x2A, 0x20);
         }
-        AppWindow?.Resize(new SizeInt32(1100, 720));
         if (appWindow is not null)
         {
+            try
+            {
+                // Start inside the usable work area of the monitor hosting this window. A fixed
+                // 1100-DIP initial width was pushing the right half of Studio off-screen on smaller
+                // displays and when Windows restored a stale window position after a display change.
+                var display = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary);
+                var work = display.WorkArea;
+                int availableWidth = Math.Max(480, work.Width - 48);
+                int availableHeight = Math.Max(360, work.Height - 48);
+                int width = Math.Min(1100, availableWidth);
+                int height = Math.Min(720, availableHeight);
+                int x = work.X + Math.Max(0, (work.Width - width) / 2);
+                int y = work.Y + Math.Max(0, (work.Height - height) / 2);
+                appWindow.MoveAndResize(new RectInt32(x, y, width, height));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not measure the main window's monitor; using a conservative startup size");
+                appWindow.Resize(new SizeInt32(1000, 680));
+            }
+
             appWindow.Changed += (s, e) =>
             {
                 if (!e.DidSizeChange) return;
-                const int minW = 880, minH = 560;
-                var size = s.Size;
-                if (size.Width < minW || size.Height < minH) s.Resize(new SizeInt32(Math.Max(size.Width, minW), Math.Max(size.Height, minH)));
+                try
+                {
+                    var display = DisplayArea.GetFromWindowId(s.Id, DisplayAreaFallback.Primary);
+                    var work = display.WorkArea;
+                    int minW = Math.Min(880, Math.Max(480, work.Width - 48));
+                    int minH = Math.Min(560, Math.Max(360, work.Height - 48));
+                    var size = s.Size;
+                    if (size.Width < minW || size.Height < minH)
+                        s.Resize(new SizeInt32(Math.Max(size.Width, minW), Math.Max(size.Height, minH)));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not enforce the main window's monitor-aware minimum size");
+                }
             };
         }
     }
