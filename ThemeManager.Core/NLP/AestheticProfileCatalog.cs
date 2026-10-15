@@ -278,7 +278,13 @@ public static class AestheticProfileCatalog
         // blend but one reference is misspelled), run a conservative phrase-level fuzzy pass.
         // This is deliberately separate from ColorLexicon fuzzy matching: aesthetic names are
         // multi-token concepts and should not collapse into a random nearest colour word.
-        bool hasBlendConnector = HasBlendConnector(normalized);
+        // These two 2026 Pinterest Palette pairings are compound aesthetic names, not a
+        // free-form connector elsewhere in the prompt. Keeping them separate prevents an unrelated
+        // "hard edges and spacious layout" modifier from collapsing both source profiles together.
+        bool isNamedPaletteBlend =
+            normalized.Contains("cool wasabi", StringComparison.Ordinal) ||
+            normalized.Contains("persimmon plum", StringComparison.Ordinal);
+        bool hasBlendConnector = HasBlendConnector(normalized) && !isNamedPaletteBlend;
         bool hasSpecificExactMatch = matches.Any(match => match.Score >= 2000);
         if (matches.Count == 0 || hasBlendConnector || !hasSpecificExactMatch)
         {
@@ -336,12 +342,6 @@ public static class AestheticProfileCatalog
         // tie on score/position, so preserve that canonical order for the blended theme name.
         var normalizedPrompt = Normalize(prompt);
         if (normalizedPrompt.Contains("cool wasabi", StringComparison.Ordinal))
-        {
-            orderedProfiles = orderedProfiles
-                .OrderBy(profile => profile.Id == "cool-blue" ? 0 : profile.Id == "wasabi-palette" ? 1 : 2)
-                .ToList();
-        }
-        else if (normalizedPrompt.Contains("persimmon plum", StringComparison.Ordinal))
         {
             orderedProfiles = orderedProfiles
                 .OrderBy(profile => profile.Id == "persimmon-palette" ? 0 : profile.Id == "plum-noir" ? 1 : 2)
