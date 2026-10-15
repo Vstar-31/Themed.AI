@@ -156,7 +156,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         "Barbiecore glossy pink",
         "Cool Blue glacier glass",
         "Glamoratti 80s luxury",
-        "Solapunk Garden",
+        "Solarpunk Garden",
     };
 
     // ── Status message ────────────────────────────────────────────────────────
