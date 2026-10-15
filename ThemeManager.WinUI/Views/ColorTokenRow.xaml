@@ -57,7 +57,7 @@
                 BorderThickness="0"
                 Background="Transparent"
                 CornerRadius="{StaticResource CornerRadiusSmall}"
-                ToolTipService.ToolTip="Reset to default"
+                ToolTipService.ToolTip="Restore this color to the theme's saved value"
                 Click="ResetButton_Click">
             <TextBlock Text="↺" FontSize="14"
                        Foreground="{StaticResource TextMutedBrush}"
