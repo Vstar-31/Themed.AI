@@ -142,35 +142,35 @@
 
                             <local:ColorTokenRow Label="Background Base"
                                 HexValue="{x:Bind ViewModel.BackgroundBase, Mode=TwoWay}"
-                                DefaultHex="#F5F1EA" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineBackgroundBase, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Background Alt"
                                 HexValue="{x:Bind ViewModel.BackgroundAlt, Mode=TwoWay}"
-                                DefaultHex="#D7C9B8" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineBackgroundAlt, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Surface / Controls"
                                 HexValue="{x:Bind ViewModel.Surface, Mode=TwoWay}"
-                                DefaultHex="#B2967D" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineSurface, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Accent Primary  ← harmony anchor"
                                 HexValue="{x:Bind ViewModel.AccentPrimary, Mode=TwoWay}"
-                                DefaultHex="#7D5A44" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineAccentPrimary, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Accent Strong"
                                 HexValue="{x:Bind ViewModel.AccentStrong, Mode=TwoWay}"
-                                DefaultHex="#4A342A" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineAccentStrong, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Text Primary"
                                 HexValue="{x:Bind ViewModel.TextPrimary, Mode=TwoWay}"
-                                DefaultHex="#3B2A20" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineTextPrimary, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Text Muted"
                                 HexValue="{x:Bind ViewModel.TextMuted, Mode=TwoWay}"
-                                DefaultHex="#7F7065" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineTextMuted, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Border Subtle"
                                 HexValue="{x:Bind ViewModel.BorderSubtle, Mode=TwoWay}"
-                                DefaultHex="#E0D5C7" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineBorderSubtle, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
                         </StackPanel>
                     </Border>
 
