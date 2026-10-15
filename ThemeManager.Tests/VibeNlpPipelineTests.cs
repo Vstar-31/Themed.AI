@@ -245,6 +245,7 @@ public class VibeNlpPipelineTests
     [InlineData("Neo Deco", "Neo Deco")]
     [InlineData("Extra Celestial", "Extra Celestial")]
     [InlineData("Gimme Gummy", "Gimme Gummy")]
+    [InlineData("Glitchy Glam digital night", "Glitchy Glam")]
     [InlineData("Wilderkind", "Wilderkind")]
     [InlineData("Glamoratti", "Glamoratti")]
     [InlineData("Opera Aesthetic", "Opera Aesthetic")]
