@@ -254,6 +254,7 @@ public class VibeNlpPipelineTests
     [InlineData("Minecraft Cherry Grove", "Cherry Grove")]
     [InlineData("Brooched vintage jewellery", "Brooched")]
     [InlineData("Scent Stacking amber vanilla", "Scent Stacking")]
+    [InlineData("Pen Pals letter-writing desk", "Pen Pals")]
     [InlineData("Darecations mountain escape", "Darecations")]
     [InlineData("Cabbage Crush garden green", "Cabbage Crush")]
     [InlineData("Cool Blue glacier aesthetic", "Cool Blue")]
@@ -277,6 +278,29 @@ public class VibeNlpPipelineTests
         var checks = ContrastChecker.Check(theme);
         Assert.All(checks, check =>
             Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void Generate_BlendedAestheticPrompt_ComposesBothProfilesAndPassesContrast()
+    {
+        const string prompt = "Frutiger Aero meets Neo Deco";
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal("Frutiger Aero × Neo Deco", theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, k => k == "Frutiger Aero");
+        Assert.Contains(analysis.MatchedKeywords, k => k == "Neo Deco");
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void Generate_NegatedAestheticDoesNotWinOverPositiveReference()
+    {
+        var theme = _gen.Generate("not cyberpunk, make it cottagecore");
+
+        Assert.Equal("Cottagecore", theme.Name);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
     }
 
     [Theory]
