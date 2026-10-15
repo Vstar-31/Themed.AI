@@ -77,7 +77,7 @@ public static class AestheticProfileCatalog
             ["mystic outlands", "mystic outlands trend", "fantasy landscape", "mythic wilderness", "dark fairy forest"],
             "#101B22", "#1E2C2C", "#2B3D3A", "#69B798", "#D6BC72", "#F2F5E8", "#B9CBBB", "#455D55"),
         new("cool-blue", "Cool Blue", "Glacier blue, porcelain, mist and marine ink: fresh, precise and quietly futuristic.",
-            ["cool blue", "cool blue trend", "pinterest palette cool blue", "cool blue palette 2026", "glacier aesthetic", "ice blue aesthetic", "blue hour", "icy minimalism", "frosted makeup", "subzero aesthetic"],
+            ["cool blue", "cool blue trend", "pinterest palette cool blue", "cool blue palette 2026", "cool wasabi", "cool-wasabi palette", "glacier aesthetic", "ice blue aesthetic", "blue hour", "icy minimalism", "frosted makeup", "subzero aesthetic"],
             "#EAF4FF", "#D1E5F8", "#B8D4EB", "#286DB5", "#17436F", "#172F46", "#4E6B87", "#A4C4E0"),
         new("gimme-gummy", "Gimme Gummy", "Jelly-bright color with candy-glass pink, grape, creamy vanilla and playful translucent accents.",
             ["gimme gummy", "gimme gummy trend", "gummy aesthetic", "jellycore", "candycore", "gummy bear aesthetic", "jelly candy"],
@@ -162,7 +162,7 @@ public static class AestheticProfileCatalog
             ["jade reverie", "jade palette", "pinterest palette jade", "jade green aesthetic", "jade glass", "mint moss", "glamorous green", "jade dreamscape"],
             "#F1F6EF", "#DFEBDD", "#C4D9C6", "#3E7866", "#244F43", "#26352C", "#576C5E", "#B6CFBD"),
         new("plum-noir", "Plum Noir", "Decadent villain-era plum: velvet aubergine, burnt burgundy, smoked brown and one polished, dramatic highlight.",
-            ["plum noir", "pinterest palette plum noir", "plum noir palette", "villain era", "dark plum luxury", "velvet plum", "burnt burgundy aesthetic"],
+            ["plum noir", "pinterest palette plum noir", "plum noir palette", "persimmon plum", "villain era", "dark plum luxury", "velvet plum", "burnt burgundy aesthetic"],
             "#140D18", "#241323", "#381C31", "#C58AA4", "#D0A36A", "#F8EEF4", "#D3B5C8", "#58334E"),
         new("wasabi-palette", "Wasabi Voltage", "High-voltage chartreuse against inky charcoal, balanced with acid-lime light and a restrained ultraviolet counterpoint.",
             ["wasabi voltage", "wasabi palette", "pinterest palette wasabi", "wasabi green aesthetic", "electric chartreuse", "acid lime", "high voltage green", "cool wasabi"],
@@ -417,7 +417,15 @@ public static class AestheticProfileCatalog
     public static bool RequestsBlend(string? prompt, IReadOnlyList<Profile> matches)
     {
         if (matches.Count < 2) return false;
-        return HasBlendConnector(Normalize(prompt));
+
+        var text = Normalize(prompt);
+        // Pinterest Palette publishes these pairings as named sub-palettes. They are an explicit
+        // composition request even when the user types the name without "mix" or "and".
+        if (text.Contains("cool wasabi", StringComparison.Ordinal) ||
+            text.Contains("persimmon plum", StringComparison.Ordinal))
+            return true;
+
+        return HasBlendConnector(text);
     }
 
     private static bool IsNegatedReference(string prefix)
