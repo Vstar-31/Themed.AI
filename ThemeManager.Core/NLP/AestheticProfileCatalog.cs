@@ -290,10 +290,19 @@ public static class AestheticProfileCatalog
                 // position before taking the first two references in the prompt.
                 foreach (var match in fuzzyMatches)
                 {
-                    if (matches.All(existing =>
-                        !existing.Profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase) ||
-                        existing.Position != match.Position))
+                    int existingIndex = matches.FindIndex(existing =>
+                        existing.Profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase) &&
+                        existing.Position == match.Position);
+                    if (existingIndex < 0)
+                    {
                         matches.Add(match);
+                    }
+                    else if (match.Score > matches[existingIndex].Score)
+                    {
+                        // Replace a broad exact alias ("neon") with the stronger fuzzy full-name
+                        // match ("Neon Afterglw") at the same word position.
+                        matches[existingIndex] = match;
+                    }
                 }
             }
             else if (fuzzyMatches.Count > 0 &&
@@ -310,9 +319,18 @@ public static class AestheticProfileCatalog
             ? matches.GroupBy(match => match.Position)
                 .Select(group => group.OrderByDescending(match => match.Score).First())
                 .OrderBy(match => match.Position)
-                .Take(2)
             : matches.OrderByDescending(match => match.Score).ThenBy(match => match.Position);
-        var orderedProfiles = orderedMatches.Select(match => match.Profile).ToList();
+
+        var orderedProfiles = new List<Profile>();
+        foreach (var match in orderedMatches)
+        {
+            if (orderedProfiles.Any(profile =>
+                profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            orderedProfiles.Add(match.Profile);
+            if (hasBlendConnector && orderedProfiles.Count == 2)
+                break;
+        }
 
         // The published 2026 Palette pair is named in color order; duplicate phrase aliases can
         // tie on score/position, so preserve that canonical order for the blended theme name.
