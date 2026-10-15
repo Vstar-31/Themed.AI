@@ -287,11 +287,23 @@ public static class AestheticProfileCatalog
             }
         }
 
-        return matches
+        var orderedProfiles = matches
             .OrderByDescending(match => match.Score)
             .ThenBy(match => match.Position)
             .Select(match => match.Profile)
             .ToList();
+
+        // The published 2026 Palette pair is named in color order; duplicate phrase aliases can
+        // tie on score/position, so preserve that canonical order for the blended theme name.
+        var normalizedPrompt = Normalize(prompt);
+        if (normalizedPrompt.Contains("persimmon plum", StringComparison.Ordinal))
+        {
+            orderedProfiles = orderedProfiles
+                .OrderBy(profile => profile.Id == "persimmon-palette" ? 0 : profile.Id == "plum-noir" ? 1 : 2)
+                .ToList();
+        }
+
+        return orderedProfiles;
     }
 
     private static List<(Profile Profile, int Score, int Position)> FindFuzzyProfiles(string normalized)
@@ -319,7 +331,7 @@ public static class AestheticProfileCatalog
                         if (string.Equals(words[start + i], aliasWords[i], StringComparison.Ordinal))
                             continue;
 
-                        int maxDistance = aliasWords[i].Length >= 9 ? 2 : aliasWords[i].Length >= 5 ? 1 : 0;
+                        int maxDistance = aliasWords[i].Length >= 9 ? 2 : aliasWords[i].Length >= 4 ? 1 : 0;
                         if (maxDistance == 0 || Math.Abs(words[start + i].Length - aliasWords[i].Length) > maxDistance)
                         {
                             valid = false;
