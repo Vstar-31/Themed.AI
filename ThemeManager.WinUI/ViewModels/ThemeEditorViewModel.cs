@@ -330,10 +330,12 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     {
         _history.Push(_working);
 
-        var palette = PaletteHarmonizer.FromAccentHex(newAccentHex);
+        bool preferDark = ColorMath.LuminanceFromHex(_working.BackgroundBase) < 0.30f;
+        var palette = PaletteHarmonizer.FromAccentHex(newAccentHex, preferDark);
         palette.ApplyTo(_working);
+        PaletteQualityValidator.ValidateAndRepair(_working, preferDark);
 
-        // Sync all VM fields from the freshly derived palette.
+        // Sync all VM fields from the freshly derived, contrast-checked palette.
         SyncPropertiesFromWorking();
         Dirty = true;
         RefreshContrast();
