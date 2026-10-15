@@ -92,7 +92,9 @@ public class HeuristicRankingEngine
         bool wantsVibrant = HasAny(prompt, "vibrant", "electric", "neon", "dopamine", "maximalist", "brat", "hyperpop");
         if (wantsGlass) score += theme.CornerRadiusScale >= 1.18 ? 2.5f : -1.5f;
         if (wantsHardEdges) score += theme.CornerRadiusScale <= 0.72 ? 2.5f : -1.5f;
-        if (wantsMinimal) score += theme.DensityScale <= 0.94 ? 1.8f : -0.8f;
+        // DensityScale scales spacing tokens upward. Minimal layouts should keep fewer
+        // competing elements and more breathing room, not collapse the spacing between them.
+        if (wantsMinimal) score += theme.DensityScale >= 1.05 ? 1.8f : -0.8f;
         if (wantsSpace) score += theme.DensityScale >= 1.02 ? 1.8f : -0.8f;
         if (wantsMaximal) score += ColorMath.HexToOklch(theme.AccentPrimary).C >= 0.12f ? 2f : -1f;
 
