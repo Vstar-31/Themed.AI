@@ -4,20 +4,13 @@ using ThemeManager.Core.Utilities;
 namespace ThemeManager.Core.NLP;
 
 /// <summary>
-/// Converts a <see cref="VibeSignal"/> into the 8 hex color tokens of a <see cref="CozyTheme"/>
-/// using perceptually uniform OKLCH space for the tonal ramp.
+/// Converts a <see cref="VibeSignal"/> into the eight hex tokens of a <see cref="CozyTheme"/>
+/// using perceptually uniform OKLCH tonal roles.
 ///
-/// Design rules baked in:
-///   • BackgroundBase — primary hue, high L, low S (airy, readable base)
-///   • BackgroundAlt  — +12° hue shift (analogous), slightly darker/more saturated
-///   • Surface        — +25° shift, mid L/S (tactile controls and buttons)
-///   • AccentPrimary  — base hue, lower L, richer S (interactive elements)
-///   • AccentStrong   — base hue, lowest L, full S (headers, borders, emphasis)
-///   • TextPrimary    — near-complementary hue, very dark (readable on all backgrounds)
-///   • TextMuted      — same as TextPrimary but higher L, much lower S
-///   • BorderSubtle   — BackgroundAlt hue, mid-high L, very low S (hairlines)
-///
-/// Python analogy: colorsys + numpy.clip — same math, no dependencies.
+/// Design rules: coherent dark/light surfaces; a restrained primary hue; a readable primary
+/// accent; a contrasting secondary accent when a second distinct hue was explicitly requested;
+/// neutral high-contrast text; and a visible but quiet border. Gamut mapping and the shared
+/// PaletteQualityValidator make the result safe for real UI use.
 /// </summary>
 public static class PaletteHarmonizer
 {
@@ -119,54 +112,6 @@ public static class PaletteHarmonizer
         {
             AccentPrimary = CozyTheme.NormalizeHex(accentHex),
             IsDark = isDark
-        };
-    }
-
-    // ── HSL → RGB → Hex conversion ────────────────────────────────────────────
-    // Pure C# port of the standard CSS Color Level 4 algorithm.
-    // Python equivalent: colorsys.hls_to_rgb (note: Python uses HLS order not HSL).
-
-    /// <summary>Converts HSL values to a #RRGGBB hex string.</summary>
-    private static string ToHex(float hueDeg, float saturation, float lightness)
-    {
-        saturation = Math.Clamp(saturation, 0f, 1f);
-        lightness  = Math.Clamp(lightness,  0f, 1f);
-        hueDeg     = WrapHue(hueDeg);
-
-        float h = hueDeg / 360f;
-        float s = saturation;
-        float l = lightness;
-
-        float r, g, b;
-        if (s == 0f)
-        {
-            r = g = b = l; // achromatic
-        }
-        else
-        {
-            float q = l < 0.5f ? l * (1f + s) : l + s - l * s;
-            float p = 2f * l - q;
-            r = HueToRgb(p, q, h + 1f / 3f);
-            g = HueToRgb(p, q, h);
-            b = HueToRgb(p, q, h - 1f / 3f);
-        }
-
-        int ri = (int)Math.Round(r * 255);
-        int gi = (int)Math.Round(g * 255);
-        int bi = (int)Math.Round(b * 255);
-        return $"#{Math.Clamp(ri,0,255):X2}{Math.Clamp(gi,0,255):X2}{Math.Clamp(bi,0,255):X2}";
-    }
-
-    private static float HueToRgb(float p, float q, float t)
-    {
-        if (t < 0) t += 1f;
-        if (t > 1) t -= 1f;
-        return t switch
-        {
-            < 1f/6f => p + (q - p) * 6f * t,
-            < 1f/2f => q,
-            < 2f/3f => p + (q - p) * (2f/3f - t) * 6f,
-            _        => p,
         };
     }
 
