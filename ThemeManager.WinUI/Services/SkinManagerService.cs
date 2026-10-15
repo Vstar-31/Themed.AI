@@ -352,8 +352,15 @@ public sealed class SkinManagerService : IDisposable
         // Anything currently visible but not part of this world is hidden. This is deliberately
         // based on the resolved ids so an unresolvable/corrupt placement cannot accidentally keep a
         // stale widget around forever.
-        foreach (var skin in _skins.Where(s => s.Enabled && !sceneIds.Contains(s.Id)).ToList())
+        foreach (var skin in _skins
+                     .Where(s => !sceneIds.Contains(s.Id) && (s.Enabled || _open.ContainsKey(s.Id)))
+                     .ToList())
+        {
+            // Close any actual HWND that survived a legacy world switch even if its persisted
+            // Enabled flag says false. Transparent widget windows can otherwise leave isolated
+            // glyphs floating over the app after their scene placements were removed.
             await ApplyScenePlacementCoreAsync(skin, skin.X, skin.Y, skin.Opacity, false);
+        }
 
         // Persist a cleaned active-world composition when the caller passed the actual scene list.
         if (placements is List<SceneWidgetPlacement> sourcePlacements &&
