@@ -87,6 +87,9 @@ public sealed partial class ThemeEditorPage : Page
     private async void SaveButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.SaveAsync();
 
+    private void RepairPaletteButton_Click(object sender, RoutedEventArgs e)
+        => ViewModel.RepairPalette();
+
     private void RevertButton_Click(object sender, RoutedEventArgs e)
         => ViewModel.RevertPaletteChanges();
 
