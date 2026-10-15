@@ -381,6 +381,7 @@ public sealed partial class SkinHostWindow : Window
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                         bool webEmbedActive =
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedReady &&
                             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
                         // A native preview can be playing (or paused with its source loaded) before
                         // the cached VibeFinder page takes over. Keep all widget commands on that
@@ -424,6 +425,7 @@ public sealed partial class SkinHostWindow : Window
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
                         bool webEmbedActive =
                             ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedReady &&
                             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
                         // A native preview can be playing (or paused with its source loaded) before
                         // the cached VibeFinder page takes over. Keep all widget commands on that
