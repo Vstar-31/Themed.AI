@@ -1,4 +1,5 @@
 using ThemeManager.Core.NLP;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Tests;
 
@@ -232,6 +233,53 @@ public class VibeNlpPipelineTests
 
         Assert.Equal(theme1.BackgroundBase, theme2.BackgroundBase);
         Assert.Equal(theme1.AccentPrimary, theme2.AccentPrimary);
+    }
+
+    // Curated aesthetics are first-class semantic anchors, not accidental fuzzy color matches.
+    [Theory]
+    [InlineData("Neon Afterglow", "Neon Afterglow")]
+    [InlineData("Frutiger Aero", "Frutiger Aero")]
+    [InlineData("Dark Academia", "Dark Academia")]
+    [InlineData("Poetcore", "Poetcore")]
+    [InlineData("Vamp Romantic", "Vamp Romantic")]
+    [InlineData("Neo Deco", "Neo Deco")]
+    [InlineData("Extra Celestial", "Extra Celestial")]
+    [InlineData("Gimme Gummy", "Gimme Gummy")]
+    [InlineData("Wilderkind", "Wilderkind")]
+    [InlineData("Glamoratti", "Glamoratti")]
+    [InlineData("Opera Aesthetic", "Opera Aesthetic")]
+    [InlineData("Arcane", "Arcane-Inspired")]
+    [InlineData("Studio Ghibli forest", "Storybook Forest")]
+    [InlineData("Star Wars cockpit", "Space Opera")]
+    [InlineData("Minecraft Cherry Grove", "Cherry Grove")]
+    public void Generate_RecognizedAesthetics_UsesCuratedProfileAndPassesContrast(string prompt, string expectedName)
+    {
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, k => k.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
+        var checks = ContrastChecker.Check(theme);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Theory]
+    [InlineData("dark midnight ocean storm")]
+    [InlineData("pastel cherry blossom pink")]
+    [InlineData("cool minimal arctic glass")]
+    [InlineData("warm terracotta reading nook")]
+    [InlineData("electric neon city with cyan accents")]
+    [InlineData("forest green and gold fantasy desktop")]
+    [InlineData("bright coral pop art")]
+    [InlineData("moonlit purple space opera")]
+    public void Generate_FreeFormPrompts_PassesContrastQualityGate(string prompt)
+    {
+        var theme = _gen.Generate(prompt);
+        var checks = ContrastChecker.Check(theme);
+
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1"));
     }
 
     [Fact]
