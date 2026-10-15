@@ -509,6 +509,18 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void Generate_MinimalArtDirectionIncreasesWhitespaceInsteadOfTighteningLayout()
+    {
+        var baseline = _gen.Generate("Coquette");
+        var minimal = _gen.Generate("Coquette with a minimal, clean layout");
+
+        Assert.True(minimal.DensityScale > baseline.DensityScale,
+            $"Expected minimal spacing to increase, got {baseline.DensityScale:F2} -> {minimal.DensityScale:F2}.");
+        Assert.All(ContrastChecker.Check(minimal), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1 contrast."));
+    }
+
+    [Fact]
     public void Generate_CompositionalGlassPromptAdjustsGeometryNotJustColors()
     {
         var baseline = AestheticProfileCatalog.CreateTheme(
