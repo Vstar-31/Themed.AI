@@ -348,6 +348,24 @@ public class VibeNlpPipelineTests
             Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1"));
     }
 
+    [Theory]
+    [InlineData("#FF4FD8", true)]
+    [InlineData("#286DB5", false)]
+    public void HarmonyLockPalette_PreservesAnchorAndRequestedPolarity(string accentHex, bool preferDark)
+    {
+        var palette = PaletteHarmonizer.FromAccentHex(accentHex, preferDark);
+        Assert.Equal(accentHex, palette.AccentPrimary);
+        Assert.Equal(preferDark, palette.IsDark);
+
+        var theme = new ThemeManager.Core.Models.CozyTheme();
+        palette.ApplyTo(theme);
+        var report = PaletteQualityValidator.ValidateAndRepair(theme, preferDark);
+
+        Assert.True(report.PassesAA);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
     [Fact]
     public void Generate_CircularCpuGauge_ReturnsRingMeter()
     {
