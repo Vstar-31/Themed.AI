@@ -253,7 +253,7 @@ public static class AestheticProfileCatalog
         if (words.Length >= 2)
         {
             var pair = $"{words[^2]} {words[^1]}";
-            if (pair is "dont use" or "do not" or "not like" or "not really" or "rather than" or "instead of")
+            if (pair is "dont use" or "dont want" or "dont like" or "do not" or "not like" or "not really" or "rather than" or "instead of")
                 return true;
         }
 
@@ -427,6 +427,11 @@ public static class AestheticProfileCatalog
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
         var lower = value.ToLowerInvariant().Replace("’", "'");
+        lower = lower.Replace("don't", "dont", StringComparison.Ordinal)
+            .Replace("doesn't", "doesnt", StringComparison.Ordinal)
+            .Replace("can't", "cant", StringComparison.Ordinal)
+            .Replace("isn't", "isnt", StringComparison.Ordinal)
+            .Replace("won't", "wont", StringComparison.Ordinal);
         lower = Regex.Replace(lower, @"[^a-z0-9]+", " ");
         return Regex.Replace(lower, @"\s+", " ").Trim();
     }
