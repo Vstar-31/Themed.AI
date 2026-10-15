@@ -2,6 +2,7 @@ using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Extensions.Logging;
 using ThemeManager.WinUI.Services;
@@ -17,6 +18,7 @@ public sealed partial class VibeFinderAIPage : Page
     private bool _isInitializing = true;
     private bool _embedReady;
     private bool _embedHasToken;
+    private bool _initialAnalysisTriggered;
     private System.EventHandler<ThemeManager.Core.Models.CozyTheme>? _themeChangedHandler;
     private System.EventHandler<DesktopScene?>? _activeSceneChangedHandler;
     private const string ActiveThemeSentinel = "$theme";
@@ -26,7 +28,11 @@ public sealed partial class VibeFinderAIPage : Page
     public VibeFinderAIPage()
     {
         this.InitializeComponent();
-        ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
+
+        // Keep the WebView2/React session alive while users move between workspaces. A fresh
+        // page instance remounts VibeFinder, re-runs analysis, changes tracks and resets playback.
+        NavigationCacheMode = NavigationCacheMode.Required;
+
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
@@ -53,13 +59,22 @@ public sealed partial class VibeFinderAIPage : Page
                     StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                         hasToken ? Microsoft.UI.Colors.Green : Microsoft.UI.Colors.Gray);
                     StatusText.Visibility = Visibility.Visible;
-                    _logger.LogInformation("VibeFinderAIPage: embed mounted (VIBEFINDER_APP_READY, hasToken={HasToken}) — {Action}", hasToken, hasToken ? "pushing prompt and triggering a run" : "pushing prompt only, waiting on auto-login");
-                    PushVibePromptAndTrackLimit(triggerRun: hasToken);
+                    bool shouldTriggerInitialRun = hasToken && !_initialAnalysisTriggered;
+                    _logger.LogInformation(
+                        "VibeFinderAIPage: embed ready (hasToken={HasToken}, initialRunAlreadyTriggered={InitialRunAlreadyTriggered}) — {Action}",
+                        hasToken, _initialAnalysisTriggered,
+                        shouldTriggerInitialRun ? "syncing prompt and starting initial analysis" : "syncing prompt without restarting playback/results");
+
+                    // The SPA can emit readiness more than once across auth changes. Only its first
+                    // authenticated-ready event starts analysis; later readiness messages must not
+                    // reset the current track or playback session.
+                    PushVibePromptAndTrackLimit(triggerRun: shouldTriggerInitialRun);
                     return;
                 }
                 ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json, fromVisibleEmbed: true);
             };
             BindVisibleEmbedBridge();
+            ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
 
@@ -430,7 +445,10 @@ public sealed partial class VibeFinderAIPage : Page
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit }));
             if (triggerRun)
+            {
                 ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit }));
+                _initialAnalysisTriggered = true;
+            }
         }
         catch (Exception ex)
         {
@@ -440,16 +458,9 @@ public sealed partial class VibeFinderAIPage : Page
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
-        ThemeManager.Integration.Skins.VibeFinderWebState.ReleaseVisibleEmbed();
-
-        if (_themeChangedHandler is not null)
-            App.ThemeService.ThemeChanged -= _themeChangedHandler;
-        if (_activeSceneChangedHandler is not null)
-            App.SceneService.ActiveSceneChanged -= _activeSceneChangedHandler;
-
-        if (App.MainWindow?.IsVibeFinderPrewarmActive == true)
-            App.MainWindow.RebindVibeFinderPrewarmBridge();
-        else
-            ThemeManager.Integration.Skins.VibeFinderWebState.Detach();
+        // This page is NavigationCacheMode.Required. Unloaded means the user changed tabs, not
+        // that the WebView session is dead. Keep its playback bridge and state authority attached
+        // so widget controls continue addressing the same player and the tab resumes without reload.
+        _logger.LogTrace("VibeFinderAIPage: page hidden; retaining cached WebView session and playback authority");
     }
 }
