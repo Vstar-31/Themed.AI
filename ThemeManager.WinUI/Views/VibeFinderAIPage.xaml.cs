@@ -35,6 +35,7 @@ public sealed partial class VibeFinderAIPage : Page
         // page instance remounts VibeFinder, re-runs analysis, changes tracks and resets playback.
         NavigationCacheMode = NavigationCacheMode.Required;
         ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.PreviewEnded += OnNativePreviewEnded;
+        ThemeManager.Integration.Skins.VibeFinderWebState.StateChanged += OnPlaybackAuthorityStateChanged;
 
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
@@ -92,6 +93,14 @@ public sealed partial class VibeFinderAIPage : Page
                     }
                     return;
                 }
+                if (TryGetMessageType(json) == "VIBEFINDER_RESULTS")
+                {
+                    // Results from a user-initiated web analysis supersede any deferred first-run
+                    // analysis; don't run a second analysis when the old native preview ends.
+                    _initialAnalysisDeferredForNativePreview = false;
+                    _initialAnalysisTriggered = true;
+                }
+
                 ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json, fromVisibleEmbed: true);
             };
             BindVisibleEmbedBridge();
@@ -447,6 +456,36 @@ public sealed partial class VibeFinderAIPage : Page
         finally
         {
             _dialogOpen = false;
+        }
+    }
+
+    private void OnPlaybackAuthorityStateChanged(object? sender, EventArgs e)
+    {
+        if (!ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive ||
+            !ThemeManager.Integration.Skins.VibeFinderWebState.IsPlaying)
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            // Once the browser is genuinely playing, the native preview has handed off. An old
+            // deferred run must not fire later and replace the song the user just started.
+            _initialAnalysisDeferredForNativePreview = false;
+            _initialAnalysisTriggered = true;
+        });
+    }
+
+    private static string? TryGetMessageType(string messageJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(messageJson);
+            return document.RootElement.TryGetProperty("type", out var type)
+                ? type.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 
