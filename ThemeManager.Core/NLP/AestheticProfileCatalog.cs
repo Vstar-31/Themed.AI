@@ -716,6 +716,9 @@ public static class AestheticProfileCatalog
     private static bool HasAny(string text, params string[] phrases)
         => phrases.Any(phrase => text.Contains(Normalize(phrase), StringComparison.Ordinal));
 
+    /// <summary>Exposes the catalog's shared phrase normalization to ranking and diagnostics.</summary>
+    public static string NormalizeForMatching(string? value) => Normalize(value);
+
     private static string Normalize(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
