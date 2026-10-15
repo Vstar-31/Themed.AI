@@ -22,10 +22,12 @@ public static class VibeFinderWebState
     // The visible VibeFinderAIPage wins over the zero-size prewarm WebView; without this
     // gate the two React instances can race and make widgets jump between two playlists.
     private static int _visibleEmbedActive;
+    private static int _visibleEmbedReady;
     private static CancellationTokenSource? _nativeFallbackCts;
 
     public static bool IsActive { get; private set; }
     public static bool IsVisibleEmbedActive => Volatile.Read(ref _visibleEmbedActive) != 0;
+    public static bool IsVisibleEmbedReady => Volatile.Read(ref _visibleEmbedReady) != 0;
     public static bool IsPlaying { get; private set; }
     public static string Title { get; private set; } = "—";
     public static string Artist { get; private set; } = "—";
@@ -63,6 +65,12 @@ public static class VibeFinderWebState
     {
         Interlocked.Exchange(ref _visibleEmbedActive, 1);
         _logger.LogDebug("VibeFinderWebState: visible embed claimed playback/results authority");
+    }
+
+    public static void SetVisibleEmbedReady(bool ready)
+    {
+        Interlocked.Exchange(ref _visibleEmbedReady, ready ? 1 : 0);
+        _logger.LogDebug("VibeFinderWebState: visible embed readiness changed to {Ready}", ready);
     }
 
     public static void ReleaseVisibleEmbed()
@@ -367,7 +375,8 @@ public static class VibeFinderWebState
     public static void SkipNext()
     {
         if (_tracks.Count == 0) return;
-        if (SendCommand != null && IsPlayerActive && !VibeFinderPreviewPlayer.HasSource) { SendCommand("{\"command\":\"next\"}"); return; }
+        if (SendCommand != null && IsPlayerActive && !VibeFinderPreviewPlayer.HasSource &&
+            (!IsVisibleEmbedActive || IsVisibleEmbedReady)) { SendCommand("{\"command\":\"next\"}"); return; }
         CurrentIndex = (CurrentIndex + 1) % _tracks.Count;
         ApplyCurrentTrack();
         VibeFinderPreviewPlayer.Play(PreviewUrl);
@@ -380,7 +389,8 @@ public static class VibeFinderWebState
     public static void SkipPrevious()
     {
         if (_tracks.Count == 0) return;
-        if (SendCommand != null && IsPlayerActive && !VibeFinderPreviewPlayer.HasSource) { SendCommand("{\"command\":\"prev\"}"); return; }
+        if (SendCommand != null && IsPlayerActive && !VibeFinderPreviewPlayer.HasSource &&
+            (!IsVisibleEmbedActive || IsVisibleEmbedReady)) { SendCommand("{\"command\":\"prev\"}"); return; }
         CurrentIndex = (CurrentIndex - 1 + _tracks.Count) % _tracks.Count;
         ApplyCurrentTrack();
         VibeFinderPreviewPlayer.Play(PreviewUrl);
