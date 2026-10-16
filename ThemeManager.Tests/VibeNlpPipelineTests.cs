@@ -704,6 +704,29 @@ public class VibeNlpPipelineTests
         Assert.Equal("Square", ranking[0].Theme.Name);
     }
 
+    [Theory]
+    [InlineData("Coquette in dark mode", true)]
+    [InlineData("Neon Afterglow in light mode", false)]
+    [InlineData("Frutiger Aero dark mode then light mode", false)]
+    [InlineData("not dark mode, use light mode", false)]
+    public void Generate_ExplicitModeIntentOverridesCuratedProfileDefaults(string prompt, bool expectedDark)
+    {
+        var theme = _gen.Generate(prompt);
+
+        bool actualDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f;
+        Assert.Equal(expectedDark, actualDark);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void InferPreferredPolarity_DoesNotConfuseDarkAcademiaWithDarkModeCommand()
+    {
+        Assert.Null(AestheticProfileCatalog.InferPreferredPolarity("Dark Academia"));
+        Assert.True(AestheticProfileCatalog.InferPreferredPolarity("Dark Academia in dark mode"));
+        Assert.False(AestheticProfileCatalog.InferPreferredPolarity("Dark Academia in light mode"));
+    }
+
     [Fact]
     public void ValidateAndRepair_UsesFilledButtonForegroundForStrongAccent()
     {
