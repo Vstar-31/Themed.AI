@@ -78,12 +78,23 @@ public class CandidateEngine
     }
 
     private static VibeAnalysisResult AnalysisForVariant(VibeAnalysisResult source, CozyTheme theme)
-        => source with
+    {
+        // Candidate treatments change the palette after the initial analysis pass. Refresh every
+        // palette-derived field so the preview swatches, hue readout, saturation and mode all
+        // describe the candidate the user is actually evaluating, not the unmodified base theme.
+        var (hue, saturation, _) = ColorMath.HexToHsl(theme.AccentPrimary);
+        var (_, _, lightness) = ColorMath.HexToHsl(theme.BackgroundBase);
+
+        return source with
         {
             GeneratedName = theme.Name,
+            ComputedHue = hue,
+            ComputedSaturation = saturation,
+            ComputedLightness = lightness,
             IsDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f,
             Swatches = [theme.BackgroundBase, theme.BackgroundAlt, theme.Surface, theme.AccentPrimary, theme.AccentStrong]
         };
+    }
 
     public List<WidgetCandidate> GenerateWidgetCandidates(GenerationContext context, double? screenWidth = null, double? screenHeight = null, int count = 3)
     {
