@@ -26,6 +26,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     /// VibeAnalysisResult, so it can't inform the very first generation of a session) and fed
     /// into the next one — see the comment in GenerateAsync for why this can't just be a local.</summary>
     private Mood _inferredMoodForNextGeneration = Mood.Neutral;
+    private int _variationSeed;
 
     // ── Input ─────────────────────────────────────────────────────────────────
     private string _vibeText = string.Empty;
@@ -36,6 +37,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         {
             if (SetProperty(ref _vibeText, value))
             {
+                _variationSeed = 0;
                 OnPropertyChanged(nameof(CanGenerate));
                 // Live-update the insight panel as the user types (debounced via
                 // the 300 ms delay in the view's TextChanged handler).
@@ -256,7 +258,12 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 // structurally can't inform the very first generation of a session, and a fresh
                 // GenerationContext gets built on every call, so setting Mood on it after this
                 // generation already consumed it would be a no-op.
-                var context = new GenerationContext { Prompt = text, Mood = _inferredMoodForNextGeneration };
+                var context = new GenerationContext
+                {
+                    Prompt = text,
+                    Mood = _inferredMoodForNextGeneration,
+                    VariationSeed = _variationSeed
+                };
                 var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
                 var theme = candidate.Theme;
                 var analysis = candidate.Analysis;
@@ -347,10 +354,13 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     /// <summary>Regenerates with a randomised variation on the same text.</summary>
     public async Task RegenerateAsync()
     {
-        // Appending a tiny variation seed doesn't change the meaning but
-        // shuffles any tie-breaking randomness in future algorithm extensions.
-        if (!string.IsNullOrWhiteSpace(VibeText))
-            await GenerateAsync();
+        if (string.IsNullOrWhiteSpace(VibeText)) return;
+
+        // Candidate generation is deterministic by design. Rotate the preferred treatment so the
+        // button returns the next art direction instead of presenting the same result repeatedly.
+        _variationSeed = (_variationSeed + 1) % 3;
+        _logger.LogInformation("Regenerating theme with variation seed {VariationSeed}", _variationSeed);
+        await GenerateAsync();
     }
 
     /// <summary>Sets the vibe text from a suggestion chip and triggers generation.</summary>
