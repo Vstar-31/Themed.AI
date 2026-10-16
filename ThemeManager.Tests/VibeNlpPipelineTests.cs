@@ -680,10 +680,13 @@ public class VibeNlpPipelineTests
     [InlineData("Dark Academia", false)]
     [InlineData("Frutiger Aero glass ocean", false)]
     [InlineData("K-Pop Stage", false)]
+    [InlineData("change the theme to Dark Academia", false)]
     [InlineData("make it darker", true)]
     [InlineData("add violet accents", true)]
     [InlineData("make the accents violet", true)]
     [InlineData("make it violet", true)]
+    [InlineData("change the palette to more violet", true)]
+    [InlineData("make it glassy", true)]
     [InlineData("make the layout minimal and spacious", true)]
     [InlineData("more vibrant", true)]
     public void IsRefinementInstruction_DistinguishesCommandsFromNewAesthetics(string prompt, bool expected)
