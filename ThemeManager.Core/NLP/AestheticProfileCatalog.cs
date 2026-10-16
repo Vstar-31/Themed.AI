@@ -255,6 +255,7 @@ public static class AestheticProfileCatalog
     public static IReadOnlyList<Profile> FindAll(string? prompt)
     {
         var normalized = Normalize(prompt);
+        var blendNormalized = NormalizeBlendPrompt(prompt);
         if (normalized.Length == 0) return Array.Empty<Profile>();
 
         var padded = $" {normalized} ";
@@ -312,16 +313,19 @@ public static class AestheticProfileCatalog
         bool isNamedPaletteBlend =
             normalized.Contains("cool wasabi", StringComparison.Ordinal) ||
             normalized.Contains("persimmon plum", StringComparison.Ordinal);
-        bool hasBlendConnector = HasBlendConnector(normalized) && !isNamedPaletteBlend;
+        bool hasBlendConnector = HasBlendConnector(blendNormalized) && !isNamedPaletteBlend;
+        int expectedBlendCount = hasBlendConnector
+            ? Math.Clamp(CountBlendConnectors(blendNormalized) + 1, 2, 3)
+            : 2;
         bool hasSpecificExactMatch = matches.Any(match => match.Score >= 2000);
         if (matches.Count == 0 || hasBlendConnector || !hasSpecificExactMatch)
         {
             var fuzzyMatches = FindFuzzyProfiles(normalized, allowMultiple: hasBlendConnector);
             if (hasBlendConnector)
             {
-                // Explicit blends may contain incidental one-word aliases alongside a misspelled
-                // full reference. Merge both paths, then keep the strongest match at each token
-                // position before taking the first two references in the prompt.
+                // Explicit blends may contain incidental one-word aliases alongside misspelled
+                // full references. Merge both paths, keep the strongest match at each token
+                // position, then honor the number of source references the user actually joined.
                 foreach (var match in fuzzyMatches)
                 {
                     int existingIndex = matches.FindIndex(existing =>
@@ -362,7 +366,9 @@ public static class AestheticProfileCatalog
                 profile.Id.Equals(match.Profile.Id, StringComparison.OrdinalIgnoreCase)))
                 continue;
             orderedProfiles.Add(match.Profile);
-            if (hasBlendConnector && orderedProfiles.Count == 2)
+            if (hasBlendConnector && orderedProfiles.Count >= expectedBlendCount)
+                break;
+            if (isNamedPaletteBlend && orderedProfiles.Count >= 2)
                 break;
         }
 
@@ -495,15 +501,36 @@ public static class AestheticProfileCatalog
         return previous[target.Length];
     }
 
+    private static string NormalizeBlendPrompt(string? prompt)
+        // The generic normalizer removes punctuation, so preserve a plus sign as a semantic
+        // connector before normalizing ("Y3K + Indie Sleaze + Desi-Core").
+        => Normalize(prompt?.Replace("+", " plus ", StringComparison.Ordinal));
+
+    private static readonly string[] BlendConnectors =
+    [
+        " meets ", " x ", " plus ", " blend ", " blended with ", " mix ", " mixed with ",
+        " mashup ", " mash up ", " fusion ", " fused with ", " and "
+    ];
+
     private static bool HasBlendConnector(string normalized)
+        => CountBlendConnectors(normalized) > 0;
+
+    private static int CountBlendConnectors(string normalized)
     {
         var text = $" {normalized} ";
-        string[] connectors =
-        [
-            " meets ", " x ", " + ", " blend ", " blended with ", " mix ", " mixed with ",
-            " mashup ", " mash up ", " fusion ", " fused with ", " and "
-        ];
-        return connectors.Any(connector => text.Contains(connector, StringComparison.Ordinal));
+        int count = 0;
+        foreach (var connector in BlendConnectors)
+        {
+            int searchFrom = 0;
+            while (searchFrom < text.Length)
+            {
+                int index = text.IndexOf(connector, searchFrom, StringComparison.Ordinal);
+                if (index < 0) break;
+                count++;
+                searchFrom = index + connector.Length;
+            }
+        }
+        return count;
     }
 
     /// <summary>
@@ -522,7 +549,7 @@ public static class AestheticProfileCatalog
             text.Contains("persimmon plum", StringComparison.Ordinal))
             return true;
 
-        return HasBlendConnector(text);
+        return HasBlendConnector(NormalizeBlendPrompt(prompt));
     }
 
     private static bool IsNegatedReference(string prefix)
