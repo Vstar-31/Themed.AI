@@ -193,14 +193,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         try
         {
             var text = VibeText.Trim();
-            var tokens = VibeTokenizer.TokenizeFull(text).Raw;
-            bool isRefinement = tokens.Any(w => w is
-                "darker" or "dark" or "dim" or "dimmer" or
-                "lighter" or "light" or "bright" or "brighter" or
-                "vibrant" or "vivid" or "saturated" or "bold" or "bolder" or "colorful" or
-                "muted" or "desaturated" or "subtle" or "softer" or "pastel" or "faded" or
-                "warmer" or "warm" or "warmth" or "cozier" or
-                "cooler" or "cool" or "cold" or "colder" or "icy");
+            bool isRefinement = _refiner.IsRefinementInstruction(text);
 
             if (HasResult && GeneratedTheme != null && isRefinement)
             {
@@ -216,6 +209,24 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 PreviewSwatches.Add(refined.Surface);
                 PreviewSwatches.Add(refined.AccentPrimary);
                 PreviewSwatches.Add(refined.AccentStrong);
+
+                // Refinement mutates the same theme instance; refresh insight data too so hue,
+                // mode and swatches always describe the palette currently visible in the preview.
+                if (Analysis is { } priorAnalysis)
+                {
+                    var (hue, saturation, _) = ColorMath.HexToHsl(refined.AccentPrimary);
+                    var (_, _, lightness) = ColorMath.HexToHsl(refined.BackgroundBase);
+                    Analysis = priorAnalysis with
+                    {
+                        GeneratedName = refined.Name,
+                        ComputedHue = hue,
+                        ComputedSaturation = saturation,
+                        ComputedLightness = lightness,
+                        IsDark = ColorMath.LuminanceFromHex(refined.BackgroundBase) < 0.18f,
+                        Swatches = [refined.BackgroundBase, refined.BackgroundAlt, refined.Surface,
+                            refined.AccentPrimary, refined.AccentStrong]
+                    };
+                }
 
                 var quality = ContrastChecker.Summary(refined);
                 Status = $"Refined \"{refined.Name}\" · palette contrast {quality.Passing}/{quality.Total} AA checks.";
