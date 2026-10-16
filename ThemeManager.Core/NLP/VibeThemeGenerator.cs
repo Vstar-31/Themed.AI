@@ -23,16 +23,17 @@ public sealed class VibeThemeGenerator
     public (CozyTheme Theme, VibeAnalysisResult Analysis) GenerateAndExplain(string vibeText)
     {
         var signal = VibeAnalyzer.Analyze(vibeText);
-        var profiles = AestheticProfileCatalog.FindAll(vibeText);
-        var profile = profiles.FirstOrDefault();
-        var secondaryProfile = AestheticProfileCatalog.RequestsBlend(vibeText, profiles) && profiles.Count > 1
-            ? profiles[1]
-            : null;
+        var detectedProfiles = AestheticProfileCatalog.FindAll(vibeText);
+        bool requestsBlend = AestheticProfileCatalog.RequestsBlend(vibeText, detectedProfiles);
+        var selectedProfiles = requestsBlend
+            ? detectedProfiles.Take(3).ToList()
+            : detectedProfiles.Take(1).ToList();
+        var profile = selectedProfiles.FirstOrDefault();
 
         CozyTheme theme;
-        if (profile is not null && secondaryProfile is not null)
+        if (selectedProfiles.Count > 1)
         {
-            theme = AestheticProfileCatalog.CreateBlendedTheme(profile, secondaryProfile, vibeText);
+            theme = AestheticProfileCatalog.CreateBlendedTheme(selectedProfiles, vibeText);
         }
         else if (profile is not null)
         {
@@ -78,36 +79,28 @@ public sealed class VibeThemeGenerator
             throw new InvalidOperationException(
                 $"Generated palette failed its final accessibility gate ({finalQuality.PassingPairs}/{finalQuality.TotalPairs} pairs).");
 
-        var analysis = BuildAnalysis(signal, theme, profile, secondaryProfile);
+        var analysis = BuildAnalysis(signal, theme, selectedProfiles);
         return (theme, analysis);
     }
 
     private static VibeAnalysisResult BuildAnalysis(
         VibeSignal signal,
         CozyTheme theme,
-        AestheticProfileCatalog.Profile? profile,
-        AestheticProfileCatalog.Profile? secondaryProfile)
+        IReadOnlyList<AestheticProfileCatalog.Profile> selectedProfiles)
     {
         var keywords = signal.MatchedKeywords.ToList();
         var categories = new Dictionary<string, string>(signal.KeywordCategories, StringComparer.OrdinalIgnoreCase);
         var bigrams = signal.BigramMatches.ToList();
         var fuzzy = new Dictionary<string, string>(signal.FuzzyCorrections, StringComparer.OrdinalIgnoreCase);
 
-        if (profile is not null)
+        // Every selected reference stays visible in the analysis panel, including a third style in
+        // a three-way blend. This also makes it easier to understand why the palette uses its colors.
+        for (int index = 0; index < selectedProfiles.Count; index++)
         {
-            // Surface detected art direction in the insight panel even when a name is not a
-            // traditional color-lexicon term. For blends, retain both source aesthetics so the UI
-            // can explain how the generated visual language was composed.
-            if (!keywords.Contains(profile.Name, StringComparer.OrdinalIgnoreCase))
-                keywords.Insert(0, profile.Name);
-            categories[profile.Name] = "aesthetic profile";
-        }
-
-        if (secondaryProfile is not null)
-        {
-            if (!keywords.Contains(secondaryProfile.Name, StringComparer.OrdinalIgnoreCase))
-                keywords.Insert(Math.Min(1, keywords.Count), secondaryProfile.Name);
-            categories[secondaryProfile.Name] = "blended aesthetic";
+            var sourceProfile = selectedProfiles[index];
+            if (!keywords.Contains(sourceProfile.Name, StringComparer.OrdinalIgnoreCase))
+                keywords.Insert(Math.Min(index, keywords.Count), sourceProfile.Name);
+            categories[sourceProfile.Name] = index == 0 ? "aesthetic profile" : "blended aesthetic";
         }
 
         var (hue, saturation, _) = ColorMath.HexToHsl(theme.AccentPrimary);
