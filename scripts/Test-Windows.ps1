@@ -23,13 +23,13 @@ try {
     # global.json selects the SDK; setup-dotnet/Visual Studio must also provide .NET 8.
     Invoke-Dotnet --info
     Invoke-Dotnet restore ThemeManager.sln --runtime win-x64
-    Invoke-Dotnet build ThemeManager.sln --configuration $Configuration -p:Platform=x64 --no-restore "-bl:$results/build.binlog"
-    Invoke-Dotnet test ThemeManager.Tests/ThemeManager.Tests.csproj --configuration $Configuration -p:Platform=x64 --no-build --no-restore --logger 'trx;LogFileName=tests.trx' --results-directory $results
+    Invoke-Dotnet build ThemeManager.sln --configuration $Configuration '-p:Platform=x64' --no-restore "-bl:$results/build.binlog"
+    Invoke-Dotnet test ThemeManager.Tests/ThemeManager.Tests.csproj --configuration $Configuration '-p:Platform=x64' --no-build --no-restore --logger 'trx;LogFileName=tests.trx' --results-directory $results
 
     if ($Publish) {
         $output = Join-Path $repoRoot 'artifacts/windows-x64'
         # Include both .NET and Windows App SDK. WebView2 Runtime remains a prerequisite.
-        Invoke-Dotnet publish ThemeManager.WinUI/ThemeManager.WinUI.csproj --configuration $Configuration --runtime win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true --output $output
+        Invoke-Dotnet publish ThemeManager.WinUI/ThemeManager.WinUI.csproj --configuration $Configuration --runtime win-x64 --self-contained true '-p:Platform=x64' '-p:WindowsAppSDKSelfContained=true' --output $output
         if (-not (Test-Path (Join-Path $output 'ThemeManager.WinUI.exe'))) {
             throw 'Publish completed without ThemeManager.WinUI.exe.'
         }
