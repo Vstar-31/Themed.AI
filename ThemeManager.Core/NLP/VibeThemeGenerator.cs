@@ -68,7 +68,11 @@ public sealed class VibeThemeGenerator
         // One final quality gate covers every route: exact profile, aesthetic blend, and free-form
         // color-language generation. This is intentionally at the public boundary so a future
         // candidate strategy cannot bypass accessibility or tonal-hierarchy repair.
-        bool? requestedPolarity = profile is null && signal.HasSignal ? signal.IsDark : null;
+        // Explicit mode requests must win for curated profiles and blends too. Without this,
+        // "Coquette in dark mode" starts from a light curated base and can remain light because
+        // only a small stylistic lightness nudge was applied before validation.
+        bool? requestedPolarity = AestheticProfileCatalog.InferPreferredPolarity(vibeText);
+        requestedPolarity ??= profile is null && signal.HasSignal ? signal.IsDark : null;
         var finalQuality = PaletteQualityValidator.ValidateAndRepair(theme, requestedPolarity);
         if (!finalQuality.PassesAA)
             throw new InvalidOperationException(
