@@ -65,11 +65,11 @@ fresh sign-in because browser storage is scoped to the origin.
 - `XamlCompiler.exe` / “Exec format error” on Linux: run the Windows workflow or script.
 - WebView initialization failure: repair Microsoft Edge WebView2 Runtime.
 - Login 401: credentials were rejected. Browser CORS errors are a different failure.
-- CORS: backend `main` currently allows local development plus one `FRONTEND_URL_PROD` value
-  (defaulting to the original VFAI site). A comma-separated value is treated as one origin by
-  the current code. Both production origins need explicit support to serve both frontends.
-  Render configuration is unverified while the connector requires reconnection. Backend main
-  changes require owner approval.
+- CORS: the approved backend patch `Vstar-31/vibefinderai@6e5aba2` explicitly allows both
+  production origins and parses additional comma-separated `FRONTEND_URL_PROD` origins.
+  Confirm Render has deployed that commit before treating browser login as verified. Render
+  configuration remains unverified while the connector requires reconnection. Further changes
+  to backend main require owner approval.
 
 Review logs before sharing them: widget definitions can include account credentials and URLs,
 and build binary logs can include local paths and build environment values. Share the relevant
@@ -97,4 +97,11 @@ The formal Codex Security scan could not start because this session exposes none
 tools. Its desktop scan instructions require an authoritative scan ID before preflight/source
 workers and prohibit inventing scan ownership. These are development review notes, not a
 completed Codex Security scan. Reconnect Netlify and Render to inspect actual deployment
-settings and logs; neither production configuration nor backend main was modified.
+settings and logs. The only backend main change in this batch is the separately approved CORS
+patch `6e5aba2`; production configuration was not modified.
+
+The NuGet advisory check initially flagged old `System.Net.Http` and
+`System.Text.RegularExpressions` dependencies brought in by xUnit 2.5.3. Updating to xUnit 2.9.3
+removed those dependency paths. App and test dependency checks (including transitive packages)
+then reported no known vulnerable packages. This is advisory-database coverage, not proof that
+all dependencies are vulnerability-free. The updated Release core suite passes 492 tests.
