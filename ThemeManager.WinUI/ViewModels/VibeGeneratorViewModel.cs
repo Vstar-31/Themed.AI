@@ -3,6 +3,7 @@ using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
+using ThemeManager.Core.Utilities;
 using Microsoft.Extensions.Logging;
 using ThemeManager.WinUI;
 
@@ -25,6 +26,8 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     /// VibeAnalysisResult, so it can't inform the very first generation of a session) and fed
     /// into the next one — see the comment in GenerateAsync for why this can't just be a local.</summary>
     private Mood _inferredMoodForNextGeneration = Mood.Neutral;
+    private int _variationSeed;
+    private bool _forceNewGeneration;
 
     // ── Input ─────────────────────────────────────────────────────────────────
     private string _vibeText = string.Empty;
@@ -35,6 +38,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         {
             if (SetProperty(ref _vibeText, value))
             {
+                _variationSeed = 0;
                 OnPropertyChanged(nameof(CanGenerate));
                 // Live-update the insight panel as the user types (debounced via
                 // the 300 ms delay in the view's TextChanged handler).
@@ -141,21 +145,21 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     // ── Suggestion chips ──────────────────────────────────────────────────────
     public ObservableCollection<string> SuggestionChips { get; } = new()
     {
-        "midnight ocean storm",
-        "cozy autumn library",
-        "neon tokyo night",
-        "golden desert sunset",
-        "nordic winter frost",
-        "dark espresso noir",
-        "cherry blossom spring",
-        "emerald forest mist",
-        "velvet midnight jazz",
-        "terracotta tuscan noon",
-        "soft lavender dream",
-        "copper ember glow",
-        "arctic glacier dawn",
-        "moody rainy evening",
-        "vibrant tropical reef",
+        "Neon Afterglow",
+        "Frutiger Aero glass ocean",
+        "Neo Deco with brass and plum",
+        "Extra Celestial opalescent orbit",
+        "Poetcore sunlit notebook",
+        "Vamp Romantic after dark",
+        "Gimme Gummy jelly glass",
+        "Arcane violet and brass",
+        "Studio Ghibli forest",
+        "City Pop Afterhours",
+        "Wilderkind botanical forest",
+        "Barbiecore glossy pink",
+        "Cool Blue glacier glass",
+        "Glamoratti 80s luxury",
+        "Solarpunk Garden",
     };
 
     // ── Status message ────────────────────────────────────────────────────────
@@ -192,14 +196,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         try
         {
             var text = VibeText.Trim();
-            var tokens = VibeTokenizer.TokenizeFull(text).Raw;
-            bool isRefinement = tokens.Any(w => w is
-                "darker" or "dark" or "dim" or "dimmer" or
-                "lighter" or "light" or "bright" or "brighter" or
-                "vibrant" or "vivid" or "saturated" or "bold" or "bolder" or "colorful" or
-                "muted" or "desaturated" or "subtle" or "softer" or "pastel" or "faded" or
-                "warmer" or "warm" or "warmth" or "cozier" or
-                "cooler" or "cool" or "cold" or "colder" or "icy");
+            bool isRefinement = !_forceNewGeneration && _refiner.IsRefinementInstruction(text);
 
             if (HasResult && GeneratedTheme != null && isRefinement)
             {
@@ -216,7 +213,26 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 PreviewSwatches.Add(refined.AccentPrimary);
                 PreviewSwatches.Add(refined.AccentStrong);
 
-                Status = $"Refined \"{refined.Name}\".";
+                // Refinement mutates the same theme instance; refresh insight data too so hue,
+                // mode and swatches always describe the palette currently visible in the preview.
+                if (Analysis is { } priorAnalysis)
+                {
+                    var (hue, saturation, _) = ColorMath.HexToHsl(refined.AccentPrimary);
+                    var (_, _, lightness) = ColorMath.HexToHsl(refined.BackgroundBase);
+                    Analysis = priorAnalysis with
+                    {
+                        GeneratedName = refined.Name,
+                        ComputedHue = hue,
+                        ComputedSaturation = saturation,
+                        ComputedLightness = lightness,
+                        IsDark = ColorMath.LuminanceFromHex(refined.BackgroundBase) < 0.18f,
+                        Swatches = [refined.BackgroundBase, refined.BackgroundAlt, refined.Surface,
+                            refined.AccentPrimary, refined.AccentStrong]
+                    };
+                }
+
+                var quality = ContrastChecker.Summary(refined);
+                Status = $"Refined \"{refined.Name}\" · palette contrast {quality.Passing}/{quality.Total} AA checks.";
                 _logger.LogInformation("Theme refinement applied: {ThemeName}", refined.Name);
             }
             else
@@ -243,7 +259,12 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 // structurally can't inform the very first generation of a session, and a fresh
                 // GenerationContext gets built on every call, so setting Mood on it after this
                 // generation already consumed it would be a no-op.
-                var context = new GenerationContext { Prompt = text, Mood = _inferredMoodForNextGeneration };
+                var context = new GenerationContext
+                {
+                    Prompt = text,
+                    Mood = _inferredMoodForNextGeneration,
+                    VariationSeed = _variationSeed
+                };
                 var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
                 var theme = candidate.Theme;
                 var analysis = candidate.Analysis;
@@ -269,7 +290,8 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
                 else
                 {
                     HasResult = true;
-                    Status = $"Generated \"{theme.Name}\" from {analysis.MatchedKeywords.Count} matched keywords.";
+                    var quality = ContrastChecker.Summary(theme);
+                    Status = $"Generated \"{theme.Name}\" · palette contrast {quality.Passing}/{quality.Total} AA checks.";
                     _logger.LogInformation("Vibe generation succeeded via personalization pipeline. Generated theme: {ThemeName}, Source: {Source}", theme.Name, candidate.GenerationSource);
 
                     // NOTE: Do NOT call SetActiveTheme here. Applying the generated
@@ -333,10 +355,21 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     /// <summary>Regenerates with a randomised variation on the same text.</summary>
     public async Task RegenerateAsync()
     {
-        // Appending a tiny variation seed doesn't change the meaning but
-        // shuffles any tie-breaking randomness in future algorithm extensions.
-        if (!string.IsNullOrWhiteSpace(VibeText))
+        if (string.IsNullOrWhiteSpace(VibeText)) return;
+
+        // Candidate generation is deterministic by design. Rotate the preferred treatment so the
+        // button returns the next art direction instead of presenting the same result repeatedly.
+        _variationSeed = (_variationSeed + 1) % 3;
+        _forceNewGeneration = true;
+        _logger.LogInformation("Regenerating theme with variation seed {VariationSeed}", _variationSeed);
+        try
+        {
             await GenerateAsync();
+        }
+        finally
+        {
+            _forceNewGeneration = false;
+        }
     }
 
     /// <summary>Sets the vibe text from a suggestion chip and triggers generation.</summary>

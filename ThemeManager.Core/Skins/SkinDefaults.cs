@@ -3,7 +3,7 @@ namespace ThemeManager.Core.Skins;
 /// <summary>Curated built-in widgets. Layouts favor generous typography, consistent spacing and readable data.</summary>
 public static class SkinDefaults
 {
-    private const int CurrentDesignVersion = 4;
+    private const int CurrentDesignVersion = 5;
 
     private static SkinDefinition Base(string id, string name, double x, double y, double width, double height) => new()
     {

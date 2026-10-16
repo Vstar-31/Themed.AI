@@ -18,13 +18,14 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Spacing="2">
                 <TextBlock Text="Widgets"
                            FontSize="{StaticResource FontSizeTitle}"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Rainmeter-style desktop widgets. Normal desktop layering by default — opt into Stay on top only when you need it. Toggle, tint, lock, and drag widgets here."
+                <TextBlock Text="Widgets are individual desktop tools. Add, edit, toggle, lock, move, or delete them here; use Generate with AI to describe a new one in plain English."
                            Style="{StaticResource CaptionStyle}"
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -32,7 +33,11 @@
                 <TextBlock Text="Master visibility" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}"/>
                 <ToggleSwitch x:Name="MasterVisibilityToggle" IsOn="True" Toggled="MasterVisibilityToggle_Toggled" Style="{StaticResource CozyToggleStyle}" OnContent="" OffContent="" />
             </StackPanel>
-            <Button Grid.Column="2" Content="+ New Widget"
+            <Button Grid.Column="2" Content="Generate with AI"
+                    VerticalAlignment="Top"
+                    Margin="0,0,8,0"
+                    Click="GenerateWidgetButton_Click" />
+            <Button Grid.Column="3" Content="+ New Widget"
                     Style="{StaticResource PrimaryButtonStyle}"
                     VerticalAlignment="Top"
                     Click="NewWidgetButton_Click" />

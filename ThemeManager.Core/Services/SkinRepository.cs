@@ -159,6 +159,20 @@ public sealed class SkinRepository
                 changed = true;
             }
 
+            // v5 introduces composition groups. Existing widgets need no structural migration:
+            // the field deserializes as an empty list and all current meters remain at widget scope.
+            if (skin.SchemaVersion < 5)
+            {
+                skin.SchemaVersion = 5;
+                changed = true;
+            }
+
+            if (skin.Groups is null)
+            {
+                skin.Groups = new List<WidgetGroupDefinition>();
+                changed = true;
+            }
+
             if (skin.Tags is null)
             {
                 skin.Tags = new List<string>();

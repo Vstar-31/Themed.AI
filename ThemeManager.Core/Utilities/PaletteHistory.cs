@@ -34,8 +34,12 @@ public sealed class PaletteHistory
     /// Clears the redo stack (standard undo/redo semantics).
     /// </summary>
     public void Push(CozyTheme theme)
+        => Push(PaletteSnapshot.From(theme));
+
+    /// <summary>Pushes a pre-captured state before an operation that mutates the theme in place.</summary>
+    public void Push(PaletteSnapshot snapshot)
     {
-        _undoStack.AddLast(PaletteSnapshot.From(theme));
+        _undoStack.AddLast(snapshot);
         if (_undoStack.Count > MaxSteps)
             _undoStack.RemoveFirst();
 

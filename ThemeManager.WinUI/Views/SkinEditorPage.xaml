@@ -43,13 +43,13 @@
         </Grid>
 
         <!-- ══════════════════════════════════════════════════════════
-             Content: 360px controls | preview
+             Content: responsive controls | preview
         ══════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="1" Margin="32,0,32,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" />
-                <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="0.9*" MinWidth="260" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="1.1*" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
             <!-- ── Left: controls ── -->
@@ -60,11 +60,11 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Widget size &amp; layout" Style="{StaticResource SectionHeaderStyle}" />
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <NumberBox Header="Width" Width="150"
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <NumberBox Header="Width" Width="104"
                                            Value="{x:Bind ViewModel.Width, Mode=TwoWay}"
                                            SpinButtonPlacementMode="Compact" Minimum="60" Maximum="1200" />
-                                <NumberBox Header="Height" Width="150"
+                                <NumberBox Header="Height" Width="104"
                                            Value="{x:Bind ViewModel.Height, Mode=TwoWay}"
                                            SpinButtonPlacementMode="Compact" Minimum="40" Maximum="1200" />
                             </StackPanel>
@@ -112,6 +112,14 @@
                                                 <TextBox Text="{x:Bind Target, Mode=TwoWay}"
                                                          PlaceholderText="{x:Bind TargetPlaceholder, Mode=OneWay}"
                                                          Visibility="{x:Bind NeedsTarget, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <TextBox Header="Formula expression"
+                                                         Text="{x:Bind Expression, Mode=TwoWay}"
+                                                         PlaceholderText="e.g. CpuUsage + MemUsage / 2"
+                                                         Visibility="{x:Bind IsFormula, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                <TextBlock Text="Formula supports +, -, *, /, parentheses, and abs/min/max/round/floor/ceil/clamp. Reference other measure names directly."
+                                                           Style="{StaticResource CaptionStyle}"
+                                                           TextWrapping="Wrap"
+                                                           Visibility="{x:Bind IsFormula, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                                 <ComboBox ItemsSource="{x:Bind vm:MeasureEditorItem.WebJsonPresetOptions}"
                                                           DisplayMemberPath="Label"
                                                           PlaceholderText="Or pick a preset…"
@@ -147,9 +155,11 @@
                                 <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
 
-                            <ListView ItemsSource="{x:Bind ViewModel.Meters}"
+                            <ListView x:Name="MetersList"
+                                      ItemsSource="{x:Bind ViewModel.Meters}"
                                       SelectedItem="{x:Bind ViewModel.SelectedMeter, Mode=TwoWay}"
-                                      SelectionMode="Single">
+                                      SelectionMode="Multiple"
+                                      SelectionChanged="MetersList_SelectionChanged">
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="vm:MeterEditorItem">
                                         <Grid Padding="4,2">
@@ -180,6 +190,79 @@
                                 <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
                                 <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+
+                    <!-- Composition groups -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Groups" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBlock Text="Select several meters above, then group them. Groups share position, scale, rotation, opacity and optional clipping."
+                                       Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Group selected" Click="GroupSelectedMeters_Click" />
+                                <Button Content="Ungroup selected" Click="UngroupSelectedMeters_Click" />
+                            </StackPanel>
+
+                            <ListView x:Name="GroupsList"
+                                      ItemsSource="{x:Bind ViewModel.Groups}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedGroup, Mode=TwoWay}"
+                                      SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GroupEditorItem">
+                                        <Grid Padding="4,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{x:Bind MeterCount, Mode=OneWay}"
+                                                           Style="{StaticResource CaptionStyle}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="✕" Tag="{x:Bind}"
+                                                    Style="{StaticResource GhostButtonStyle}"
+                                                    Click="RemoveGroupButton_Click" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Selected group properties -->
+                    <Border Style="{StaticResource CardStyle}"
+                            Visibility="{x:Bind ViewModel.HasSelectedGroup, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Selected group" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBox Header="Name" Text="{x:Bind ViewModel.SelectedGroup.Name, Mode=TwoWay}" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumberBox Header="X" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.X, Mode=TwoWay}" />
+                                <NumberBox Header="Y" Width="80" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Y, Mode=TwoWay}" />
+                                <NumberBox Header="Width" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Width, Mode=TwoWay}" />
+                                <NumberBox Header="Height" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Height, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumberBox Header="Scale X" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.ScaleX, Mode=TwoWay}" />
+                                <NumberBox Header="Scale Y" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.ScaleY, Mode=TwoWay}" />
+                                <NumberBox Header="Rotation" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Rotation, Mode=TwoWay}" />
+                                <NumberBox Header="Opacity" Width="90" SpinButtonPlacementMode="Compact"
+                                           Value="{x:Bind ViewModel.SelectedGroup.Opacity, Mode=TwoWay}"
+                                           Minimum="0" Maximum="1" />
+                            </StackPanel>
+
+                            <CheckBox Content="Clip children to group bounds"
+                                      IsChecked="{x:Bind ViewModel.SelectedGroup.Clip, Mode=TwoWay}" />
                         </StackPanel>
                     </Border>
 
@@ -278,11 +361,11 @@
                                 <TextBlock Text="Threshold alert" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,0" />
                                 <TextBlock Text="When the value exceeds this %, the meter changes to the alert color. Set to 0 to disable."
                                            Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <NumberBox Header="Threshold %" Width="120"
+                                <StackPanel Spacing="8">
+                                    <NumberBox Header="Threshold %" HorizontalAlignment="Stretch"
                                                Value="{x:Bind ViewModel.SelectedMeter.ThresholdPercent, Mode=TwoWay}"
                                                SpinButtonPlacementMode="Compact" Minimum="0" Maximum="100" />
-                                    <TextBox Header="Alert color (hex)" Width="140"
+                                    <TextBox Header="Alert color (hex)" HorizontalAlignment="Stretch"
                                              Text="{x:Bind ViewModel.SelectedMeter.ThresholdColorHex, Mode=TwoWay}"
                                              PlaceholderText="#FF4444" />
                                 </StackPanel>
@@ -296,21 +379,28 @@
             </ScrollViewer>
 
             <!-- ── Right: live preview ── -->
-            <Grid Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Spacing="10" HorizontalAlignment="Center">
-                    <TextBlock Text="Drag a meter to reposition it — click to select and edit."
-                               Style="{StaticResource CaptionStyle}" HorizontalAlignment="Center" />
-                    <Border x:Name="PreviewFrame"
-                            Width="{x:Bind ViewModel.Width, Mode=OneWay}"
-                            Height="{x:Bind ViewModel.Height, Mode=OneWay}"
-                            BorderBrush="{StaticResource BorderSubtleBrush}"
-                            BorderThickness="2"
-                            CornerRadius="{StaticResource CornerRadiusLarge}"
-                            Background="{StaticResource CardBackgroundBrush}">
-                        <Canvas x:Name="PreviewCanvas" Background="Transparent" />
-                    </Border>
-                </StackPanel>
-            </Grid>
+            <ScrollViewer Grid.Column="2"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          ZoomMode="Disabled">
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel Spacing="10" HorizontalAlignment="Center">
+                        <TextBlock Text="Drag a meter to reposition it — click to select and edit."
+                                   Style="{StaticResource CaptionStyle}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" />
+                        <Border x:Name="PreviewFrame"
+                                Width="{x:Bind ViewModel.Width, Mode=OneWay}"
+                                Height="{x:Bind ViewModel.Height, Mode=OneWay}"
+                                BorderBrush="{StaticResource BorderSubtleBrush}"
+                                BorderThickness="2"
+                                CornerRadius="{StaticResource CornerRadiusLarge}"
+                                Background="{StaticResource CardBackgroundBrush}">
+                            <Canvas x:Name="PreviewCanvas" Background="Transparent" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
         </Grid>
 
         <!-- ══════════════════════════════════════════════════════════

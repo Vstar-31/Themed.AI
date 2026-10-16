@@ -28,15 +28,61 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Margin="0,0,0,24">
-                <StackPanel>
-                    <TextBlock Text="DESKTOP STUDIO" FontSize="12" FontWeight="SemiBold" Opacity="0.65" />
-                    <TextBlock Text="Build your world" FontSize="36" FontWeight="Bold" Margin="0,4,0,0" />
-                    <TextBlock Text="Compose wallpapers, widgets, atmosphere and Windows personality as one living scene." FontSize="14" Opacity="0.72" Margin="0,6,0,0" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button Content="Surprise me" Click="SurpriseMe_Click" Margin="0,0,8,0" />
-                    <Button Content="Generate world" Click="GenerateWorld_Click" />
-                </StackPanel>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <StackPanel>
+                        <TextBlock Text="DESKTOP STUDIO  ·  WORLDS" FontSize="12" FontWeight="SemiBold" Opacity="0.65" />
+                        <TextBlock Text="Build a complete desktop world" FontSize="34" FontWeight="Bold" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="Themes are palettes. Worlds bring a palette together with wallpaper, widget layout and desktop behavior — then save the whole setup as one scene." FontSize="14" Opacity="0.72" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,16,0,0" ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBox x:Name="WorldPromptBox"
+                             Grid.Row="0"
+                             Header="Describe the desktop you want"
+                             PlaceholderText="e.g. rainy cyberpunk city, magenta/cyan glow, compact music player and system stats"
+                             Style="{StaticResource CozyTextBoxStyle}"
+                             MinHeight="58"
+                             FontSize="14"
+                             TextWrapping="Wrap"
+                             KeyDown="WorldPromptBox_KeyDown" />
+                    <Button Grid.Row="0"
+                            Grid.Column="1"
+                            Content="Generate world"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            VerticalAlignment="Bottom"
+                            Padding="14,12"
+                            Margin="8,0,0,0"
+                            Click="GenerateWorld_Click" />
+                    <Button Grid.Row="0"
+                            Grid.Column="2"
+                            Content="Surprise me"
+                            Style="{StaticResource GhostButtonStyle}"
+                            VerticalAlignment="Bottom"
+                            Padding="12,12"
+                            Margin="8,0,0,0"
+                            Click="SurpriseMe_Click" />
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Try:" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
+                        <Button Content="Neon soundstage" Tag="A neon night desktop with cyan and magenta glow, music player and system stats" Click="WorldPromptChip_Click" Style="{StaticResource GhostButtonStyle}" Padding="10,5" />
+                        <Button Content="Rainy reading nook" Tag="A cozy rainy reading nook with warm paper colors, clock and uptime" Click="WorldPromptChip_Click" Style="{StaticResource GhostButtonStyle}" Padding="10,5" />
+                        <Button Content="Minimal focus desk" Tag="A clean minimal focus desk with a calm light palette and only a clock" Click="WorldPromptChip_Click" Style="{StaticResource GhostButtonStyle}" Padding="10,5" />
+                    </StackPanel>
+                </Grid>
             </Grid>
 
             <Grid Grid.Row="1">
@@ -90,7 +136,7 @@
                         </ListView>
                         <Button x:Name="SetActiveWorldButton"
                                 Grid.Row="2"
-                                Content="Activate this world"
+                                Content="Mark as active (no visual apply)"
                                 HorizontalAlignment="Stretch"
                                 Margin="0,12,0,0"
                                 Padding="14,10"
@@ -109,7 +155,7 @@
 
                         <StackPanel>
                             <TextBlock x:Name="WorldStateLabel" Text="ACTIVE WORLD" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextMutedBrush}" />
-                            <TextBlock x:Name="ActiveSceneName" Text="No world selected" FontSize="30" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="ActiveSceneName" Text="No world selected" FontSize="30" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                             <TextBlock x:Name="ActiveSceneMeta" Text="Select a world to preview its composition." FontSize="13" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
 
                             <Grid Margin="0,14,0,0" ColumnSpacing="14">
@@ -117,18 +163,76 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <ToggleSwitch x:Name="AutoSwitchToggle"
-                                              Header="Vibe auto-switch"
-                                              IsOn="False"
-                                              Toggled="AutoSwitchToggle_Toggled"
-                                              VerticalAlignment="Center" />
-                                <TextBlock x:Name="AutoSwitchStatusText"
-                                           Grid.Column="1"
-                                           Text="Manual world selection only."
-                                           FontSize="12"
-                                           Foreground="{StaticResource TextMutedBrush}"
-                                           VerticalAlignment="Center"
-                                           TextWrapping="Wrap" />
+                                <StackPanel Grid.ColumnSpan="2" Spacing="10">
+                                    <StackPanel Spacing="3">
+                                        <ToggleSwitch x:Name="AutoApplyAestheticToggle"
+                                                      Header="Apply aesthetic on selection"
+                                                      IsOn="False"
+                                                      Toggled="AutoApplyAestheticToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock Text="OFF keeps Studio in preview mode. ON applies a world's theme, wallpaper and widget layout when you select it."
+                                                   FontSize="12"
+                                                   Margin="4,0,0,0"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <ToggleSwitch x:Name="AutoSwitchToggle"
+                                                      Header="Vibe auto-switch"
+                                                      IsOn="False"
+                                                      Toggled="AutoSwitchToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock x:Name="AutoSwitchStatusText"
+                                                   Text="Manual world selection only."
+                                                   FontSize="12"
+                                                   Margin="4,0,0,0"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <ToggleSwitch x:Name="SelectedWorldAestheticToggle"
+                                                      Header="Auto-apply this world (override)"
+                                                      IsOn="False"
+                                                      Toggled="SelectedWorldAestheticToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <TextBlock Text="Overrides the global setting for this world. ON or OFF is remembered separately."
+                                                   FontSize="12"
+                                                   Margin="4,0,0,0"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Border Height="1"
+                                            Margin="0,3,0,0"
+                                            Background="{StaticResource BorderSubtleBrush}" />
+                                    <TextBlock Text="VIBE FINDER WIDGETS IN THIS WORLD"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleSwitch x:Name="WorldVibePrimaryToggle"
+                                                      Header="Primary"
+                                                      Tag="VibeFinder Primary"
+                                                      Toggled="WorldVibeWidgetToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="WorldVibeMinimalToggle"
+                                                      Grid.Column="1"
+                                                      Header="Minimal"
+                                                      Tag="VibeFinder Minimal"
+                                                      Toggled="WorldVibeWidgetToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="WorldVibePlaylistToggle"
+                                                      Grid.Column="2"
+                                                      Header="Playlist"
+                                                      Tag="VibeFinder Playlist"
+                                                      Toggled="WorldVibeWidgetToggle_Toggled"
+                                                      VerticalAlignment="Center" />
+                                    </Grid>
+                                </StackPanel>
                             </Grid>
                         </StackPanel>
 
@@ -151,15 +255,16 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
-                                    <ComboBox Grid.Column="0" x:Name="WallpaperStyleCombo" Header="Style" ItemsSource="{x:Bind WallpaperStyles}" SelectedIndex="0" />
-                                    <ComboBox Grid.Column="1" x:Name="WallpaperSizeCombo" Header="Resolution" ItemsSource="{x:Bind WallpaperSizes}" SelectedIndex="0" />
+                                    <ComboBox Grid.Column="0" x:Name="WallpaperStyleCombo" Header="Style" ItemsSource="{x:Bind WallpaperStyles}" SelectedIndex="0" HorizontalAlignment="Stretch" />
+                                    <ComboBox Grid.Column="1" x:Name="WallpaperSizeCombo" Header="Resolution" ItemsSource="{x:Bind WallpaperSizes}" SelectedIndex="0" HorizontalAlignment="Stretch" />
 
-                                    <TextBox Grid.Row="1" Grid.Column="0" x:Name="WallpaperNameBox" Header="Name" PlaceholderText="World wallpaper" />
-                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Spacing="8">
-                                        <Button Content="Generate" Click="GenerateWallpaper_Click" />
-                                        <Button Content="Generate + Apply" Click="GenerateAndApplyWallpaper_Click" />
+                                    <TextBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" x:Name="WallpaperNameBox" Header="Name" PlaceholderText="World wallpaper" HorizontalAlignment="Stretch" />
+                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="8">
+                                        <Button Content="Generate wallpaper" Click="GenerateWallpaper_Click" HorizontalAlignment="Stretch" />
+                                        <Button Content="Generate + Apply" Click="GenerateAndApplyWallpaper_Click" HorizontalAlignment="Stretch" />
                                     </StackPanel>
                                 </Grid>
 
@@ -168,23 +273,30 @@
                             </StackPanel>
                         </Border>
 
-                        <Grid Grid.Row="3" ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Row="3" Spacing="8">
+                            <StackPanel Spacing="3">
                                 <TextBlock x:Name="ApplyStatus" Text="Ready" FontSize="12" Foreground="{StaticResource TextMutedBrush}" />
-                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,3,0,0" />
+                                <TextBlock Text="A world restores its saved widget layout and wallpaper together." FontSize="12" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="Save current layout" Click="SaveCurrentLayout_Click" />
-                            <Button Grid.Column="2" Content="Duplicate" Click="DuplicateWorld_Click" />
-                            <Button Grid.Column="3" Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" />
-                            <Button Grid.Column="4" Content="Apply to desktop" Click="ApplyScene_Click" Padding="20,10" />
-                        </Grid>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Edit details" Click="EditWorldDetails_Click" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Content="Save layout" Click="SaveCurrentLayout_Click" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="2" Content="Duplicate" Click="DuplicateWorld_Click" HorizontalAlignment="Stretch" />
+                            </Grid>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Delete world" Style="{StaticResource DangerButtonStyle}" Click="DeleteWorld_Click" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Content="Apply to desktop" Click="ApplyScene_Click" Padding="12,10" HorizontalAlignment="Stretch" />
+                            </Grid>
+                        </StackPanel>
                     </Grid>
                 </Border>
             </Grid>

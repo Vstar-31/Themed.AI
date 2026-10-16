@@ -17,7 +17,7 @@ public class SkinModelTests
         Assert.NotEmpty(skin.Id);
         Assert.Equal(220, skin.Width);
         Assert.Equal(120, skin.Height);
-        Assert.Equal(4, skin.SchemaVersion);
+        Assert.Equal(5, skin.SchemaVersion);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class SkinModelTests
     {
         var clock = SkinDefaults.CreateClock();
         Assert.Equal("Cozy Clock", clock.Name);
-        Assert.Equal(4, clock.SchemaVersion);
+        Assert.Equal(5, clock.SchemaVersion);
         Assert.False(clock.AlwaysOnTop);
         Assert.Equal(2, clock.Measures.Count);
         Assert.Equal(2, clock.Meters.Count);
@@ -142,6 +142,28 @@ public class SkinModelTests
         Assert.NotNull(rings);
         Assert.DoesNotContain(rings!.Measures, m => m.Type == MeasureType.DiskFree);
         Assert.Contains(rings.Measures, m => m.Type == MeasureType.DiskUsed);
+    }
+
+    [Fact]
+    public void SkinDefinition_Clone_DeepCopiesNestedState()
+    {
+        var source = SkinDefaults.CreateClock();
+        source.Tags.Add("snapshot");
+        source.Variables["source"] = "original";
+        source.Measures[0].Target = "target";
+
+        var copy = source.Clone("copy-id");
+        copy.Tags.Add("copy-only");
+        copy.Variables["source"] = "changed";
+        copy.Measures[0].Target = "changed-target";
+        copy.Meters[0].X = 999;
+
+        Assert.Equal("copy-id", copy.Id);
+        Assert.NotSame(source, copy);
+        Assert.DoesNotContain("copy-only", source.Tags);
+        Assert.Equal("original", source.Variables["source"]);
+        Assert.Equal("target", source.Measures[0].Target);
+        Assert.NotEqual(999, source.Meters[0].X);
     }
 
     [Fact]

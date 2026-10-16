@@ -88,6 +88,18 @@ public static class WidgetDefinitionValidator
         foreach (var group in duplicateMeasures)
             issues.Add(new($"measures.{group.Key}", "Measure names must be unique and non-empty."));
 
+        foreach (var formula in skin.Measures.Where(m => m.Type == MeasureType.Formula))
+        {
+            if (string.IsNullOrWhiteSpace(formula.Expression))
+            {
+                issues.Add(new($"measures.{formula.Name}.expression", "Formula expression cannot be empty."));
+                continue;
+            }
+
+            if (!SafeExpressionEvaluator.TryEvaluate(formula.Expression, _ => 0, out _))
+                issues.Add(new($"measures.{formula.Name}.expression", "Formula expression has invalid syntax or unsupported functions."));
+        }
+
         var measureNames = skin.Measures
             .Select(m => m.Name)
             .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -100,6 +112,32 @@ public static class WidgetDefinitionValidator
 
             if (!string.IsNullOrWhiteSpace(meter.MeasureName) && !measureNames.Contains(meter.MeasureName))
                 issues.Add(new($"meters.{meter.Id}.measureName", $"Measure '{meter.MeasureName}' does not exist."));
+        }
+
+        var meterIds = skin.Meters
+            .Select(m => m.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var duplicateGroupMeters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in skin.Groups ?? new List<WidgetGroupDefinition>())
+        {
+            if (string.IsNullOrWhiteSpace(group.Id))
+                issues.Add(new($"groups.{group.Name}.id", "Group id cannot be empty."));
+            if (group.Width <= 0 || group.Height <= 0)
+                issues.Add(new($"groups.{group.Id}.size", "Group width and height must be greater than zero."));
+            if (group.ScaleX <= 0 || group.ScaleY <= 0)
+                issues.Add(new($"groups.{group.Id}.scale", "Group scale must be greater than zero."));
+            if (group.Opacity < 0 || group.Opacity > 1)
+                issues.Add(new($"groups.{group.Id}.opacity", "Group opacity must be between 0 and 1."));
+
+            foreach (var meterId in group.MeterIds ?? new List<string>())
+            {
+                if (!meterIds.Contains(meterId))
+                    issues.Add(new($"groups.{group.Id}.meterIds", $"Meter '{meterId}' does not exist."));
+                else if (!duplicateGroupMeters.Add(meterId))
+                    issues.Add(new($"groups.{group.Id}.meterIds", $"Meter '{meterId}' belongs to more than one group."));
+            }
         }
 
         return issues;

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Media;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
+using ThemeManager.Core.Skins;
 using ThemeManager.Core.Utilities;
 using ThemeManager.Integration;
 using ThemeManager.WinUI.Services;
@@ -43,6 +44,9 @@ public partial class App : Application
 
     public static ILoggerFactory LoggerFactory { get; private set; } = null!;
 
+    /// <summary>Trusted in-process extension registry for custom widget measures, meters and actions.</summary>
+    public static WidgetPluginRegistry PluginRegistry { get; private set; } = null!;
+
     /// <summary>General app preferences, including the Phase 7 theme-automation schedule — see
     /// ThemeManager.Core.Services.AppSettings.</summary>
     public static AppSettings Settings { get; private set; } = null!;
@@ -74,6 +78,7 @@ public partial class App : Application
         InitializeComponent();
         ThemeRepository = new ThemeRepository();
         ThemeService = new ThemeService(ThemeRepository);
+        ThemeSyncModule.Initialize();
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -90,7 +95,16 @@ public partial class App : Application
             .CreateLogger();
 
         LoggerFactory = new LoggerFactory().AddSerilog(Log.Logger);
+        PluginRegistry = new WidgetPluginRegistry();
         var logger = LoggerFactory.CreateLogger<App>();
+
+        // Optional local extensions: any trusted plugin DLL dropped in the app's Plugins folder is
+        // discovered before widgets start, so custom measures/actions are available immediately.
+        var pluginDirectory = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Plugins");
+        var pluginLoader = new WidgetPluginLoader(PluginRegistry, LoggerFactory.CreateLogger<WidgetPluginLoader>());
+        var loadedPluginCount = pluginLoader.LoadFromDirectory(pluginDirectory);
+        logger.LogInformation("Widget plugin bootstrap complete: {PluginCount} plugin(s) loaded from {PluginDirectory}",
+            loadedPluginCount, pluginDirectory);
         logger.LogInformation("Application Starting...");
 
         // These two are static classes shared across every VibeFinder widget instance (see their
@@ -142,7 +156,7 @@ public partial class App : Application
         // Widgets start up after the main window so its DispatcherQueue is definitely
         // running (SkinManagerService's tick timer needs one). A widget that was left
         // enabled last session reappears on the desktop right away, same as Rainmeter.
-        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory);
+        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory, PluginRegistry);
 
         Personalization = new PersonalizationOrchestrator(System.IO.Path.Combine(
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
@@ -280,6 +294,13 @@ public partial class App : Application
         UpdateBrush("TextPrimaryBrush", HexToColor(theme.TextPrimary));
         UpdateBrush("TextMutedBrush", HexToColor(theme.TextMuted));
         UpdateBrush("BorderSubtleBrush", HexToColor(theme.BorderSubtle));
+
+        // Derived foregrounds must follow the generated palette too. Surface labels use the
+        // palette's validated primary text; filled primary buttons choose whichever of black/white
+        // contrasts best against AccentStrong instead of assuming every accent is dark enough for white.
+        UpdateBrush("TextOnSurfaceBrush", HexToColor(theme.TextPrimary));
+        UpdateBrush("TextOnAccentBrush", HexToColor(
+            ThemeManager.Core.Utilities.ContrastChecker.BestBlackOrWhiteForeground(theme.AccentStrong)));
 
         // Hover/pressed variants (auto-computed from base surface color).
         UpdateBrush("SurfaceHoverBrush", HexToColor(LightenHex(theme.Surface, 0.15)));

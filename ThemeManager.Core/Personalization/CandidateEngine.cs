@@ -1,5 +1,7 @@
+using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Core.Personalization;
 
@@ -10,30 +12,88 @@ public class CandidateEngine
 
     public List<ThemeCandidate> GenerateThemeCandidates(GenerationContext context, int count = 3)
     {
+        ArgumentNullException.ThrowIfNull(context);
         var candidates = new List<ThemeCandidate>();
-
-        // Variant 1: Direct prompt
         var (baseTheme, baseAnalysis) = _themeGen.GenerateAndExplain(context.Prompt);
-        candidates.Add(new ThemeCandidate { Theme = baseTheme, Analysis = baseAnalysis, GenerationSource = "BasePrompt" });
+        bool? preferredPolarity = context.Constraints.MustBeDarkTheme
+            ? true
+            : context.Constraints.MustBeLightTheme
+                ? false
+                : null;
+        PaletteQualityValidator.ValidateAndRepair(baseTheme, preferredPolarity);
+        candidates.Add(new ThemeCandidate
+        {
+            Theme = baseTheme,
+            Analysis = baseAnalysis is null ? null : AnalysisForVariant(baseAnalysis, baseTheme),
+            GenerationSource = "ArtDirectedBase"
+        });
 
         if (count > 1)
         {
-            // Variant 2: Inject mood
-            string moodPrompt = $"{context.Prompt} {context.Mood.ToString().ToLower()}";
-            var (moodTheme, moodAnalysis) = _themeGen.GenerateAndExplain(moodPrompt);
-            candidates.Add(new ThemeCandidate { Theme = moodTheme, Analysis = moodAnalysis, GenerationSource = "MoodInjected" });
+            // Create a genuinely different art direction from the same recognised aesthetic rather
+            // than appending a generic mood word that can accidentally change the prompt's meaning.
+            var softTheme = baseTheme.Duplicate();
+            softTheme.Name = $"{baseTheme.Name} · Soft Focus";
+            softTheme.Description = $"{baseTheme.Description} A softer, more restrained alternate palette.";
+            string softInstruction = context.Constraints.MustBeDarkTheme
+                ? "darker and more muted"
+                : context.Constraints.MustBeLightTheme
+                    ? "lighter and more muted"
+                    : context.Mood is Mood.Energetic or Mood.Playful
+                        ? "more muted"
+                        : "lighter and more muted";
+            _themeGen.Refine(softTheme, softInstruction);
+            PaletteQualityValidator.ValidateAndRepair(softTheme, preferredPolarity);
+            candidates.Add(new ThemeCandidate
+            {
+                Theme = softTheme,
+                Analysis = baseAnalysis is null ? null : AnalysisForVariant(baseAnalysis, softTheme),
+                GenerationSource = "SoftFocusVariant"
+            });
         }
 
         if (count > 2)
         {
-            // Variant 3: Inject constraint hints
-            string constraintPrompt = context.Constraints.MustBeDarkTheme ? $"{context.Prompt} dark" : 
-                                     (context.Constraints.MustBeLightTheme ? $"{context.Prompt} light" : context.Prompt);
-            var (constraintTheme, constraintAnalysis) = _themeGen.GenerateAndExplain(constraintPrompt);
-            candidates.Add(new ThemeCandidate { Theme = constraintTheme, Analysis = constraintAnalysis, GenerationSource = "ConstraintInjected" });
+            var electricTheme = baseTheme.Duplicate();
+            electricTheme.Name = $"{baseTheme.Name} · Electric Cut";
+            electricTheme.Description = $"{baseTheme.Description} A higher-energy alternate with more assertive accents.";
+            string electricInstruction = context.Constraints.MustBeDarkTheme
+                ? "darker and more vibrant"
+                : context.Constraints.MustBeLightTheme
+                    ? "lighter and more vibrant"
+                    : context.Mood is Mood.Relaxed or Mood.Minimal or Mood.Focused
+                        ? "more muted"
+                        : "more vibrant";
+            _themeGen.Refine(electricTheme, electricInstruction);
+            PaletteQualityValidator.ValidateAndRepair(electricTheme, preferredPolarity);
+            candidates.Add(new ThemeCandidate
+            {
+                Theme = electricTheme,
+                Analysis = baseAnalysis is null ? null : AnalysisForVariant(baseAnalysis, electricTheme),
+                GenerationSource = "ElectricCutVariant"
+            });
         }
 
         return candidates;
+    }
+
+    private static VibeAnalysisResult AnalysisForVariant(VibeAnalysisResult source, CozyTheme theme)
+    {
+        // Candidate treatments change the palette after the initial analysis pass. Refresh every
+        // palette-derived field so the preview swatches, hue readout, saturation and mode all
+        // describe the candidate the user is actually evaluating, not the unmodified base theme.
+        var (hue, saturation, _) = ColorMath.HexToHsl(theme.AccentPrimary);
+        var (_, _, lightness) = ColorMath.HexToHsl(theme.BackgroundBase);
+
+        return source with
+        {
+            GeneratedName = theme.Name,
+            ComputedHue = hue,
+            ComputedSaturation = saturation,
+            ComputedLightness = lightness,
+            IsDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f,
+            Swatches = [theme.BackgroundBase, theme.BackgroundAlt, theme.Surface, theme.AccentPrimary, theme.AccentStrong]
+        };
     }
 
     public List<WidgetCandidate> GenerateWidgetCandidates(GenerationContext context, double? screenWidth = null, double? screenHeight = null, int count = 3)

@@ -10,93 +10,117 @@ namespace ThemeManager.Core.NLP;
 public sealed class VibeThemeGenerator
 {
     public CozyTheme Generate(string vibeText)
-    {
-        var signal = VibeAnalyzer.Analyze(vibeText);
-
-        GeneratedPalette palette = signal.HasSignal
-            ? PaletteHarmonizer.Generate(signal)
-            : new GeneratedPalette(
-                "#F5F2EE","#E8E2D8","#C4AE98",
-                "#8B6E58","#5C4035","#2E2018",
-                "#7A6A60","#DDD5C8", false);
-
-        var (name, description) = ThemeNameGenerator.Generate(signal);
-
-        var theme = new CozyTheme
-        {
-            Id           = Guid.NewGuid().ToString(),
-            Name         = name,
-            Description  = description,
-            IsBuiltIn    = false,
-            LastModified = DateTimeOffset.UtcNow,
-        };
-        palette.ApplyTo(theme);
-        return theme;
-    }
+        => GenerateAndExplain(vibeText).Theme;
 
     public VibeAnalysisResult Explain(string vibeText)
-    {
-        var signal  = VibeAnalyzer.Analyze(vibeText);
-        var palette = signal.HasSignal ? PaletteHarmonizer.Generate(signal) : null;
-        var (name, _) = ThemeNameGenerator.Generate(signal);
+        => GenerateAndExplain(vibeText).Analysis;
 
-        return new VibeAnalysisResult(
-            MatchedKeywords:    signal.MatchedKeywords,
-            KeywordCategories:  signal.KeywordCategories,
-            BigramMatches:      signal.BigramMatches,
-            FuzzyCorrections:   signal.FuzzyCorrections,
-            HadEmojiInput:      signal.HadEmojiInput,
-            SentimentScore:     signal.SentimentValence,
-            ComputedHue:        signal.Hue,
-            ComputedLightness:  signal.Lightness,
-            ComputedSaturation: signal.Saturation,
-            WarmthBias:         signal.Warmth,
-            IsDark:             signal.IsDark,
-            GeneratedName:      name,
-            Swatches:           palette?.Swatches().ToList() ?? new()
-        );
-    }
-
+    /// <summary>
+    /// Generates and explains a palette in one pass. Exact aesthetic/pop-culture references use a
+    /// curated art-directed profile; free-form prompts use the compositional NLP engine. Both paths
+    /// go through the same contrast/tonal quality gate before the theme is returned.
+    /// </summary>
     public (CozyTheme Theme, VibeAnalysisResult Analysis) GenerateAndExplain(string vibeText)
     {
         var signal = VibeAnalyzer.Analyze(vibeText);
+        var detectedProfiles = AestheticProfileCatalog.FindAll(vibeText);
+        bool requestsBlend = AestheticProfileCatalog.RequestsBlend(vibeText, detectedProfiles);
+        var selectedProfiles = requestsBlend
+            ? detectedProfiles.Take(3).ToList()
+            : detectedProfiles.Take(1).ToList();
+        var profile = selectedProfiles.FirstOrDefault();
 
-        GeneratedPalette palette = signal.HasSignal
-            ? PaletteHarmonizer.Generate(signal)
-            : new GeneratedPalette(
-                "#F5F2EE","#E8E2D8","#C4AE98",
-                "#8B6E58","#5C4035","#2E2018",
-                "#7A6A60","#DDD5C8", false);
-
-        var (name, description) = ThemeNameGenerator.Generate(signal);
-
-        var theme = new CozyTheme
+        CozyTheme theme;
+        if (selectedProfiles.Count > 1)
         {
-            Id           = Guid.NewGuid().ToString(),
-            Name         = name,
-            Description  = description,
-            IsBuiltIn    = false,
-            LastModified = DateTimeOffset.UtcNow,
-        };
-        palette.ApplyTo(theme);
+            theme = AestheticProfileCatalog.CreateBlendedTheme(selectedProfiles, vibeText);
+        }
+        else if (profile is not null)
+        {
+            theme = AestheticProfileCatalog.CreateTheme(profile, vibeText);
+        }
+        else
+        {
+            GeneratedPalette palette = signal.HasSignal
+                ? PaletteHarmonizer.Generate(signal)
+                : new GeneratedPalette(
+                    "#F5F2EE", "#E8E2D8", "#C4AE98",
+                    "#8B6E58", "#5C4035", "#2E2018",
+                    "#7A6A60", "#DDD5C8", false);
 
-        var analysis = new VibeAnalysisResult(
-            MatchedKeywords:    signal.MatchedKeywords,
-            KeywordCategories:  signal.KeywordCategories,
-            BigramMatches:      signal.BigramMatches,
-            FuzzyCorrections:   signal.FuzzyCorrections,
-            HadEmojiInput:      signal.HadEmojiInput,
-            SentimentScore:     signal.SentimentValence,
-            ComputedHue:        signal.Hue,
-            ComputedLightness:  signal.Lightness,
-            ComputedSaturation: signal.Saturation,
-            WarmthBias:         signal.Warmth,
-            IsDark:             signal.IsDark,
-            GeneratedName:      name,
-            Swatches:           palette.Swatches().ToList()
-        );
+            var (name, description) = ThemeNameGenerator.Generate(signal);
+            theme = new CozyTheme
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = name,
+                Description = description,
+                IsBuiltIn = false,
+                LastModified = DateTimeOffset.UtcNow,
+            };
+            palette.ApplyTo(theme);
 
+            // Free-form prompts need the same finishing language as named profiles: glass-like
+            // surfaces, minimal density, maximalist accents, specific accent requests, etc.
+            // This shared composition pass lets natural descriptions refine the palette without
+            // requiring every phrase to be a pre-authored aesthetic name.
+            AestheticProfileCatalog.ApplyPromptModifiers(theme, vibeText);
+        }
+
+        // One final quality gate covers every route: exact profile, aesthetic blend, and free-form
+        // color-language generation. This is intentionally at the public boundary so a future
+        // candidate strategy cannot bypass accessibility or tonal-hierarchy repair.
+        // Explicit mode requests must win for curated profiles and blends too. Without this,
+        // "Coquette in dark mode" starts from a light curated base and can remain light because
+        // only a small stylistic lightness nudge was applied before validation.
+        bool? requestedPolarity = AestheticProfileCatalog.InferPreferredPolarity(vibeText);
+        requestedPolarity ??= profile is null && signal.HasSignal ? signal.IsDark : null;
+        var finalQuality = PaletteQualityValidator.ValidateAndRepair(theme, requestedPolarity);
+        if (!finalQuality.PassesAA)
+            throw new InvalidOperationException(
+                $"Generated palette failed its final accessibility gate ({finalQuality.PassingPairs}/{finalQuality.TotalPairs} pairs).");
+
+        var analysis = BuildAnalysis(signal, theme, selectedProfiles);
         return (theme, analysis);
+    }
+
+    private static VibeAnalysisResult BuildAnalysis(
+        VibeSignal signal,
+        CozyTheme theme,
+        IReadOnlyList<AestheticProfileCatalog.Profile> selectedProfiles)
+    {
+        var keywords = signal.MatchedKeywords.ToList();
+        var categories = new Dictionary<string, string>(signal.KeywordCategories, StringComparer.OrdinalIgnoreCase);
+        var bigrams = signal.BigramMatches.ToList();
+        var fuzzy = new Dictionary<string, string>(signal.FuzzyCorrections, StringComparer.OrdinalIgnoreCase);
+
+        // Every selected reference stays visible in the analysis panel, including a third style in
+        // a three-way blend. This also makes it easier to understand why the palette uses its colors.
+        for (int index = 0; index < selectedProfiles.Count; index++)
+        {
+            var sourceProfile = selectedProfiles[index];
+            if (!keywords.Contains(sourceProfile.Name, StringComparer.OrdinalIgnoreCase))
+                keywords.Insert(Math.Min(index, keywords.Count), sourceProfile.Name);
+            categories[sourceProfile.Name] = index == 0 ? "aesthetic profile" : "blended aesthetic";
+        }
+
+        var (hue, saturation, _) = ColorMath.HexToHsl(theme.AccentPrimary);
+        var (_, _, lightness) = ColorMath.HexToHsl(theme.BackgroundBase);
+        var isDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f;
+
+        return new VibeAnalysisResult(
+            MatchedKeywords: keywords,
+            KeywordCategories: categories,
+            BigramMatches: bigrams,
+            FuzzyCorrections: fuzzy,
+            HadEmojiInput: signal.HadEmojiInput,
+            SentimentScore: signal.SentimentValence,
+            ComputedHue: hue,
+            ComputedLightness: lightness,
+            ComputedSaturation: saturation,
+            WarmthBias: signal.Warmth,
+            IsDark: isDark,
+            GeneratedName: theme.Name,
+            Swatches: [theme.BackgroundBase, theme.BackgroundAlt, theme.Surface, theme.AccentPrimary, theme.AccentStrong]);
     }
 
     /// <summary>
@@ -107,78 +131,113 @@ public sealed class VibeThemeGenerator
     /// contrast against the new BackgroundBase, so this repairs that before returning rather
     /// than silently shipping a less-readable theme.
     /// </summary>
+    private static readonly string[] RefinementCues =
+    [
+        "darker", "make it darker", "darken", "less bright", "dim it", "dimmer",
+        "lighter", "make it lighter", "lighten", "brighter", "make it brighter", "brighten it",
+        "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer",
+        "subtle", "faded", "matte", "pastel", "quiet luxury", "glassy",
+        "more vibrant", "vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon",
+        "dopamine", "colorful", "bold", "maximalist", "camp", "brat", "hyperpop",
+        "warm", "warmer", "more warm", "cozy", "cozier", "warmth", "amber glow",
+        "cool", "cooler", "more cool", "cold", "colder", "make it icy", "frosted", "glacier",
+        "more red", "make it red", "more orange", "make it orange", "more gold", "make it gold",
+        "more yellow", "make it yellow", "more green", "make it green", "more teal", "make it teal",
+        "more cyan", "make it cyan", "more blue", "make it blue", "more indigo", "make it indigo",
+        "more purple", "make it purple", "more magenta", "make it magenta", "more pink", "make it pink",
+        "red accents", "orange accents", "gold accents", "yellow accents", "green accents", "teal accents",
+        "cyan accents", "blue accents", "indigo accents", "purple accents", "violet accents",
+        "magenta accents", "pink accents", "make accents red", "make accents orange", "make accents gold",
+        "make accents yellow", "make accents green", "make accents teal", "make accents cyan",
+        "make accents blue", "make accents indigo", "make accents purple", "make accents violet",
+        "make the accents violet", "more violet accents", "more purple accents", "more violet", "more red accents",
+        "more orange accents", "more gold accents", "more yellow accents", "more green accents",
+        "more teal accents", "more cyan accents", "more blue accents", "more indigo accents",
+        "more magenta accents", "more pink accents", "make it violet", "in violet",
+        "glass", "glassmorphism", "liquid glass", "frutiger aero",
+        "holographic", "glossy", "chrome", "brutalist", "hard edges", "industrial", "raw concrete",
+        "terminal ui", "minimal", "minimalist", "clean girl", "less clutter", "focus desk",
+        "spacious", "airy layout", "breathing room", "lots of whitespace", "eclectic", "playful maximalism"
+    ];
+
+    /// <summary>
+    /// Distinguishes an imperative edit to the current result from a fresh aesthetic prompt.
+    /// A profile name such as "Dark Academia" or "Frutiger Aero glass ocean" must generate a new
+    /// palette even if the user already has a result; commands such as "make it darker" or
+    /// "add violet accents" refine that existing result.
+    /// </summary>
+    public bool IsRefinementInstruction(string? instructionText)
+    {
+        var normalized = AestheticProfileCatalog.NormalizeForMatching(instructionText);
+        if (normalized.Length == 0) return false;
+
+        // Explicit selection language always creates a new result when a named aesthetic is
+        // present. Otherwise "change the theme to Frutiger Aero" can be mistaken for a glass
+        // refinement simply because the profile name contains one of the catalog's modifier cues.
+        bool namesAesthetic = AestheticProfileCatalog.FindAll(instructionText).Count > 0;
+        bool explicitStyleSwitch =
+            normalized.StartsWith("change theme to ", StringComparison.Ordinal) ||
+            normalized.StartsWith("change the theme to ", StringComparison.Ordinal) ||
+            normalized.StartsWith("switch to ", StringComparison.Ordinal) ||
+            normalized.StartsWith("use the ", StringComparison.Ordinal) ||
+            normalized.StartsWith("use ", StringComparison.Ordinal) ||
+            normalized.StartsWith("generate ", StringComparison.Ordinal) ||
+            normalized.StartsWith("create ", StringComparison.Ordinal) ||
+            normalized.StartsWith("make me a ", StringComparison.Ordinal);
+
+        if (namesAesthetic && explicitStyleSwitch)
+            return false;
+
+        // A verb alone is not enough: "change theme to Dark Academia" is a fresh aesthetic
+        // request, while "change the palette to more violet" is an edit. Require both an edit-like
+        // lead-in and a recognized color/composition cue before reusing the current result.
+        bool hasSupportedCue = RefinementCues.Any(cue =>
+            AestheticProfileCatalog.ContainsPositiveCue(instructionText, cue));
+        if (!hasSupportedCue) return false;
+
+        string[] commandPrefixes =
+        [
+            "make it ", "make this ", "make the ", "please make it ", "change ", "adjust ", "refine ", "tweak ", "add ", "remove ", "use ",
+            "tone down ", "turn up ", "increase ", "decrease ", "shift ", "move the ", "give it ",
+            "less ", "more ", "darker", "lighter", "brighter", "darken", "lighten", "brighten",
+            "dim it", "dimmer", "vibrant", "muted", "desaturated", "warmer", "cooler", "softer",
+            "pastel", "matte", "bold", "bolder"
+        ];
+
+        return commandPrefixes.Any(prefix =>
+            normalized.Equals(prefix.Trim(), StringComparison.Ordinal) ||
+            normalized.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Applies conversational refinements through the same semantic and compositional path used
+    /// for initial generation. Color requests, negative phrasing, aesthetic materials, and geometry
+    /// changes therefore behave consistently whether the user starts from scratch or iterates.
+    /// </summary>
     public CozyTheme Refine(CozyTheme baseTheme, string instructionText)
     {
-        var tokens = VibeTokenizer.TokenizeFull(instructionText).Raw;
+        ArgumentNullException.ThrowIfNull(baseTheme);
+        if (string.IsNullOrWhiteSpace(instructionText))
+            return baseTheme;
 
-        bool darker  = tokens.Any(w => w is "darker" or "dark" or "dim" or "dimmer");
-        bool lighter = tokens.Any(w => w is "lighter" or "light" or "bright" or "brighter");
-        bool vibrant = tokens.Any(w => w is "vibrant" or "vivid" or "saturated" or "bold" or "bolder" or "colorful");
-        bool muted   = tokens.Any(w => w is "muted" or "desaturated" or "subtle" or "softer" or "pastel" or "faded");
-        bool warmer  = tokens.Any(w => w is "warmer" or "warm" or "warmth" or "cozier");
-        bool cooler  = tokens.Any(w => w is "cooler" or "cool" or "cold" or "colder" or "icy");
+        bool hasSupportedIntent = RefinementCues.Any(cue =>
+            AestheticProfileCatalog.ContainsPositiveCue(instructionText, cue));
+        if (!hasSupportedIntent)
+            return baseTheme; // Never guess at an instruction the NLP layer doesn't recognize.
 
-        double lightnessDelta   = darker ? -0.08 : lighter ? 0.08 : 0.0;
-        double saturationDelta  = vibrant ? 0.10 : muted ? -0.10 : 0.0;
-        double? warmthTargetHue = warmer ? 25.0 : cooler ? 215.0 : null;
+        // Refinement should improve readability but retain the palette's original light/dark mode
+        // unless the user explicitly regenerates the theme in another mode.
+        bool preferDark = ColorMath.LuminanceFromHex(baseTheme.BackgroundBase) < 0.30f;
+        AestheticProfileCatalog.ApplyPromptModifiers(baseTheme, instructionText);
+        var quality = PaletteQualityValidator.ValidateAndRepair(baseTheme, preferDark);
 
-        if (lightnessDelta == 0.0 && saturationDelta == 0.0 && warmthTargetHue is null)
-            return baseTheme; // nothing recognized — leave it untouched rather than guessing
+        if (!quality.PassesAA)
+            throw new InvalidOperationException(
+                $"Refined palette failed its final accessibility gate ({quality.PassingPairs}/{quality.TotalPairs} pairs).");
 
-        // Backgrounds/border get a gentler saturation nudge than the accents — a "cozy" palette's
-        // backgrounds are meant to stay fairly neutral even once the accent gets more vivid.
-        baseTheme.BackgroundBase = AdjustColor(baseTheme.BackgroundBase, lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.BackgroundAlt  = AdjustColor(baseTheme.BackgroundAlt,  lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.Surface        = AdjustColor(baseTheme.Surface,       lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.BorderSubtle   = AdjustColor(baseTheme.BorderSubtle,  lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.AccentPrimary  = AdjustColor(baseTheme.AccentPrimary, lightnessDelta, saturationDelta, warmthTargetHue);
-        baseTheme.AccentStrong   = AdjustColor(baseTheme.AccentStrong,  lightnessDelta, saturationDelta, warmthTargetHue);
-
-        RepairTextContrast(baseTheme);
         return baseTheme;
     }
 
-    /// <summary>Adjusts one hex color's lightness/saturation by a delta and, if a warmth target
-    /// is given, nudges its hue partway there along the shortest rotational path (20% per call,
-    /// not a snap — repeated "warmer" instructions converge on it gradually, same compounding
-    /// behavior as the widget side's repeated "bigger").</summary>
-    private static string AdjustColor(string hex, double lightnessDelta, double saturationDelta, double? warmthTargetHue)
-    {
-        var (h, s, l) = ColorMath.HexToHsl(hex);
-
-        if (warmthTargetHue is { } target)
-        {
-            float dh = (float)target - h;
-            if (dh > 180f) dh -= 360f;
-            if (dh < -180f) dh += 360f;
-            h += dh * 0.2f;
-        }
-
-        s = Math.Clamp(s + (float)saturationDelta, 0f, 1f);
-        l = Math.Clamp(l + (float)lightnessDelta, 0.05f, 0.95f);
-
-        return ColorMath.HslToHex(h, s, l);
-    }
-
-    /// <summary>After a refinement changes the backgrounds, text colors might no longer clear a
-    /// safe contrast ratio against them — nudge lightness away from the background (not toward
-    /// any specific target) until they do, bounded so this can never loop forever.</summary>
-    private static void RepairTextContrast(CozyTheme theme)
-    {
-        theme.TextPrimary = EnsureContrast(theme.TextPrimary, theme.BackgroundBase, minRatio: 4.5f);
-        theme.TextMuted    = EnsureContrast(theme.TextMuted,   theme.BackgroundBase, minRatio: 3.0f);
-    }
-
-    private static string EnsureContrast(string foregroundHex, string backgroundHex, float minRatio)
-    {
-        var (h, s, l) = ColorMath.HexToHsl(foregroundHex);
-        bool foregroundShouldBeDark = ColorMath.LuminanceFromHex(backgroundHex) > 0.5f;
-
-        for (int i = 0; i < 12 && ColorMath.ContrastRatio(ColorMath.HslToHex(h, s, l), backgroundHex) < minRatio; i++)
-            l = Math.Clamp(l + (foregroundShouldBeDark ? -0.05f : 0.05f), 0.02f, 0.98f);
-
-        return ColorMath.HslToHex(h, s, l);
-    }
 }
 
 public sealed record VibeAnalysisResult(

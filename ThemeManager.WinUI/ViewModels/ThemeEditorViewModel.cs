@@ -17,6 +17,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     private readonly ThemeService    _themeService;
     private readonly PaletteHistory  _history = new();
     private CozyTheme _working = CozyDefaults.CreateDefault();
+    private PaletteSnapshot _baselinePalette = PaletteSnapshot.From(CozyDefaults.CreateDefault());
     private readonly EventHandler _historyChangedHandler;
     private readonly ILogger<ThemeEditorViewModel> _logger;
 
@@ -129,6 +130,17 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         set { if (SetProperty(ref _borderSubtle, value)) ApplyToken(t => t.BorderSubtle = value); }
     }
 
+    // Per-token reset targets are read from the loaded/saved theme baseline, not Cozy Café
+    // constants. Resetting one token therefore preserves the identity of a custom palette.
+    public string BaselineBackgroundBase => _baselinePalette.BackgroundBase;
+    public string BaselineBackgroundAlt => _baselinePalette.BackgroundAlt;
+    public string BaselineSurface => _baselinePalette.Surface;
+    public string BaselineAccentPrimary => _baselinePalette.AccentPrimary;
+    public string BaselineAccentStrong => _baselinePalette.AccentStrong;
+    public string BaselineTextPrimary => _baselinePalette.TextPrimary;
+    public string BaselineTextMuted => _baselinePalette.TextMuted;
+    public string BaselineBorderSubtle => _baselinePalette.BorderSubtle;
+
     // ── Scale sliders ─────────────────────────────────────────────────────────
 
     private double _cornerRadiusScale = 1.0;
@@ -175,7 +187,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         if (snap is null) return;
         snap.ApplyTo(_working);
         SyncPropertiesFromWorking();
-        _themeService.NotifyThemeTokenChanged();
+        NotifyActiveThemeIfEditingIt();
         StatusMessage = "Undone.";
         Dirty = true;
         _logger.LogInformation("User undid previous theme action.");
@@ -187,7 +199,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         if (snap is null) return;
         snap.ApplyTo(_working);
         SyncPropertiesFromWorking();
-        _themeService.NotifyThemeTokenChanged();
+        NotifyActiveThemeIfEditingIt();
         StatusMessage = "Redone.";
         Dirty = true;
         _logger.LogInformation("User redid next theme action.");
@@ -216,6 +228,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     public void LoadTheme(CozyTheme theme)
     {
         _working = theme;
+        _baselinePalette = PaletteSnapshot.From(theme);
         _history.Clear();
         SyncPropertiesFromWorking();
         RefreshContrast();
@@ -228,8 +241,10 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         try
         {
             await _themeService.SaveThemeAsync(_working);
+            _baselinePalette = PaletteSnapshot.From(_working);
+            OnPropertyChanged(string.Empty); // refresh all per-token reset targets
             Dirty = false;
-            StatusMessage = $"\"{_working.Name}\" saved.";
+            StatusMessage = $"\"{_working.Name}\" saved; future reverts return to this palette.";
             _logger.LogInformation("User saved theme: {ThemeName}", _working.Name);
         }
         catch (IOException ex)
@@ -239,19 +254,60 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         }
     }
 
-    public void RevertToDefault()
+    /// <summary>
+    /// Restores this theme's palette to the snapshot loaded from disk or most recently saved.
+    /// It must never reset a custom theme to the global Cozy Café defaults.
+    /// </summary>
+    public void RepairPalette()
+    {
+        var before = PaletteSnapshot.From(_working);
+        var report = PaletteQualityValidator.ValidateAndRepair(_working);
+        RefreshContrast();
+
+        if (report.Repairs.Count == 0)
+        {
+            StatusMessage = "This palette already passes the current contrast and surface checks.";
+            _logger.LogInformation("Palette quality repair found no issues for {ThemeName}", _working.Name);
+            return;
+        }
+
+        _history.Push(before);
+        SyncPropertiesFromWorking();
+        NotifyActiveThemeIfEditingIt();
+        RefreshContrast();
+        Dirty = true;
+        StatusMessage = $"Repaired {report.Repairs.Count} palette issue(s). Save the theme to keep these changes.";
+        _logger.LogInformation(
+            "Repaired palette {ThemeId} ({ThemeName}); repairs={Repairs}; AA={PassingPairs}/{TotalPairs}",
+            _working.Id, _working.Name, string.Join(", ", report.Repairs),
+            report.PassingPairs, report.TotalPairs);
+    }
+
+    public void RevertPaletteChanges()
     {
         _history.Push(_working); // allow undo back past the revert
-        _working.ResetToDefault();
+        _baselinePalette.ApplyTo(_working);
         SyncPropertiesFromWorking();
-        _themeService.NotifyThemeTokenChanged();
+        NotifyActiveThemeIfEditingIt();
         RefreshContrast();
-        StatusMessage = "Reverted to Cozy Café defaults.";
+        StatusMessage = $"Palette restored to the saved baseline for \"{_working.Name}\".";
         Dirty = true;
-        _logger.LogInformation("User reverted theme to Cozy defaults.");
+        _logger.LogInformation("User reverted palette changes for theme {ThemeId} ({ThemeName})", _working.Id, _working.Name);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The editor previews non-active themes in its own bindings. Only broadcast palette changes
+    /// into the app-wide resource dictionary when the edited theme is already the active theme;
+    /// otherwise that would replace the custom theme being edited with the active (often Cozy Café)
+    /// palette on every token change or revert.
+    /// </summary>
+    private void NotifyActiveThemeIfEditingIt()
+    {
+        if (string.Equals(_themeService.ActiveTheme.Id, _working.Id, StringComparison.OrdinalIgnoreCase))
+            _themeService.NotifyThemeTokenChanged();
+    }
 
     /// <summary>
     /// Standard single-token mutation. Pushes undo snapshot before applying.
@@ -262,7 +318,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
         mutate(_working);
         Dirty = true;
         RefreshContrast();
-        _themeService.NotifyThemeTokenChanged();
+        NotifyActiveThemeIfEditingIt();
         _logger.LogDebug("User manually modified a theme token.");
     }
 
@@ -274,14 +330,16 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     {
         _history.Push(_working);
 
-        var palette = PaletteHarmonizer.FromAccentHex(newAccentHex);
+        bool preferDark = ColorMath.LuminanceFromHex(_working.BackgroundBase) < 0.30f;
+        var palette = PaletteHarmonizer.FromAccentHex(newAccentHex, preferDark);
         palette.ApplyTo(_working);
+        PaletteQualityValidator.ValidateAndRepair(_working, preferDark);
 
-        // Sync all VM fields from the freshly derived palette.
+        // Sync all VM fields from the freshly derived, contrast-checked palette.
         SyncPropertiesFromWorking();
         Dirty = true;
         RefreshContrast();
-        _themeService.NotifyThemeTokenChanged();
+        NotifyActiveThemeIfEditingIt();
         _logger.LogInformation("Harmony lock applied: regenerated entire palette from Accent hex {AccentHex}", newAccentHex);
     }
 

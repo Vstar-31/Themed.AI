@@ -5,7 +5,7 @@
     Background="{StaticResource AppBackgroundBrush}">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid Padding="36,32,36,48" RowSpacing="22">
+        <Grid Padding="24,24,24,32" RowSpacing="22">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -39,7 +39,11 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="QUICK BUILD" Style="{StaticResource CaptionStyle}" FontWeight="SemiBold"/>
                         <TextBlock Text="Start with a mood. The World runtime handles the atmosphere." TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="✦ Neon" Tag="neon" Click="Preset_Click"/><Button Content="☾ Nocturnal" Tag="nocturnal" Click="Preset_Click"/><Button Content="☁ Cozy" Tag="cozy" Click="Preset_Click"/></StackPanel>
+                        <StackPanel Spacing="8">
+                            <Button Content="✦  Neon" Tag="neon" Click="Preset_Click" HorizontalAlignment="Stretch"/>
+                            <Button Content="☾  Nocturnal" Tag="nocturnal" Click="Preset_Click" HorizontalAlignment="Stretch"/>
+                            <Button Content="☁  Cozy" Tag="cozy" Click="Preset_Click" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>

@@ -422,11 +422,15 @@ runtime platform. The first implementation slice is now in the codebase:
 
 ### Next slices
 
-- [ ] Visual containers/groups with shared transforms, clipping, and inherited variables.
-- [ ] Expression/formula measures and a safe variable/function evaluator.
+- [x] Visual containers/groups with shared transforms, clipping, opacity and persisted group variables. Groups are first-class containers; meters use local coordinates inside them, and runtime/editor render the same transforms.
+- [x] Expression/formula measures and a safe arithmetic/function evaluator. Formula measures can reference other live measures and are refreshed after base measures.
 - [ ] Plugin contracts for third-party measures, meters, and actions.
 - [ ] Skin package asset extraction and sandboxed asset paths.
 - [ ] State machines: hover/pressed/active/threshold states with transitions.
 - [ ] Anchoring to monitor/work-area edges and responsive layouts.
-- [ ] Editor timeline/layer panel and property inspector for all new runtime fields.
-- [ ] Import/export UI and a local package gallery.
+- [x] Initial group property inspector and multi-select grouping workflow added to the widget editor. Full meter layer/timeline tooling remains next.
+- [x] Local package gallery foundation exists; package import/export UI remains next.
+
+### 2026-10-05 — Vacation-resume checkpoint
+
+The Windows-native branch now has a passing Windows GitHub Actions build/test run after fixing the stale CI branch trigger and the Studio compile error around SceneWidgetPlacement cloning. Desktop world application now materializes widget snapshots and yields between top-level widget activations. Runtime 2.0 now also has first-class widget groups with persisted bounds, scale, rotation, opacity, clipping, membership and variables, plus editor multi-select grouping and a group transform inspector. The remaining validation that still needs the real Windows desktop is visual behavior across DPI and multi-monitor setups.

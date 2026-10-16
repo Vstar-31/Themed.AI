@@ -78,18 +78,30 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
             CurrentTrackArtist = VibeFinderWebState.Artist;
             CurrentPreviewUrl = VibeFinderWebState.PreviewUrl;
             CurrentVideoId = null;
+
+            // A loaded native preview remains authoritative while it is playing or paused,
+            // even if the WebView has emitted an initial PAUSED snapshot. The web player takes
+            // over only after the native source has ended/been cleared or a real web PLAYING event
+            // explicitly stops it.
+            bool nativePreviewActive = VibeFinderPreviewPlayer.HasSource;
+            bool playing = nativePreviewActive
+                ? VibeFinderPreviewPlayer.IsPlaying
+                : VibeFinderWebState.IsPlayerActive && VibeFinderWebState.IsPlaying;
+
             Text = _type switch
             {
                 MeasureType.VibeTrackTitle => VibeFinderWebState.Title,
                 MeasureType.VibeTrackArtist => VibeFinderWebState.Artist,
-                MeasureType.VibeMood => "—",
-                MeasureType.VibePlaybackState => VibeFinderWebState.IsPlaying ? "PLAYING" : "PAUSED",
+                MeasureType.VibeMood => string.IsNullOrWhiteSpace(VibeFinderWebState.DominantVibe) ? "—" : VibeFinderWebState.DominantVibe!,
+                MeasureType.VibePlaybackState => playing ? "PLAYING" : "PAUSED",
                 _ => "—"
             };
             if (_type == MeasureType.VibeTrackProgress)
             {
-                Value = VibeFinderWebState.Progress * 100;
-                Text = $"{FormatClock(VibeFinderWebState.CurrentTime)} / {FormatClock(VibeFinderWebState.Duration)}";
+                var currentTime = nativePreviewActive ? VibeFinderPreviewPlayer.CurrentTime : VibeFinderWebState.CurrentTime;
+                var duration = nativePreviewActive ? VibeFinderPreviewPlayer.Duration : VibeFinderWebState.Duration;
+                Value = (duration > 0 ? Math.Clamp(currentTime / duration, 0, 1) : 0) * 100;
+                Text = $"{FormatClock(currentTime)} / {FormatClock(duration)}";
             }
             else Value = 0;
             ActionUrl = VibeFinderWebState.PreviewUrl is { Length: > 0 } preview
