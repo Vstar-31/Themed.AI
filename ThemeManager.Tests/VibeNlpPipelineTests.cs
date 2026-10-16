@@ -654,6 +654,65 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void Refine_UsesSameAccentHueSemanticsAsInitialGeneration()
+    {
+        var theme = _gen.Generate("Frutiger Aero");
+        var backgroundBefore = theme.BackgroundBase;
+        var altBefore = theme.BackgroundAlt;
+        var hueBefore = ColorMath.HexToHsl(theme.AccentPrimary).H;
+
+        var refined = _gen.Refine(theme, "add violet accents");
+
+        Assert.Same(theme, refined);
+        Assert.Equal(backgroundBefore, refined.BackgroundBase);
+        Assert.Equal(altBefore, refined.BackgroundAlt);
+        var hueAfter = ColorMath.HexToHsl(refined.AccentPrimary).H;
+        Assert.InRange(hueAfter, 255f, 300f);
+        Assert.True(Math.Abs(hueBefore - hueAfter) > 8f,
+            $"Expected refinement to move accent hue, got {hueBefore:F1}° -> {hueAfter:F1}°.");
+        Assert.All(ContrastChecker.Check(refined), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Refine_AppliesCompositionModifiersAndPreservesAccessibility()
+    {
+        var theme = _gen.Generate("Coquette");
+        var originalDensity = theme.DensityScale;
+        var originalRadius = theme.CornerRadiusScale;
+
+        _gen.Refine(theme, "make the layout minimal, spacious, and glassy");
+
+        Assert.True(theme.DensityScale > originalDensity,
+            $"Expected more whitespace, got {originalDensity:F2} -> {theme.DensityScale:F2}.");
+        Assert.True(theme.CornerRadiusScale >= originalRadius);
+        Assert.Contains("Art direction:", theme.Description);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Refine_UnknownInstructionDoesNotGuessOrMutatePalette()
+    {
+        var theme = _gen.Generate("Neon Afterglow");
+        var before = new[]
+        {
+            theme.BackgroundBase, theme.BackgroundAlt, theme.Surface,
+            theme.AccentPrimary, theme.AccentStrong, theme.TextPrimary, theme.TextMuted,
+            theme.BorderSubtle
+        };
+
+        _gen.Refine(theme, "make this feel legendary");
+
+        Assert.Equal(before, new[]
+        {
+            theme.BackgroundBase, theme.BackgroundAlt, theme.Surface,
+            theme.AccentPrimary, theme.AccentStrong, theme.TextPrimary, theme.TextMuted,
+            theme.BorderSubtle
+        });
+    }
+
+    [Fact]
     public void PersonalizationPipeline_FinalSelectedThemePassesPaletteGateAndAnalysisMatches()
     {
         var profilePath = Path.Combine(Path.GetTempPath(), $"themed-ai-test-profile-{Guid.NewGuid():N}.json");
