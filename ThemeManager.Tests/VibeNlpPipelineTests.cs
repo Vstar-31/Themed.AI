@@ -568,6 +568,28 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
+    public void Generate_ThreeWayBlendUsesEveryNamedReference()
+    {
+        const string prompt = "Y3K meets Indie Sleaze meets Desi-Core";
+        var profiles = AestheticProfileCatalog.FindAll(prompt);
+        Assert.Equal(new[] { "Y3K", "Indie Sleaze", "Desi-Core" }, profiles.Take(3).Select(profile => profile.Name));
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, profiles));
+
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal("Y3K × Indie Sleaze × Desi-Core", theme.Name);
+        Assert.Contains("Y3K", analysis.MatchedKeywords);
+        Assert.Contains("Indie Sleaze", analysis.MatchedKeywords);
+        Assert.Contains("Desi-Core", analysis.MatchedKeywords);
+        Assert.Equal("blended aesthetic", analysis.KeywordCategories["Indie Sleaze"]);
+        Assert.Equal("blended aesthetic", analysis.KeywordCategories["Desi-Core"]);
+
+        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
+        Assert.True(quality.PassesAA,
+            $"{quality.PassingPairs}/{quality.TotalPairs} text pairs passed for the three-way blend.");
+    }
+
+    [Fact]
     public void Generate_BlendedAestheticsPreserveCompositionModifiers()
     {
         var theme = _gen.Generate("Cool-Wasabi palette with brutalist hard edges and spacious layout");
