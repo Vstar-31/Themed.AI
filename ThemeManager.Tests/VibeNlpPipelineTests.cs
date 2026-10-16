@@ -431,6 +431,12 @@ public class VibeNlpPipelineTests
     [InlineData("circuscore decor and bold color blocking", "FunHaus")]
     [InlineData("lace gloves with ribboncore", "Laced Up")]
     [InlineData("90s toy aesthetic", "Throwback Kid")]
+    [InlineData("tropicoqueta showgirl aesthetic", "Hot Tropic")]
+    [InlineData("pirate eye makeup and suede mini skirt", "Swashbuckled")]
+    [InlineData("2000s rock outfits with thrifted band tees", "Shoegaze Aesthetic")]
+    [InlineData("airbrush jeans and rhinestone tops", "Peak Poptimism")]
+    [InlineData("organza shirt and angelic accessories", "Sheer Euphoria")]
+    [InlineData("theater kid mismatched outfit", "High Camp")]
     public void Generate_TrendDescriptionLanguageResolvesToItsCuratedProfile(string prompt, string expectedName)
     {
         var (theme, analysis) = _gen.GenerateAndExplain(prompt);
