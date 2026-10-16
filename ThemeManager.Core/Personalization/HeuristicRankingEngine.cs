@@ -112,6 +112,12 @@ public class HeuristicRankingEngine
         if (wantsMuted) score += paletteChroma <= 0.105 ? 1.5f : -0.6f;
         if (wantsVibrant) score += paletteChroma >= 0.105 ? 1.5f : -0.6f;
 
+        // Independent composition score checks role separation and tonal hierarchy in addition
+        // to AA contrast. Keep it as a tie-breaker, not a hard artistic rule: a deliberately
+        // monochrome/flat aesthetic must still be able to win when the prompt asks for it.
+        var composition = PaletteCompositionScorer.Evaluate(theme, prompt);
+        score += (composition.Score - 70f) * 0.10f;
+
         // Profile History and explicit color preferences.
         if (profile.LikedThemeIds.Contains(theme.Id)) score += 10f;
         if (profile.DislikedThemeIds.Contains(theme.Id)) score -= 20f;
