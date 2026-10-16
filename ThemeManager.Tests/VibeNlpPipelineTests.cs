@@ -416,8 +416,10 @@ public class VibeNlpPipelineTests
 
         Assert.Equal(expectedName, theme.Name);
         Assert.Contains(analysis.MatchedKeywords, k => k.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
-        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
-        Assert.True(quality.PassesAA, $"{prompt}: {quality.PassingPairs}/{quality.TotalPairs} pairs passed.");
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
     }
 
     [Theory]
@@ -447,9 +449,10 @@ public class VibeNlpPipelineTests
         Assert.Equal(expectedName, theme.Name);
         Assert.Contains(analysis.MatchedKeywords, word =>
             word.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
-        var report = PaletteQualityValidator.ValidateAndRepair(theme);
-        Assert.True(report.PassesAA,
-            $"{prompt}: only {report.PassingPairs}/{report.TotalPairs} contrast pairs passed.");
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
     }
 
     [Theory]
@@ -494,10 +497,11 @@ public class VibeNlpPipelineTests
             Assert.Equal(profile.Name, theme.Name);
             Assert.Equal(theme.Name, analysis.GeneratedName);
 
-            var report = PaletteQualityValidator.ValidateAndRepair(theme);
-            Assert.True(report.PassesAA,
-                $"{profile.Name}: only {report.PassingPairs}/{report.TotalPairs} contrast pairs passed.");
-            Assert.Equal(9, ContrastChecker.Check(theme).Count);
+            var checks = ContrastChecker.Check(theme);
+            Assert.Equal(9, checks.Count);
+            Assert.All(checks, check =>
+                Assert.True(check.PassesAA,
+                    $"{profile.Name}: {check.PairName} is only {check.Ratio:F2}:1."));
         }
     }
 
@@ -523,11 +527,11 @@ public class VibeNlpPipelineTests
 
         foreach (var candidate in candidates)
         {
-            var report = PaletteQualityValidator.ValidateAndRepair(candidate.Theme);
-            Assert.True(report.PassesAA,
-                $"{prompt} ({candidate.GenerationSource}): {report.PassingPairs}/{report.TotalPairs} pairs passed.");
-            Assert.All(ContrastChecker.Check(candidate.Theme), pair =>
-                Assert.True(pair.PassesAA, $"{candidate.GenerationSource}: {pair.PairName} {pair.Ratio:F2}:1"));
+            var checks = ContrastChecker.Check(candidate.Theme);
+            Assert.Equal(9, checks.Count);
+            Assert.All(checks, pair =>
+                Assert.True(pair.PassesAA,
+                    $"{prompt} ({candidate.GenerationSource}): {pair.PairName} {pair.Ratio:F2}:1"));
             Assert.Equal(candidate.Theme.Name, candidate.Analysis?.GeneratedName);
             Assert.Equal(
                 new[] { candidate.Theme.BackgroundBase, candidate.Theme.BackgroundAlt, candidate.Theme.Surface,
@@ -562,9 +566,10 @@ public class VibeNlpPipelineTests
 
         var theme = _gen.Generate(prompt);
         Assert.Equal($"{firstName} × {secondName}", theme.Name);
-        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
-        Assert.True(quality.PassesAA,
-            $"{prompt}: only {quality.PassingPairs}/{quality.TotalPairs} text pairs passed.");
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
     }
 
     [Fact]
@@ -584,9 +589,11 @@ public class VibeNlpPipelineTests
         Assert.Equal("blended aesthetic", analysis.KeywordCategories["Indie Sleaze"]);
         Assert.Equal("blended aesthetic", analysis.KeywordCategories["Desi-Core"]);
 
-        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
-        Assert.True(quality.PassesAA,
-            $"{quality.PassingPairs}/{quality.TotalPairs} text pairs passed for the three-way blend.");
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA,
+                $"{check.PairName} is only {check.Ratio:F2}:1 for the three-way blend."));
     }
 
     [Theory]
@@ -605,9 +612,10 @@ public class VibeNlpPipelineTests
         Assert.Contains("Y3K", analysis.MatchedKeywords);
         Assert.Contains("Indie Sleaze", analysis.MatchedKeywords);
         Assert.Contains("Desi-Core", analysis.MatchedKeywords);
-        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
-        Assert.True(quality.PassesAA,
-            $"{prompt}: {quality.PassingPairs}/{quality.TotalPairs} text pairs passed.");
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
     }
 
     [Fact]
