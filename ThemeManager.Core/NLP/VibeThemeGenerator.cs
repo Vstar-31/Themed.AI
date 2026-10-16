@@ -126,56 +126,57 @@ public sealed class VibeThemeGenerator
     /// contrast against the new BackgroundBase, so this repairs that before returning rather
     /// than silently shipping a less-readable theme.
     /// </summary>
+    private static readonly string[] RefinementCues =
+    [
+        "darker", "make it darker", "darken", "less bright", "dim it", "dimmer",
+        "lighter", "make it lighter", "lighten", "brighter", "make it brighter", "brighten it",
+        "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer",
+        "subtle", "faded", "matte", "pastel", "quiet luxury",
+        "more vibrant", "vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon",
+        "dopamine", "colorful", "bold", "maximalist", "camp", "brat", "hyperpop",
+        "warm", "warmer", "more warm", "cozy", "cozier", "warmth", "amber glow",
+        "cool", "cooler", "more cool", "cold", "colder", "make it icy", "frosted", "glacier",
+        "more red", "make it red", "more orange", "make it orange", "more gold", "make it gold",
+        "more yellow", "make it yellow", "more green", "make it green", "more teal", "make it teal",
+        "more cyan", "make it cyan", "more blue", "make it blue", "more indigo", "make it indigo",
+        "more purple", "make it purple", "more magenta", "make it magenta", "more pink", "make it pink",
+        "red accents", "orange accents", "gold accents", "yellow accents", "green accents", "teal accents",
+        "cyan accents", "blue accents", "indigo accents", "purple accents", "violet accents",
+        "magenta accents", "pink accents", "glass", "glassmorphism", "liquid glass", "frutiger aero",
+        "holographic", "glossy", "chrome", "brutalist", "hard edges", "industrial", "raw concrete",
+        "terminal ui", "minimal", "minimalist", "clean girl", "less clutter", "focus desk",
+        "spacious", "airy layout", "breathing room", "lots of whitespace", "eclectic", "playful maximalism"
+    ];
+
+    /// <summary>
+    /// Applies conversational refinements through the same semantic and compositional path used
+    /// for initial generation. Color requests, negative phrasing, aesthetic materials, and geometry
+    /// changes therefore behave consistently whether the user starts from scratch or iterates.
+    /// </summary>
     public CozyTheme Refine(CozyTheme baseTheme, string instructionText)
     {
-        var tokens = VibeTokenizer.TokenizeFull(instructionText).Raw;
+        ArgumentNullException.ThrowIfNull(baseTheme);
+        if (string.IsNullOrWhiteSpace(instructionText))
+            return baseTheme;
 
-        bool darker  = tokens.Any(w => w is "darker" or "dark" or "dim" or "dimmer");
-        bool lighter = tokens.Any(w => w is "lighter" or "light" or "bright" or "brighter");
-        bool vibrant = tokens.Any(w => w is "vibrant" or "vivid" or "saturated" or "bold" or "bolder" or "colorful");
-        bool muted   = tokens.Any(w => w is "muted" or "desaturated" or "subtle" or "softer" or "pastel" or "faded");
-        bool warmer  = tokens.Any(w => w is "warmer" or "warm" or "warmth" or "cozier");
-        bool cooler  = tokens.Any(w => w is "cooler" or "cool" or "cold" or "colder" or "icy");
+        bool hasSupportedIntent = RefinementCues.Any(cue =>
+            AestheticProfileCatalog.ContainsPositiveCue(instructionText, cue));
+        if (!hasSupportedIntent)
+            return baseTheme; // Never guess at an instruction the NLP layer doesn't recognize.
 
-        double lightnessDelta   = darker ? -0.08 : lighter ? 0.08 : 0.0;
-        double saturationDelta  = vibrant ? 0.10 : muted ? -0.10 : 0.0;
-        double? warmthTargetHue = warmer ? 25.0 : cooler ? 215.0 : null;
+        // Refinement should improve readability but retain the palette's original light/dark mode
+        // unless the user explicitly regenerates the theme in another mode.
+        bool preferDark = ColorMath.LuminanceFromHex(baseTheme.BackgroundBase) < 0.30f;
+        AestheticProfileCatalog.ApplyPromptModifiers(baseTheme, instructionText);
+        var quality = PaletteQualityValidator.ValidateAndRepair(baseTheme, preferDark);
 
-        if (lightnessDelta == 0.0 && saturationDelta == 0.0 && warmthTargetHue is null)
-            return baseTheme; // nothing recognized — leave it untouched rather than guessing
+        if (!quality.PassesAA)
+            throw new InvalidOperationException(
+                $"Refined palette failed its final accessibility gate ({quality.PassingPairs}/{quality.TotalPairs} pairs).");
 
-        // Backgrounds/border get a gentler saturation nudge than the accents — a "cozy" palette's
-        // backgrounds are meant to stay fairly neutral even once the accent gets more vivid.
-        baseTheme.BackgroundBase = AdjustColor(baseTheme.BackgroundBase, lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.BackgroundAlt  = AdjustColor(baseTheme.BackgroundAlt,  lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.Surface        = AdjustColor(baseTheme.Surface,       lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.BorderSubtle   = AdjustColor(baseTheme.BorderSubtle,  lightnessDelta, saturationDelta * 0.5, warmthTargetHue);
-        baseTheme.AccentPrimary  = AdjustColor(baseTheme.AccentPrimary, lightnessDelta, saturationDelta, warmthTargetHue);
-        baseTheme.AccentStrong   = AdjustColor(baseTheme.AccentStrong,  lightnessDelta, saturationDelta, warmthTargetHue);
-
-        PaletteQualityValidator.ValidateAndRepair(baseTheme);
         return baseTheme;
     }
 
-    /// <summary>
-    /// Applies a small perceptual OKLCH adjustment. Chroma is changed independently from lightness,
-    /// so "more vibrant" won't unexpectedly wash the color out as HSL ramps often do.
-    /// </summary>
-    private static string AdjustColor(string hex, double lightnessDelta, double saturationDelta, double? warmthTargetHue)
-    {
-        var (lightness, chroma, hue) = ColorMath.HexToOklch(hex);
-        if (warmthTargetHue is { } target)
-        {
-            float dh = (float)target - hue;
-            if (dh > 180f) dh -= 360f;
-            if (dh < -180f) dh += 360f;
-            hue += dh * 0.2f;
-        }
-
-        float nextLightness = Math.Clamp(lightness + (float)lightnessDelta * 0.65f, 0.04f, 0.98f);
-        float nextChroma = Math.Clamp(chroma + (float)saturationDelta * 0.18f, 0f, 0.32f);
-        return ColorMath.OklchToHex(nextLightness, nextChroma, hue);
-    }
 }
 
 public sealed record VibeAnalysisResult(
