@@ -876,6 +876,58 @@ public static class AestheticProfileCatalog
         return false;
     }
 
+    /// <summary>
+    /// Detects explicit light/dark presentation intent without confusing a named aesthetic such
+    /// as Dark Academia with a command to switch the application mode. The last positive mode
+    /// directive wins, so "dark mode, actually make it light mode" resolves to light.
+    /// </summary>
+    public static bool? InferPreferredPolarity(string? prompt)
+    {
+        var normalized = Normalize(prompt);
+        if (normalized.Length == 0) return null;
+
+        string[] darkCues =
+        [
+            "dark mode", "dark theme", "dark ui", "dark palette", "dark background",
+            "night mode", "make it dark", "make this dark", "make the background dark",
+            "make the ui dark", "darken the palette", "darker background", "darker palette"
+        ];
+        string[] lightCues =
+        [
+            "light mode", "light theme", "light ui", "light palette", "light background",
+            "day mode", "make it light", "make this light", "make the background light",
+            "make the ui light", "lighten the palette", "brighter background", "lighter background"
+        ];
+
+        int darkPosition = LastPositiveCuePosition(normalized, darkCues);
+        int lightPosition = LastPositiveCuePosition(normalized, lightCues);
+        if (darkPosition < 0 && lightPosition < 0) return null;
+        if (darkPosition < 0) return false;
+        if (lightPosition < 0) return true;
+        return darkPosition > lightPosition;
+    }
+
+    private static int LastPositiveCuePosition(string normalizedText, IEnumerable<string> cues)
+    {
+        var paddedText = $" {normalizedText} ";
+        int lastPosition = -1;
+        foreach (var cue in cues)
+        {
+            var paddedCue = $" {Normalize(cue)} ";
+            int searchFrom = 0;
+            while (searchFrom < paddedText.Length)
+            {
+                int index = paddedText.IndexOf(paddedCue, searchFrom, StringComparison.Ordinal);
+                if (index < 0) break;
+                var prefix = paddedText[..index].TrimEnd();
+                if (!IsNegatedReference(prefix))
+                    lastPosition = Math.Max(lastPosition, index);
+                searchFrom = index + 1;
+            }
+        }
+        return lastPosition;
+    }
+
     /// <summary>Exposes the catalog's shared phrase normalization to ranking and diagnostics.</summary>
     public static string NormalizeForMatching(string? value) => Normalize(value);
 
