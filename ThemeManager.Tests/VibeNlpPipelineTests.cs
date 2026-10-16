@@ -421,6 +421,29 @@ public class VibeNlpPipelineTests
     }
 
     [Theory]
+    [InlineData("jelly blush with rubberized accessories", "Gimme Gummy")]
+    [InlineData("opalescent alien beauty", "Extra Celestial")]
+    [InlineData("chunky belt and baggy suit", "Glamoratti")]
+    [InlineData("scotland highlands aesthetic", "Mystic Outlands")]
+    [InlineData("letter writing desk with cute stamps", "Pen Pals")]
+    [InlineData("geometric glamour and sculpted brass", "Neo Deco")]
+    [InlineData("jet black nails and dark romantic makeup", "Vamp Romantic")]
+    [InlineData("circuscore decor and bold color blocking", "FunHaus")]
+    [InlineData("lace gloves with ribboncore", "Laced Up")]
+    [InlineData("90s toy aesthetic", "Throwback Kid")]
+    public void Generate_TrendDescriptionLanguageResolvesToItsCuratedProfile(string prompt, string expectedName)
+    {
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, word =>
+            word.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
+        var report = PaletteQualityValidator.ValidateAndRepair(theme);
+        Assert.True(report.PassesAA,
+            $"{prompt}: only {report.PassingPairs}/{report.TotalPairs} contrast pairs passed.");
+    }
+
+    [Theory]
     [InlineData("Neon Afterglw", "Neon Afterglow")]
     [InlineData("Frutiger Aro", "Frutiger Aero")]
     [InlineData("Plum Noire villain era", "Plum Noir")]
