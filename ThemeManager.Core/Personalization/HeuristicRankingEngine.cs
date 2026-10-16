@@ -118,6 +118,20 @@ public class HeuristicRankingEngine
         var composition = PaletteCompositionScorer.Evaluate(theme, prompt);
         score += (composition.Score - 70f) * 0.10f;
 
+        // Regeneration rotates preference across the three intentionally distinct variants.
+        // This is a bounded preference (not a hard lock), so clear differences in accessibility,
+        // constraints or user preference can still outweigh a seed during ranking.
+        int preferredVariant = ((context.VariationSeed % 3) + 3) % 3;
+        int candidateVariant = candidate.GenerationSource switch
+        {
+            "ArtDirectedBase" => 0,
+            "SoftFocusVariant" => 1,
+            "ElectricCutVariant" => 2,
+            _ => -1
+        };
+        if (candidateVariant >= 0 && candidateVariant == preferredVariant)
+            score += 8f;
+
         // Profile History and explicit color preferences.
         if (profile.LikedThemeIds.Contains(theme.Id)) score += 10f;
         if (profile.DislikedThemeIds.Contains(theme.Id)) score -= 20f;
