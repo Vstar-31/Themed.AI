@@ -116,7 +116,7 @@ public static class AestheticProfileCatalog
             ["wednesday addams", "wednesday", "addams family", "nevermore academy", "goth girl aesthetic"],
             "#100F17", "#1E1B29", "#2D293B", "#9C83C8", "#D4CADF", "#F4F0F8", "#B7AEC4", "#50485E"),
         new("cherry-grove", "Cherry Grove", "Minecraft-inspired cherry blossoms: pixel-soft pink, moss, sky haze and earthy block tones.",
-            ["minecraft cherry grove", "cherry grove", "minecraft cherry blossom", "minecraft", "pink forest pixel"],
+            ["minecraft cherry grove", "cherry grove", "minecraft cherry blossom", "pink forest pixel"],
             "#F8F0F5", "#EAD8E5", "#C8D7C1", "#C85C91", "#5E8063", "#302B35", "#6E626E", "#D7B8CC"),
         new("space-opera", "Space Opera", "Deep orbital navy, starship cyan, warm starlight and a disciplined cinematic control-room palette.",
             ["space opera", "star wars", "galactic empire", "jedi", "sith", "starship cockpit", "interstellar cockpit"],
