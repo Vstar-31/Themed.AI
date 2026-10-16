@@ -149,6 +149,31 @@ public sealed class VibeThemeGenerator
     ];
 
     /// <summary>
+    /// Distinguishes an imperative edit to the current result from a fresh aesthetic prompt.
+    /// A profile name such as "Dark Academia" or "Frutiger Aero glass ocean" must generate a new
+    /// palette even if the user already has a result; commands such as "make it darker" or
+    /// "add violet accents" refine that existing result.
+    /// </summary>
+    public bool IsRefinementInstruction(string? instructionText)
+    {
+        var normalized = AestheticProfileCatalog.NormalizeForMatching(instructionText);
+        if (normalized.Length == 0) return false;
+
+        string[] commandPrefixes =
+        [
+            "make it ", "make this ", "change ", "adjust ", "refine ", "tweak ", "add ", "remove ",
+            "tone down ", "turn up ", "increase ", "decrease ", "shift ", "move the ", "give it ",
+            "less ", "more ", "darker", "lighter", "brighter", "darken", "lighten", "brighten",
+            "dim it", "dimmer", "vibrant", "muted", "desaturated", "warmer", "cooler", "softer",
+            "pastel", "matte", "bold", "bolder", "make it ", "make this "
+        ];
+
+        return commandPrefixes.Any(prefix =>
+            normalized.Equals(prefix.Trim(), StringComparison.Ordinal) ||
+            normalized.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Applies conversational refinements through the same semantic and compositional path used
     /// for initial generation. Color requests, negative phrasing, aesthetic materials, and geometry
     /// changes therefore behave consistently whether the user starts from scratch or iterates.
