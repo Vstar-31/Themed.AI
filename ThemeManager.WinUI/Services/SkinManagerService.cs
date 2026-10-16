@@ -101,23 +101,30 @@ public sealed class SkinManagerService : IDisposable
     private void TickDueWidgets()
     {
         var now = _schedulerClock.ElapsedMilliseconds;
-        var dispatcher = _dispatcher;
         var snapshot = _open.ToList();
         var dueIds = _scheduler.GetDue(snapshot.Select(x => x.Value.ViewModel.Definition), now).Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (skinId, entry) in snapshot)
         {
             var viewModel = entry.ViewModel;
             if (viewModel.IsClosed || !dueIds.Contains(skinId)) continue;
-            Task.Run(() =>
-            {
-                if (viewModel.IsClosed) return;
-                try { viewModel.RefreshMeasures(); } catch (Exception ex) { _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to refresh its measures", viewModel.Definition.Id, viewModel.Definition.Name); }
-                dispatcher.TryEnqueue(() =>
-                {
-                    if (viewModel.IsClosed) return;
-                    try { viewModel.UpdateMeters(); } catch (Exception ex) { _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to update its meters", viewModel.Definition.Id, viewModel.Definition.Name); }
-                });
-            });
+            _ = RefreshWidgetAsync(viewModel);
+        }
+    }
+
+    private async Task RefreshWidgetAsync(SkinHostViewModel viewModel)
+    {
+        try
+        {
+            await viewModel.RefreshCoordinator.TryRefreshAsync(
+                viewModel.RefreshMeasures,
+                callback => _dispatcher.TryEnqueue(() => callback()),
+                viewModel.UpdateMeters,
+                () => viewModel.IsClosed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): refresh failed",
+                viewModel.Definition.Id, viewModel.Definition.Name);
         }
     }
 

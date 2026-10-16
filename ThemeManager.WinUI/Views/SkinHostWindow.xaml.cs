@@ -503,6 +503,12 @@ public sealed partial class SkinHostWindow : Window
                             return;
                         }
 
+                        if (!WidgetActionPolicy.CanOpenExternal(url))
+                        {
+                            _logger.LogWarning("Skin \"{Skin}\": blocked unsupported external action", _viewModel.Definition.Name);
+                            e.Handled = true;
+                            return;
+                        }
                         _logger.LogDebug("Skin \"{Skin}\": launching external URL {Url}", _viewModel.Definition.Name, url);
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
                     }

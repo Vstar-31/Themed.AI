@@ -1,3 +1,4 @@
+using ThemeManager.Core.Services;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -115,7 +116,10 @@ public sealed partial class MainWindow : Window
             _vibeFinderPrewarmHandlersAttached = true;
             VibeFinderPrewarmWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
-                var json = args.TryGetWebMessageAsString();
+                if (!VibeFinderSite.IsTrusted(args.Source)) return;
+                string json;
+                try { json = args.TryGetWebMessageAsString(); }
+                catch (ArgumentException) { return; }
                 if (string.IsNullOrEmpty(json)) return;
 
                 if (VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason))
@@ -140,11 +144,15 @@ public sealed partial class MainWindow : Window
                 VibeFinderWebState.HandleMessage(json);
             };
 
+            VibeFinderPrewarmWebView.CoreWebView2.NavigationStarting += (_, args) =>
+                args.Cancel = !VibeFinderSite.IsTrusted(args.Uri);
+            VibeFinderPrewarmWebView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
+
             VibeFinderPrewarmWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
             {
                 if (!args.IsSuccess) return;
                 var uri = sender.Source;
-                if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+                if (!VibeFinderSite.IsTrusted(uri)) return;
 
                 try { await sender.ExecuteScriptAsync(VibeFinderAuth.SkipTutorialScript); }
                 catch (Exception ex) { _logger.LogDebug(ex, "VibeFinder prewarm tutorial skip failed"); }
@@ -163,7 +171,7 @@ public sealed partial class MainWindow : Window
         }
 
         RebindVibeFinderPrewarmBridge();
-        VibeFinderPrewarmWebView.Source = new Uri("https://vibefinderai.netlify.app/app");
+        VibeFinderPrewarmWebView.Source = new Uri(VibeFinderSite.AppUrl);
     }
 
     public void ResetVibeFinderPrewarm()
@@ -196,7 +204,7 @@ public sealed partial class MainWindow : Window
                 try
                 {
                     var core = VibeFinderPrewarmWebView.CoreWebView2;
-                    if (core is null) return;
+                    if (core is null || !VibeFinderSite.IsTrusted(core.Source)) return;
                     core.PostWebMessageAsJson(commandJson);
                     _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
                 }

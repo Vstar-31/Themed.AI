@@ -8,7 +8,11 @@ on:
   pull_request:
     branches:
       - feature/windows-app-theming
+      - feat/widget-package-workflow
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 # Widget/runtime work is committed in small slices; cancel stale builds so the newest branch state
 # gets the Windows compiler slot instead of queuing dozens of superseded runs.
@@ -19,6 +23,10 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
 
     steps:
       - name: Checkout
@@ -30,19 +38,22 @@ jobs:
           global-json-file: global.json
           dotnet-version: '8.0.x'
 
-      - name: Restore
-        run: dotnet restore ThemeManager.sln --runtime win-x64
-
-      - name: Build solution
-        run: dotnet build ThemeManager.sln --configuration Debug -p:Platform=x64 --no-restore
-
-      - name: Run tests
-        run: dotnet test ThemeManager.Tests/ThemeManager.Tests.csproj --configuration Debug -p:Platform=x64 --no-restore --logger "trx;LogFileName=tests.trx" --results-directory TestResults
+      - name: Build and test on Windows
+        shell: pwsh
+        run: ./scripts/Test-Windows.ps1 -Configuration '${{ matrix.configuration }}' -Publish:('${{ matrix.configuration }}' -eq 'Release')
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-test-results
-          path: TestResults
+          name: windows-test-results-${{ matrix.configuration }}
+          path: artifacts/test-results/${{ matrix.configuration }}
           if-no-files-found: ignore
+
+      - name: Upload unpackaged Windows app
+        if: matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThemedAI-windows-x64-${{ github.sha }}
+          path: artifacts/windows-x64
+          if-no-files-found: error

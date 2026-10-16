@@ -24,6 +24,7 @@
                 <StackPanel Spacing="10">
                     <TextBlock Text="Connection" Style="{StaticResource SubtitleTextBlockStyle}"/>
                     <TextBlock Text="Your credentials stay local. The widgets use the same VibeFinder session as this panel." TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}"/>
+                    <HyperlinkButton Content="Open web version ↗" NavigateUri="https://vfaithemed.netlify.app/app"/>
                     <TextBox x:Name="UsernameBox" Header="Username" PlaceholderText="listener"/>
                     <PasswordBox x:Name="PasswordBox" Header="Password" PlaceholderText="hunter2"/>
                     <TextBox x:Name="PromptBox" Header="Vibe Prompt" Text="$theme" PlaceholderText="e.g. cozy rainy afternoon, or $theme"/>
@@ -44,7 +45,7 @@
         </ScrollViewer>
 
         <Border Grid.Column="1" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1,0,0,0">
-            <WebView2 x:Name="VibeFinderWebView" Source="https://vibefinderai.netlify.app/app"/>
+            <WebView2 x:Name="VibeFinderWebView"/>
         </Border>
     </Grid>
 </Page>

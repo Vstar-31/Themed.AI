@@ -1,3 +1,4 @@
+using ThemeManager.Core.Services;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using Microsoft.UI.Xaml;
@@ -39,10 +40,20 @@ public sealed partial class VibeFinderAIPage : Page
 
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
+            if (e.Exception is not null || VibeFinderWebView.CoreWebView2 is null)
+            {
+                _logger.LogWarning(e.Exception, "VibeFinder browser initialization failed");
+                StatusText.Text = "The browser could not start. Install or repair the Microsoft Edge WebView2 Runtime.";
+                StatusText.Visibility = Visibility.Visible;
+                return;
+            }
             ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
-                var json = args.TryGetWebMessageAsString();
+                if (!VibeFinderSite.IsTrusted(args.Source)) return;
+                string json;
+                try { json = args.TryGetWebMessageAsString(); }
+                catch (ArgumentException) { return; }
                 if (string.IsNullOrEmpty(json))
                 {
                     _logger.LogDebug("VibeFinderAIPage: WebMessageReceived fired with an empty/non-string payload — ignored");
@@ -107,10 +118,17 @@ public sealed partial class VibeFinderAIPage : Page
             };
             BindVisibleEmbedBridge();
             ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
-            VibeFinderWebView.CoreWebView2.NavigationStarting += (_, _) =>
-                ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+            VibeFinderWebView.CoreWebView2.NavigationStarting += (_, args) =>
+            {
+                args.Cancel = !VibeFinderSite.IsTrusted(args.Uri);
+                if (!args.Cancel)
+                    ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+            };
+            VibeFinderWebView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
+
+        VibeFinderWebView.Source = new Uri(VibeFinderSite.AppUrl);
 
         _skinManager.EnsureVibeFinderSkinsExist();
         SyncWidgetTogglesFromActiveWorld();
@@ -155,7 +173,7 @@ public sealed partial class VibeFinderAIPage : Page
             return;
         }
         var uri = sender.Source;
-        if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+        if (!VibeFinderSite.IsTrusted(uri)) return;
         BindVisibleEmbedBridge();
         _logger.LogDebug("VibeFinderAIPage: navigation completed for {Uri}", uri);
         string user = UsernameBox.Text?.Trim() ?? "";
@@ -199,7 +217,7 @@ public sealed partial class VibeFinderAIPage : Page
                 try
                 {
                     var core = VibeFinderWebView.CoreWebView2;
-                    if (core is null)
+                    if (core is null || !VibeFinderSite.IsTrusted(core.Source))
                     {
                         _logger.LogDebug("VibeFinderAIPage: command dropped because CoreWebView2 is unavailable");
                         return;
@@ -374,7 +392,8 @@ public sealed partial class VibeFinderAIPage : Page
     {
         try
         {
-            if (VibeFinderWebView.CoreWebView2 is null)
+            if (VibeFinderWebView.CoreWebView2 is null
+                || !VibeFinderSite.IsTrusted(VibeFinderWebView.CoreWebView2.Source))
             {
                 _logger.LogDebug("VibeFinderAIPage: TryInjectLoginAsync skipped — CoreWebView2 not yet initialized");
                 return;

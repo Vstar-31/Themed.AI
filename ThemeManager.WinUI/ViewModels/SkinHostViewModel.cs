@@ -13,7 +13,9 @@ public sealed class SkinHostViewModel : ViewModelBase
     // Compatibility shim for older widget-host call sites that treated the host as a wrapper.
     public SkinHostViewModel ViewModel => this;
     public ObservableCollection<MeterViewModelBase> Meters { get; } = new();
-    public bool IsClosed { get; set; }
+    private volatile bool _isClosed;
+    public bool IsClosed { get => _isClosed; set => _isClosed = value; }
+    public WidgetRefreshCoordinator RefreshCoordinator { get; } = new();
     public System.Collections.Generic.IEnumerable<IMeasure> Measures => _measuresByName.Values;
 
     private readonly Dictionary<string, IMeasure> _measuresByName = new();

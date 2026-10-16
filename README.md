@@ -96,48 +96,22 @@ All SolidColorBrush references across the visual tree update instantly
 
 ---
 
-## Prerequisites
+## Build and test on Windows
 
-| Tool                         | Minimum version | Free?  |
-|------------------------------|-----------------|--------|
-| Visual Studio Community 2022 | 17.9+           | ✅ Yes |
-| Windows App SDK workload     | 1.5+            | ✅ Yes |
-| .NET 8 SDK                   | 8.0             | ✅ Yes |
-| Windows 11 (or 10 19041+)    | —               | —      |
-
-### Install the workload
-
-In the VS Installer, select:
-> **Windows application development** → ✅ Windows App SDK C# Templates
-
-Or via CLI:
-```powershell
-winget install Microsoft.WindowsAppRuntimeInstaller
-```
-
----
-
-## Build & Run
+Use Windows 10 build 19041+ or Windows 11 x64, the SDK pinned in `global.json`, .NET 8,
+Windows application development tooling, and Microsoft Edge WebView2 Runtime.
 
 ```powershell
-# 1. Clone
-git clone https://github.com/your-org/ThemedAI.git
-cd ThemedAI
-
-# 2. Restore
-dotnet restore ThemeManager.sln
-
-# 3. Build (x64 only — WinUI 3 requires a specific RID)
-dotnet build ThemeManager.sln -c Debug -r win-x64
-
-# 4. Run (packaged MSIX requires VS F5 or Deploy first)
-#    Open ThemeManager.sln in Visual Studio → Set ThemeManager.WinUI as startup → F5
+git clone --branch feat/widget-package-workflow https://github.com/Vstar-31/Themed.AI.git
+cd Themed.AI
+.\scripts\Test-Windows.ps1 -Configuration Release -Publish
+.\artifacts\windows-x64\ThemeManager.WinUI.exe
 ```
 
-> **Why Visual Studio for the first run?**  
-> MSIX packaged apps need the Windows App SDK deployment framework registered.  
-> VS does this automatically on F5. After that, you can use `dotnet run` for  
-> non-packaged iterations.
+The app is unpackaged (`WindowsPackageType=None`). For Visual Studio debugging, use a version
+supporting the pinned SDK, set `ThemeManager.WinUI` as the startup project, and select Debug/x64.
+See [Windows testing](docs/WINDOWS_TESTING.md) for downloadable CI builds, playback/world smoke
+tests, logs and error diagnosis.
 
 ---
 
