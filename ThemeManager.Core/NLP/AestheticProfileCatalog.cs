@@ -502,9 +502,16 @@ public static class AestheticProfileCatalog
     }
 
     private static string NormalizeBlendPrompt(string? prompt)
-        // The generic normalizer removes punctuation, so preserve a plus sign as a semantic
-        // connector before normalizing ("Y3K + Indie Sleaze + Desi-Core").
-        => Normalize(prompt?.Replace("+", " plus ", StringComparison.Ordinal));
+    {
+        // The generic normalizer removes punctuation, so translate common blend separators into
+        // words first ("Y3K + Indie Sleaze × Desi-Core", "Frutiger Aero & Neo Deco").
+        var expanded = prompt?
+            .Replace("+", " plus ", StringComparison.Ordinal)
+            .Replace("×", " x ", StringComparison.Ordinal)
+            .Replace("&", " and ", StringComparison.Ordinal)
+            .Replace("/", " plus ", StringComparison.Ordinal);
+        return Normalize(expanded);
+    }
 
     private static readonly string[] BlendConnectors =
     [
