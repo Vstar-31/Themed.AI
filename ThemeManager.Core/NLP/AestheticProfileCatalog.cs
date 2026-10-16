@@ -772,20 +772,22 @@ public static class AestheticProfileCatalog
 
     private static float? MatchAccentHueModifier(string text)
     {
+        // Accent-scoped language modifies the two accent roles only. Support both natural
+        // adjective order ("violet accents") and imperative phrasing ("make the accents violet").
         var cues = new (string[] Phrases, float Hue)[]
         {
-            (["red accents", "red highlights", "coral accents", "cherry accents", "scarlet details"], 0),
-            (["orange accents", "amber accents", "persimmon accents"], 28),
-            (["gold accents", "brass accents", "gold details"], 45),
-            (["yellow accents", "wasabi accents", "chartreuse accents"], 65),
-            (["green accents", "jade accents", "emerald accents", "sage accents"], 135),
-            (["teal accents", "sea-glass accents"], 180),
-            (["cyan accents", "cyan highlights", "aqua accents"], 190),
-            (["blue accents", "blue highlights", "cobalt accents"], 220),
-            (["indigo accents", "indigo highlights"], 245),
-            (["purple accents", "violet accents", "ultraviolet accents"], 275),
-            (["magenta accents", "fuchsia accents"], 315),
-            (["pink accents", "rose accents", "blush accents"], 335),
+            (["red accents", "red highlights", "coral accents", "cherry accents", "scarlet details", "make accents red", "make the accents red", "more red accents", "crimson accents"], 0),
+            (["orange accents", "amber accents", "persimmon accents", "make accents orange", "more orange accents"], 28),
+            (["gold accents", "brass accents", "gold details", "make accents gold", "more gold accents"], 45),
+            (["yellow accents", "wasabi accents", "chartreuse accents", "make accents yellow", "more yellow accents"], 65),
+            (["green accents", "jade accents", "emerald accents", "sage accents", "make accents green", "more green accents"], 135),
+            (["teal accents", "sea-glass accents", "make accents teal", "more teal accents"], 180),
+            (["cyan accents", "cyan highlights", "aqua accents", "make accents cyan", "more cyan accents"], 190),
+            (["blue accents", "blue highlights", "cobalt accents", "make accents blue", "more blue accents"], 220),
+            (["indigo accents", "indigo highlights", "make accents indigo", "more indigo accents"], 245),
+            (["purple accents", "violet accents", "ultraviolet accents", "make accents purple", "make accents violet", "make the accents violet", "more violet accents", "more purple accents"], 275),
+            (["magenta accents", "fuchsia accents", "make accents magenta", "more magenta accents"], 315),
+            (["pink accents", "rose accents", "blush accents", "make accents pink", "more pink accents"], 335),
         };
 
         foreach (var (phrases, hue) in cues)
@@ -795,20 +797,22 @@ public static class AestheticProfileCatalog
 
     private static float? MatchHueModifier(string text)
     {
+        // Palette-scoped phrases are intentionally distinct from accent-only cues. If the user
+        // asks for violet accents, don't rotate the entire background into violet as well.
         var cues = new (string[] Phrases, float Hue)[]
         {
-            (["more red", "make it red", "in red", "make everything red"], 0),
-            (["more orange", "make it orange", "in orange"], 28),
-            (["more gold", "make it gold", "in gold"], 45),
-            (["more yellow", "make it yellow", "in yellow"], 55),
-            (["more green", "make it green", "in green"], 125),
-            (["more teal", "make it teal", "in teal"], 180),
-            (["more cyan", "make it cyan", "in cyan"], 190),
-            (["more blue", "make it blue", "in blue", "bluer"], 220),
-            (["more indigo", "make it indigo", "in indigo"], 245),
-            (["more purple", "make it purple", "in purple"], 275),
-            (["more magenta", "make it magenta", "in magenta"], 315),
-            (["more pink", "make it pink", "in pink", "pinker"], 335),
+            (["more red", "make it red", "in red", "make everything red", "shift the palette toward red", "lean red", "more crimson overall"], 0),
+            (["more orange", "make it orange", "in orange", "shift the palette toward orange", "lean orange"], 28),
+            (["more gold", "make it gold", "in gold", "shift the palette toward gold"], 45),
+            (["more yellow", "make it yellow", "in yellow", "shift the palette toward yellow"], 55),
+            (["more green", "make it green", "in green", "shift the palette toward green", "lean green"], 125),
+            (["more teal", "make it teal", "in teal", "shift the palette toward teal"], 180),
+            (["more cyan", "make it cyan", "in cyan", "shift the palette toward cyan"], 190),
+            (["more blue", "make it blue", "in blue", "bluer", "shift the palette toward blue", "lean blue"], 220),
+            (["more indigo", "make it indigo", "in indigo", "shift the palette toward indigo"], 245),
+            (["more purple", "make it purple", "in purple", "more violet", "make it violet", "in violet", "shift the palette toward violet", "shift the palette toward purple"], 275),
+            (["more magenta", "make it magenta", "in magenta", "shift the palette toward magenta"], 315),
+            (["more pink", "make it pink", "in pink", "pinker", "shift the palette toward pink"], 335),
         };
 
         foreach (var (phrases, hue) in cues)
