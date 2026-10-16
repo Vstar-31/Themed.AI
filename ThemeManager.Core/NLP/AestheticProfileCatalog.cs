@@ -639,9 +639,9 @@ public static class AestheticProfileCatalog
         var borderColor = ColorMath.HexToOklch(theme.BorderSubtle);
 
         var lightnessDelta = 0f;
-        if (HasAny(text, "darker", "make it darker", "darken the palette", "less bright", "dim it"))
+        if (HasAny(text, "darker", "make it darker", "darken", "darken the palette", "less bright", "dim", "dim it", "dimmer", "make it moodier"))
             lightnessDelta = -0.045f;
-        else if (HasAny(text, "lighter", "make it lighter", "lighten the palette", "brighter background", "airy", "sunlit"))
+        else if (HasAny(text, "lighter", "make it lighter", "lighten", "lighten the palette", "brighter", "make it brighter", "brighten it", "brighter background", "airy", "sunlit"))
             lightnessDelta = 0.045f;
         else if (HasAny(text, "cinematic", "noir", "moody", "after dark", "late night"))
             lightnessDelta = -0.025f;
@@ -649,9 +649,9 @@ public static class AestheticProfileCatalog
         // OKLCH chroma is not HSL saturation; numeric changes preserve a reference's hue family
         // while independently responding to "pastel", "matte", "glossy", "dopamine" and "electric".
         var chromaDelta = 0f;
-        if (HasAny(text, "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer", "matte", "pastel", "quiet luxury"))
+        if (HasAny(text, "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer", "subtle", "faded", "matte", "pastel", "quiet luxury"))
             chromaDelta = -0.025f;
-        else if (HasAny(text, "more vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon", "dopamine", "maximalist", "camp"))
+        else if (HasAny(text, "more vibrant", "vibrant", "vivid", "more saturated", "saturated", "punchier", "electric", "extra neon", "neon", "dopamine", "colorful", "bold", "bolder", "maximalist", "camp", "brat", "hyperpop"))
             chromaDelta = 0.025f;
 
         // Named color cues use conventional HSL hue degrees (the same intuitive scale exposed
@@ -659,9 +659,9 @@ public static class AestheticProfileCatalog
         // perceptual hue angle differs materially for saturated violet/cyan/green colors.
         var hueTarget = MatchHueModifier(text);
         var hueShift = 0f;
-        if (hueTarget is null && HasAny(text, "warmer", "more warm", "warmer tones", "amber glow"))
+        if (hueTarget is null && HasAny(text, "warm", "warmer", "more warm", "warmer tones", "cozy", "cozier", "warmth", "amber glow"))
             hueShift = 10;
-        else if (hueTarget is null && HasAny(text, "cooler", "more cool", "cooler tones", "make it icy", "frosted", "glacier"))
+        else if (hueTarget is null && HasAny(text, "cool", "cooler", "more cool", "cold", "colder", "cooler tones", "make it icy", "frosted", "glacier"))
             hueShift = -10;
 
         theme.BackgroundBase = ColorMath.OklchToHex(
