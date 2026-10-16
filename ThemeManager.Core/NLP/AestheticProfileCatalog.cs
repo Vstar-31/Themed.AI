@@ -231,6 +231,15 @@ public static class AestheticProfileCatalog
         new("high-camp", "High Camp", "Theatrical chaos with fearless coral, absurdist turquoise, velvet plum and spotlight ivory; too much is the point.",
             ["high camp", "high camp trend", "campy aesthetic", "theater kid aesthetic", "mismatched outfit", "dramatic eye makeup", "outfit sandwich", "costume without occasion", "whimsical chaos", "maximalist performance"],
             "#141118", "#29202B", "#423342", "#FF6B5A", "#68F0D2", "#FFF4F0", "#D8C1D7", "#684C69"),
+        new("y3k", "Y3K", "Post-human industrial futurism: graphite, cold steel, surgical cyan and controlled acid-lime signal lights rather than dreamy space pastels.",
+            ["y3k", "y3k aesthetic", "post human futurism", "post-human futurism", "wearable tech aesthetic", "robotic couture", "metallic cyberwear", "utilitarian future", "chrome utility", "digital biology", "future techwear"],
+            "#0B0F12", "#161C22", "#222D35", "#C6FF4F", "#8FB7D1", "#F4F8FB", "#BAC8CF", "#3F515D"),
+        new("indie-sleaze", "Indie Sleaze", "Flash-lit 2000s nightlife: smoky charcoal, worn rose, thrift-store plum and camera-flash silver with deliberately imperfect glamour.",
+            ["indie sleaze", "indie sleaze trend", "flash photography aesthetic", "digicam party", "myspace era", "2000s indie party", "messy glam", "smudged eyeliner aesthetic", "thrifted rock party", "lo fi nightlife", "low fi nightlife", "camera flash party"],
+            "#151217", "#25202A", "#3A2E3E", "#F0548A", "#C7B7D8", "#F9F2F5", "#C8B7C5", "#514150"),
+        new("desi-core", "Desi-Core", "Modern Indian streetwear and handloom energy: ink-indigo, marigold saffron, rani pink and warm ivory with festive confidence.",
+            ["desi core", "desi-core", "desi fusion aesthetic", "modern desi", "indian streetwear", "handloom aesthetic", "ajrak print", "ajrakh", "bandhani", "juttis and sneakers", "dupatta street style", "bollywood editorial", "indian maximalist", "desi girl aesthetic"],
+            "#151026", "#241A3A", "#39254F", "#F0A24D", "#E94F8A", "#FFF3E1", "#D7B9CF", "#62466A"),
     ];
 
     public static IReadOnlyList<Profile> Profiles => AllProfiles;
