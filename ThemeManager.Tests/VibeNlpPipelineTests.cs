@@ -589,6 +589,27 @@ public class VibeNlpPipelineTests
             $"{quality.PassingPairs}/{quality.TotalPairs} text pairs passed for the three-way blend.");
     }
 
+    [Theory]
+    [InlineData("Y3K + Indie Sleaze + Desi-Core")]
+    [InlineData("Y3K × Indie Sleaze × Desi-Core")]
+    [InlineData("Y3K meets Indie Sleazee meets Desi-Core")]
+    public void Generate_ThreeWayBlendHandlesSeparatorsAndOneMisspelledReference(string prompt)
+    {
+        var profiles = AestheticProfileCatalog.FindAll(prompt);
+        Assert.Equal(new[] { "Y3K", "Indie Sleaze", "Desi-Core" }, profiles.Take(3).Select(profile => profile.Name));
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, profiles));
+
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal("Y3K × Indie Sleaze × Desi-Core", theme.Name);
+        Assert.Contains("Y3K", analysis.MatchedKeywords);
+        Assert.Contains("Indie Sleaze", analysis.MatchedKeywords);
+        Assert.Contains("Desi-Core", analysis.MatchedKeywords);
+        var quality = PaletteQualityValidator.ValidateAndRepair(theme);
+        Assert.True(quality.PassesAA,
+            $"{prompt}: {quality.PassingPairs}/{quality.TotalPairs} text pairs passed.");
+    }
+
     [Fact]
     public void Generate_BlendedAestheticsPreserveCompositionModifiers()
     {
