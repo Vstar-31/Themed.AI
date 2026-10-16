@@ -63,8 +63,16 @@ public sealed class VibeThemeGenerator
             // This shared composition pass lets natural descriptions refine the palette without
             // requiring every phrase to be a pre-authored aesthetic name.
             AestheticProfileCatalog.ApplyPromptModifiers(theme, vibeText);
-            PaletteQualityValidator.ValidateAndRepair(theme, signal.HasSignal ? signal.IsDark : null);
         }
+
+        // One final quality gate covers every route: exact profile, aesthetic blend, and free-form
+        // color-language generation. This is intentionally at the public boundary so a future
+        // candidate strategy cannot bypass accessibility or tonal-hierarchy repair.
+        bool? requestedPolarity = profile is null && signal.HasSignal ? signal.IsDark : null;
+        var finalQuality = PaletteQualityValidator.ValidateAndRepair(theme, requestedPolarity);
+        if (!finalQuality.PassesAA)
+            throw new InvalidOperationException(
+                $"Generated palette failed its final accessibility gate ({finalQuality.PassingPairs}/{finalQuality.TotalPairs} pairs).");
 
         var analysis = BuildAnalysis(signal, theme, profile, secondaryProfile);
         return (theme, analysis);
