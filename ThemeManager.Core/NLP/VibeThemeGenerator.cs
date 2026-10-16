@@ -174,6 +174,23 @@ public sealed class VibeThemeGenerator
         var normalized = AestheticProfileCatalog.NormalizeForMatching(instructionText);
         if (normalized.Length == 0) return false;
 
+        // Explicit selection language always creates a new result when a named aesthetic is
+        // present. Otherwise "change the theme to Frutiger Aero" can be mistaken for a glass
+        // refinement simply because the profile name contains one of the catalog's modifier cues.
+        bool namesAesthetic = AestheticProfileCatalog.FindAll(instructionText).Count > 0;
+        bool explicitStyleSwitch =
+            normalized.StartsWith("change theme to ", StringComparison.Ordinal) ||
+            normalized.StartsWith("change the theme to ", StringComparison.Ordinal) ||
+            normalized.StartsWith("switch to ", StringComparison.Ordinal) ||
+            normalized.StartsWith("use the ", StringComparison.Ordinal) ||
+            normalized.StartsWith("use ", StringComparison.Ordinal) ||
+            normalized.StartsWith("generate ", StringComparison.Ordinal) ||
+            normalized.StartsWith("create ", StringComparison.Ordinal) ||
+            normalized.StartsWith("make me a ", StringComparison.Ordinal);
+
+        if (namesAesthetic && explicitStyleSwitch)
+            return false;
+
         // A verb alone is not enough: "change theme to Dark Academia" is a fresh aesthetic
         // request, while "change the palette to more violet" is an edit. Require both an edit-like
         // lead-in and a recognized color/composition cue before reusing the current result.
