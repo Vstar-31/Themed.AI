@@ -1,4 +1,5 @@
 using ThemeManager.Core.NLP;
+using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Tests;
@@ -59,6 +60,32 @@ public class PaletteCompositionScorerTests
 
         Assert.True(matchingScore > mismatchedScore + 8f,
             $"Expected prompt-aligned geometry to score higher, got {matchingScore:F1} vs {mismatchedScore:F1}.");
+    }
+
+    [Fact]
+    public void RankThemes_VariationSeedRotatesPreferredGenerationTreatment()
+    {
+        var seedTheme = AestheticProfileCatalog.CreateTheme(
+            AestheticProfileCatalog.Find("Neon Afterglow")!, "Neon Afterglow");
+        var candidates = new List<ThemeCandidate>
+        {
+            new() { Theme = seedTheme.Duplicate(), GenerationSource = "ArtDirectedBase" },
+            new() { Theme = seedTheme.Duplicate(), GenerationSource = "SoftFocusVariant" },
+            new() { Theme = seedTheme.Duplicate(), GenerationSource = "ElectricCutVariant" }
+        };
+        var ranking = new HeuristicRankingEngine();
+
+        var expected = new[] { "ArtDirectedBase", "SoftFocusVariant", "ElectricCutVariant" };
+        for (int seed = 0; seed < expected.Length; seed++)
+        {
+            var selected = ranking.RankThemes(candidates, new UserProfile(), new GenerationContext
+            {
+                Prompt = "Neon Afterglow",
+                VariationSeed = seed
+            }).First();
+
+            Assert.Equal(expected[seed], selected.GenerationSource);
+        }
     }
 
     [Fact]
