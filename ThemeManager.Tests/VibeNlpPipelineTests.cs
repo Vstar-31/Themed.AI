@@ -393,6 +393,19 @@ public class VibeNlpPipelineTests
     }
 
     [Theory]
+    [InlineData("Minecraft", "Minecraft Overworld")]
+    [InlineData("Minecraft Cherry Grove", "Cherry Grove")]
+    [InlineData("Cherry Grove", "Cherry Grove")]
+    public void Generate_GeneralFranchiseAliasDoesNotOverrideSpecificAesthetic(string prompt, string expectedName)
+    {
+        var theme = _gen.Generate(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Theory]
     [InlineData("Jade palette", "Jade Reverie")]
     [InlineData("Pinterest Palette Plum Noir villain era", "Plum Noir")]
     [InlineData("Wasabi green aesthetic", "Wasabi Voltage")]
