@@ -682,6 +682,8 @@ public class VibeNlpPipelineTests
     [InlineData("K-Pop Stage", false)]
     [InlineData("make it darker", true)]
     [InlineData("add violet accents", true)]
+    [InlineData("make the accents violet", true)]
+    [InlineData("make it violet", true)]
     [InlineData("make the layout minimal and spacious", true)]
     [InlineData("more vibrant", true)]
     public void IsRefinementInstruction_DistinguishesCommandsFromNewAesthetics(string prompt, bool expected)
@@ -707,6 +709,25 @@ public class VibeNlpPipelineTests
         Assert.True(Math.Abs(hueBefore - hueAfter) > 8f,
             $"Expected refinement to move accent hue, got {hueBefore:F1}° -> {hueAfter:F1}°.");
         Assert.All(ContrastChecker.Check(refined), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Refine_AccentOnlyColorLanguagePreservesBackgroundIdentity()
+    {
+        var theme = _gen.Generate("Frutiger Aero");
+        var background = theme.BackgroundBase;
+        var backgroundAlt = theme.BackgroundAlt;
+        var surface = theme.Surface;
+
+        _gen.Refine(theme, "make the accents violet");
+
+        Assert.Equal(background, theme.BackgroundBase);
+        Assert.Equal(backgroundAlt, theme.BackgroundAlt);
+        Assert.Equal(surface, theme.Surface);
+        var hue = ColorMath.HexToHsl(theme.AccentPrimary).H;
+        Assert.InRange(hue, 255f, 300f);
+        Assert.All(ContrastChecker.Check(theme), check =>
             Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
     }
 
