@@ -143,15 +143,18 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Meters" Style="{StaticResource SectionHeaderStyle}" />
-                            <TextBlock Text="What's actually drawn — text, a fill bar, a scrolling graph, or an icon. Click one below (or on the preview) to edit it."
+                            <TextBlock Text="What's drawn — text, bars, graphs, rings, icons, images, or web content. Click one below (or on the preview) to edit it."
                                        Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="+ Text" Click="AddStringMeterButton_Click" />
                                 <Button Content="+ Bar" Click="AddBarMeterButton_Click" />
                                 <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
-                                <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
                                 <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
+                                <Button Content="+ Image" Click="AddImageMeterButton_Click" />
                                 <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
 
@@ -186,8 +189,11 @@
                                 <Button Content="+ Text" Click="AddStringMeterButton_Click" />
                                 <Button Content="+ Bar" Click="AddBarMeterButton_Click" />
                                 <Button Content="+ Graph" Click="AddGraphMeterButton_Click" />
-                                <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
                                 <Button Content="+ Ring" Click="AddRingMeterButton_Click" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="+ Icon" Click="AddIconMeterButton_Click" />
+                                <Button Content="+ Image" Click="AddImageMeterButton_Click" />
                                 <Button Content="+ Web Embed" Click="AddWebEmbedMeterButton_Click" />
                             </StackPanel>
                         </StackPanel>
@@ -294,6 +300,15 @@
                             <TextBox Header="Static text"
                                      Text="{x:Bind ViewModel.SelectedMeter.StaticText, Mode=TwoWay}"
                                      Visibility="{x:Bind ViewModel.SelectedMeter.ShowStaticTextField, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <StackPanel Spacing="6"
+                                        Visibility="{x:Bind ViewModel.SelectedMeter.IsImage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBox Header="Image" IsReadOnly="True"
+                                         Text="{x:Bind ViewModel.SelectedMeter.ImagePath, Mode=OneWay}" />
+                                <Button Content="Choose image…" Click="ChooseImageButton_Click" />
+                                <TextBlock Text="Images keep their proportions and travel with exported widgets."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
+                            </StackPanel>
 
                             <StackPanel Spacing="6"
                                         Visibility="{x:Bind ViewModel.SelectedMeter.IsWebEmbed, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">

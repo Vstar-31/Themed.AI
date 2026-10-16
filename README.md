@@ -228,3 +228,10 @@ imports, and a first-class visual editor. See `phases.md`, Phase 10, for the imp
 ## License
 
 MIT — free for personal and commercial use.
+
+## Portable widgets and development roadmap
+
+Use **Widgets → Import widget…** for `.themedwidget` packages, **More → Export widget…**
+to share one, and **+ Image** in the editor to add bundled artwork. Imported widgets stay off
+until enabled. See [Portable widgets](docs/WIDGET_PACKAGES.md) for the format and connection
+settings, and the [desktop platform roadmap](docs/RAINMETER_ROADMAP.md) for the next milestones.

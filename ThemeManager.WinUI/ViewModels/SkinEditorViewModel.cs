@@ -151,14 +151,15 @@ public sealed class MeterEditorItem : ViewModelBase
     public bool IsGraph => Kind == MeterKind.Graph;
     public bool IsIcon => Kind == MeterKind.Icon;
     public bool IsRing => Kind == MeterKind.Ring;
+    public bool IsImage => Kind == MeterKind.Image;
     public bool IsWebEmbed => Kind == MeterKind.WebEmbed;
 
-    /// <summary>Every kind except WebEmbed binds to a live measure (or falls back to static
+    /// <summary>Every kind except WebEmbed and Image binds to a live measure (or falls back to static
     /// text) and can launch a click action — a WebEmbed meter has no measure to read and no
     /// synthetic click action of its own; the embedded page handles its own clicks once it's on
     /// screen. Gates the shared "Measure" combo, "Static text" field, and "Click actions" section
     /// in the property panel, which would otherwise show controls that do nothing for this kind.</summary>
-    public bool UsesMeasureAndClickFields => !IsWebEmbed;
+    public bool UsesMeasureAndClickFields => !IsWebEmbed && !IsImage;
 
     /// <summary>Icon and Ring meters share Bar/Graph's "value that reads as full" field — it's
     /// what their threshold-percent check divides against — but not Graph's history-length field.</summary>
@@ -166,7 +167,7 @@ public sealed class MeterEditorItem : ViewModelBase
 
     /// <summary>Icon meters use <see cref="IconGlyph"/> instead of a static-text label, so the
     /// generic "Static text" field only makes sense for the other kinds.</summary>
-    public bool ShowStaticTextField => IsStaticText && !IsIcon;
+    public bool ShowStaticTextField => IsStaticText && !IsIcon && !IsImage;
 
     private double _x, _y, _width, _height, _fontSize, _barMax, _thresholdPercent;
     private int _historyLength;
@@ -186,6 +187,7 @@ public sealed class MeterEditorItem : ViewModelBase
     public string StaticText { get => _staticText; set { if (SetProperty(ref _staticText, value)) { Definition.StaticText = value; _onChanged(); } } }
     public string Format { get => _format; set { if (SetProperty(ref _format, value)) { Definition.Format = value; _onChanged(); } } }
     public string IconGlyph { get => _iconGlyph; set { if (SetProperty(ref _iconGlyph, value)) { Definition.IconGlyph = value; _onChanged(); } } }
+    public string ImagePath { get => Definition.ImagePath ?? ""; set { if (Definition.ImagePath != value) { Definition.ImagePath = value; OnPropertyChanged(); _onChanged(); } } }
     public string WebEmbedUrl { get => _webEmbedUrl; set { if (SetProperty(ref _webEmbedUrl, value)) { Definition.WebEmbedUrl = value; _onChanged(); } } }
 
     // ── Threshold alert ────────────────────────────────────────────────────
@@ -509,7 +511,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
             X = 16,
             Y = 16,
             Width = kind switch { MeterKind.String => 140, MeterKind.Icon => 28, MeterKind.Ring => 60, MeterKind.WebEmbed => 260, _ => 160 },
-            Height = kind switch { MeterKind.Bar => 10, MeterKind.Graph => 60, MeterKind.Icon => 28, MeterKind.Ring => 60, MeterKind.WebEmbed => 200, _ => 22 },
+            Height = kind switch { MeterKind.Bar => 10, MeterKind.Graph => 60, MeterKind.Icon => 28, MeterKind.Ring => 60, MeterKind.Image => 120, MeterKind.WebEmbed => 200, _ => 22 },
         };
         _working.Meters.Add(def);
 

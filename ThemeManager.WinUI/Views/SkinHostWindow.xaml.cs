@@ -348,6 +348,7 @@ public sealed partial class SkinHostWindow : Window
                 IconMeterViewModel icon => BuildIconVisual(icon),
                 RingMeterViewModel ring => BuildRingVisual(ring),
                 StringMeterViewModel str => BuildStringVisual(str),
+                ImageMeterViewModel image => ImageMeterVisual.Create(image.Definition),
                 WebEmbedMeterViewModel embed => BuildWebEmbedVisual(embed),
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };

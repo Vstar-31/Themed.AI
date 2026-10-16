@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using ThemeManager.Core.Skins;
 using ThemeManager.WinUI.ViewModels;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace ThemeManager.WinUI.Views;
 
@@ -79,6 +81,64 @@ public sealed partial class SkinsPage : Page
     private void GenerateWidgetButton_Click(object sender, RoutedEventArgs e)
     {
         App.MainWindow?.NavigateToWidgetGenerator();
+    }
+
+    private bool _packageOperation;
+
+    private async void ImportWidgetButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_packageOperation) return;
+        _packageOperation = true;
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.Downloads };
+            picker.FileTypeFilter.Add(".themedwidget");
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
+            var file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+            ViewModel.StatusMessage = "Importing widget and images…";
+            await ViewModel.ImportPackageAsync(file.Path);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusMessage = $"Could not import widget: {ex.Message}";
+        }
+        finally { _packageOperation = false; }
+    }
+
+    private async void ExportWidgetButton_Click(object sender, RoutedEventArgs e)
+    {
+        var skin = (sender as FrameworkElement)?.Tag as SkinDefinition;
+        if (skin is null || _packageOperation) return;
+        _packageOperation = true;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Export widget",
+                Content = "Images will be bundled. Weather, VibeFinder, Web/JSON and plugin connection settings are omitted. Review custom text, links and variables before sharing.",
+                PrimaryButtonText = "Export",
+                CloseButtonText = "Cancel",
+                XamlRoot = XamlRoot,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = "ThemedAI-widget",
+            };
+            picker.FileTypeChoices.Add("Themed.AI widget", new[] { ".themedwidget" });
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+            ViewModel.StatusMessage = "Exporting widget and images…";
+            await ViewModel.ExportPackageAsync(skin, file.Path);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusMessage = $"Could not export widget: {ex.Message}";
+        }
+        finally { _packageOperation = false; }
     }
 
     private async void NewWidgetButton_Click(object sender, RoutedEventArgs e)

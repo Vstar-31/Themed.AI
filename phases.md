@@ -1,5 +1,9 @@
 # Themed.AI — Unified Phase Roadmap
 
+> Current delivery plan: [Rainmeter-class desktop platform roadmap](docs/RAINMETER_ROADMAP.md).
+> The historical phase notes below are retained; use the new roadmap for milestones and acceptance gates.
+> Package/image implementation details: [Portable widgets](docs/WIDGET_PACKAGES.md).
+
 ## ✅ Completed Phases
 
 ### Phase 1 — Theme Foundation
@@ -424,8 +428,8 @@ runtime platform. The first implementation slice is now in the codebase:
 
 - [x] Visual containers/groups with shared transforms, clipping, opacity and persisted group variables. Groups are first-class containers; meters use local coordinates inside them, and runtime/editor render the same transforms.
 - [x] Expression/formula measures and a safe arithmetic/function evaluator. Formula measures can reference other live measures and are refreshed after base measures.
-- [ ] Plugin contracts for third-party measures, meters, and actions.
-- [ ] Skin package asset extraction and sandboxed asset paths.
+- [x] Initial plugin contracts and loader exist. API versioning, capability policy and full editor/host integration remain open.
+- [x] Skin package raster assets, constrained extraction, image meters and import/export UI implemented. Windows desktop validation remains open.
 - [ ] State machines: hover/pressed/active/threshold states with transitions.
 - [ ] Anchoring to monitor/work-area edges and responsive layouts.
 - [x] Initial group property inspector and multi-select grouping workflow added to the widget editor. Full meter layer/timeline tooling remains next.

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/windows-app-theming
+      - feat/widget-package-workflow
   pull_request:
     branches:
       - feature/windows-app-theming
@@ -23,9 +24,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 8
+      - name: Setup pinned SDK and .NET 8 runtime
         uses: actions/setup-dotnet@v4
         with:
+          global-json-file: global.json
           dotnet-version: '8.0.x'
 
       - name: Restore

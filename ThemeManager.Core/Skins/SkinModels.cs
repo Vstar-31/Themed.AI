@@ -9,7 +9,7 @@ public enum MeasureType
 
 public enum MeterKind
 {
-    String, Bar, Graph, Icon, Ring, WebEmbed,
+    String, Bar, Graph, Icon, Ring, WebEmbed, Image,
 }
 
 public sealed class MeasureDefinition
@@ -50,6 +50,8 @@ public sealed class MeterDefinition
     public string? ActionUrl { get; set; }
     public string? SecondaryActionUrl { get; set; }
     public string? WebEmbedUrl { get; set; }
+    /// <summary>Local image filename; packages store a relative assets/ reference.</summary>
+    public string? ImagePath { get; set; }
     /// <summary>Optional plugin capability id used by custom meter runtimes.</summary>
     public string? PluginType { get; set; }
 }
@@ -98,7 +100,8 @@ public sealed class WidgetGroupDefinition
 
 public sealed class SkinDefinition
 {
-    public int SchemaVersion { get; set; } = 5;
+    public const int CurrentSchemaVersion = 5;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
     public string Description { get; set; } = "";
@@ -183,6 +186,7 @@ public sealed class SkinDefinition
                     ActionUrl = m.ActionUrl,
                     SecondaryActionUrl = m.SecondaryActionUrl,
                     WebEmbedUrl = m.WebEmbedUrl,
+                    ImagePath = m.ImagePath,
                     PluginType = m.PluginType
                 }).ToList(),
             Groups = (Groups ?? new List<WidgetGroupDefinition>())

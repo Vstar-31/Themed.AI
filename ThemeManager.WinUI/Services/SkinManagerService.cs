@@ -463,6 +463,22 @@ public sealed class SkinManagerService : IDisposable
         _skins.Add(skin); await PersistAsync(true); return skin;
     }
 
+    public async Task AddImportedSkinAsync(SkinDefinition skin)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            skin.Enabled = false;
+            if (_skins.Any(s => s.Id.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("This widget has already been imported.");
+            await _repo.SaveAllCheckedAsync(_skins.Append(skin));
+            _skins.Add(skin);
+            SkinsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally { _windowMutationGate.Release(); }
+    }
+
     public async Task AddGeneratedSkinAsync(SkinDefinition skin) { _skins.Add(skin); await PersistAsync(true); }
 
     /// <summary>

@@ -33,10 +33,10 @@
                 <TextBlock Text="Master visibility" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}"/>
                 <ToggleSwitch x:Name="MasterVisibilityToggle" IsOn="True" Toggled="MasterVisibilityToggle_Toggled" Style="{StaticResource CozyToggleStyle}" OnContent="" OffContent="" />
             </StackPanel>
-            <Button Grid.Column="2" Content="Generate with AI"
-                    VerticalAlignment="Top"
-                    Margin="0,0,8,0"
-                    Click="GenerateWidgetButton_Click" />
+            <StackPanel Grid.Column="2" Spacing="8" Margin="0,0,8,0">
+                <Button Content="Generate with AI" Click="GenerateWidgetButton_Click" />
+                <Button Content="Import widget…" Click="ImportWidgetButton_Click" />
+            </StackPanel>
             <Button Grid.Column="3" Content="+ New Widget"
                     Style="{StaticResource PrimaryButtonStyle}"
                     VerticalAlignment="Top"
@@ -131,7 +131,14 @@
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                                         <Button Content="Reset" Tag="{x:Bind}" Click="ResetPositionButton_Click" />
                                         <Button Content="Edit" Tag="{x:Bind}" Click="EditButton_Click" />
-                                        <Button Content="Delete" Tag="{x:Bind}" Style="{StaticResource DangerButtonStyle}" Click="DeleteButton_Click" />
+                                        <Button Content="More" AutomationProperties.Name="More widget actions">
+                                            <Button.Flyout>
+                                                <MenuFlyout>
+                                                    <MenuFlyoutItem Text="Export widget…" Tag="{x:Bind}" Click="ExportWidgetButton_Click" />
+                                                    <MenuFlyoutItem Text="Delete" Tag="{x:Bind}" Click="DeleteButton_Click" />
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </Grid>

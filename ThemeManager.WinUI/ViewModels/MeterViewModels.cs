@@ -381,3 +381,10 @@ public sealed class WebEmbedMeterViewModel : MeterViewModelBase
     // app's own synthetic click-URL dispatch in SkinHostWindow.
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName) { }
 }
+
+/// <summary>Static artwork is loaded once by the shared renderer, with no polling or network access.</summary>
+public sealed class ImageMeterViewModel : MeterViewModelBase
+{
+    public ImageMeterViewModel(MeterDefinition definition) : base(definition) { }
+    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName) { }
+}

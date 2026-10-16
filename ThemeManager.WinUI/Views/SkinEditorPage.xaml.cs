@@ -178,6 +178,27 @@ public sealed partial class SkinEditorPage : Page
     private void AddGraphMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Graph);
     private void AddIconMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Icon);
     private void AddRingMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Ring);
+    private async void ChooseImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        var meter = ViewModel.SelectedMeter;
+        if (meter is null || !meter.IsImage) return;
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            foreach (var extension in new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico" })
+                picker.FileTypeFilter.Add(extension);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow));
+            var file = await picker.PickSingleFileAsync();
+            if (file is not null) meter.ImagePath = file.Path;
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusMessage = $"Could not choose an image: {ex.Message}";
+        }
+    }
+
+    private void AddImageMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.Image);
+
     private void AddWebEmbedMeterButton_Click(object sender, RoutedEventArgs e) => ViewModel.AddMeter(MeterKind.WebEmbed);
 
     private void RemoveMeterButton_Click(object sender, RoutedEventArgs e)
@@ -320,6 +341,7 @@ public sealed partial class SkinEditorPage : Page
 
     private static FrameworkElement BuildPreviewContent(MeterEditorItem meter)
     {
+        if (meter.Kind == MeterKind.Image) return ImageMeterVisual.Create(meter.Definition);
         if (meter.Kind == MeterKind.String)
         {
             return new TextBlock
