@@ -200,7 +200,7 @@ public sealed class VibeThemeGenerator
 
         string[] commandPrefixes =
         [
-            "make it ", "make this ", "make the ", "please make it ", "change ", "adjust ", "refine ", "tweak ", "add ", "remove ",
+            "make it ", "make this ", "make the ", "please make it ", "change ", "adjust ", "refine ", "tweak ", "add ", "remove ", "use ",
             "tone down ", "turn up ", "increase ", "decrease ", "shift ", "move the ", "give it ",
             "less ", "more ", "darker", "lighter", "brighter", "darken", "lighten", "brighten",
             "dim it", "dimmer", "vibrant", "muted", "desaturated", "warmer", "cooler", "softer",
