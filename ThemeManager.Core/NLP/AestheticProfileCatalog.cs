@@ -634,6 +634,58 @@ public static class AestheticProfileCatalog
         return blended;
     }
 
+    /// <summary>
+    /// Composes up to three requested aesthetics. The primary profile owns most of the base
+    /// background, the second contributes its signature atmosphere, and the third is weighted
+    /// most strongly in accent roles. This keeps three-way requests recognizable instead of
+    /// silently discarding the last reference.
+    /// </summary>
+    public static CozyTheme CreateBlendedTheme(IReadOnlyList<Profile> profiles, string prompt)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        if (profiles.Count < 2)
+            throw new ArgumentException("At least two profiles are required for a blend.", nameof(profiles));
+
+        var selected = profiles.Take(3).ToArray();
+        if (selected.Length == 2)
+            return CreateBlendedTheme(selected[0], selected[1], prompt);
+
+        var first = CreateProfileBaseTheme(selected[0]);
+        var second = CreateProfileBaseTheme(selected[1]);
+        var third = CreateProfileBaseTheme(selected[2]);
+        bool usesFrutigerGeometry = selected.Any(profile =>
+            profile.Id.Equals("frutiger-aero", StringComparison.OrdinalIgnoreCase));
+
+        var blended = new CozyTheme
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = string.Join(" × ", selected.Select(profile => profile.Name)),
+            Description = $"{selected[0].Description} Blended with {selected[1].Description} and accented by {selected[2].Description}",
+            IsBuiltIn = false,
+            LastModified = DateTimeOffset.UtcNow,
+            // Surface roles use gentler third-profile weights; accent roles invite more of the
+            // third reference so a user can deliberately combine, for example, Y3K + Indie Sleaze
+            // + Desi-Core without turning the whole background into an average of all three.
+            BackgroundBase = BlendThreeOklch(first.BackgroundBase, second.BackgroundBase, third.BackgroundBase, 0.15f, 0.09f),
+            BackgroundAlt = BlendThreeOklch(first.BackgroundAlt, second.BackgroundAlt, third.BackgroundAlt, 0.23f, 0.13f),
+            Surface = BlendThreeOklch(first.Surface, second.Surface, third.Surface, 0.34f, 0.18f),
+            AccentPrimary = BlendThreeOklch(first.AccentPrimary, second.AccentPrimary, third.AccentPrimary, 0.45f, 0.22f),
+            AccentStrong = BlendThreeOklch(first.AccentStrong, second.AccentStrong, third.AccentStrong, 0.58f, 0.25f),
+            TextPrimary = BlendThreeOklch(first.TextPrimary, second.TextPrimary, third.TextPrimary, 0.12f, 0.08f),
+            TextMuted = BlendThreeOklch(first.TextMuted, second.TextMuted, third.TextMuted, 0.20f, 0.12f),
+            BorderSubtle = BlendThreeOklch(first.BorderSubtle, second.BorderSubtle, third.BorderSubtle, 0.25f, 0.15f),
+            CornerRadiusScale = usesFrutigerGeometry ? 1.25 : 1.0,
+            DensityScale = 1.0
+        };
+
+        ApplyPromptModifiers(blended, prompt);
+        PaletteQualityValidator.ValidateAndRepair(blended);
+        return blended;
+    }
+
+    private static string BlendThreeOklch(string first, string second, string third, float secondWeight, float thirdWeight)
+        => BlendOklch(BlendOklch(first, second, secondWeight), third, thirdWeight);
+
     private static string BlendOklch(string first, string second, float amount)
     {
         var (l1, c1, h1) = ColorMath.HexToOklch(first);
