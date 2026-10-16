@@ -653,6 +653,19 @@ public class VibeNlpPipelineTests
             "Button fill repair should preserve the palette's accent hue.");
     }
 
+    [Theory]
+    [InlineData("Dark Academia", false)]
+    [InlineData("Frutiger Aero glass ocean", false)]
+    [InlineData("K-Pop Stage", false)]
+    [InlineData("make it darker", true)]
+    [InlineData("add violet accents", true)]
+    [InlineData("make the layout minimal and spacious", true)]
+    [InlineData("more vibrant", true)]
+    public void IsRefinementInstruction_DistinguishesCommandsFromNewAesthetics(string prompt, bool expected)
+    {
+        Assert.Equal(expected, _gen.IsRefinementInstruction(prompt));
+    }
+
     [Fact]
     public void Refine_UsesSameAccentHueSemanticsAsInitialGeneration()
     {
