@@ -212,6 +212,25 @@ public static class AestheticProfileCatalog
         new("kpop-demon-hunters", "Idol Exorcist", "A supernatural concert-stage palette of midnight plum, electric violet, hot pink and a controlled solar-gold flash.",
             ["kpop demon hunters", "k-pop demon hunters", "demon hunters soundtrack", "huntrix", "saja boys", "supernatural kpop", "idol exorcist"],
             "#100A1A", "#23112F", "#351B45", "#F44CCB", "#6D8DFF", "#FFF1FD", "#CAB6DE", "#583264"),
+        // Pinterest's 2026 festival trend report: palettes authored as complete art directions.
+        new("hot-tropic", "Hot Tropic", "Tropical showgirl maximalism: carnival fuchsia, guava coral and sun-struck gold over a deep after-dark plum.",
+            ["hot tropic", "hot tropic trend", "tropicoqueta", "tropical showgirl", "showgirl aesthetic", "gold fringe dress", "cumbia inspired makeup", "desert carnival", "body glitter", "carnaval glamour"],
+            "#160D1E", "#28162C", "#3A2040", "#FF6B83", "#FFD166", "#FFF4F1", "#D7B9CB", "#5D3A4F"),
+        new("swashbuckled", "Swashbuckled", "A rogue-adventurer palette of weathered suede, tarnished brass, storm-sea teal and worn leather under moonlit charcoal.",
+            ["swashbuckled", "swashbuckled trend", "piratecore", "pirate eye makeup", "pirate earrings", "pirate belt", "belts on belts", "suede mini skirt", "nautical renegade", "booted adventurer"],
+            "#171512", "#28221B", "#3D3226", "#C68D54", "#6D9F9B", "#F4EBDC", "#CDBDA4", "#594938"),
+        new("shoegaze", "Shoegaze Aesthetic", "Worn-in indie melancholy: smoke-black denim, faded rose, washed cobalt and flannel blue with a lived-in 2000s edge.",
+            ["shoegaze", "shoegaze aesthetic", "shoegaze aesthetic outfits", "2000s rock outfits", "indie alternative outfits", "thrifted band tees", "worn in flannel", "deep cut indie", "windbreaker jacket outfit", "garage band aesthetic"],
+            "#12151D", "#232630", "#333642", "#D7839B", "#79ABC7", "#F3F0F3", "#B7BBC8", "#454B57"),
+        new("peak-poptimism", "Peak Poptimism", "Y2K pop maximalism with airbrushed candy gradients, holographic lilac, rhinestone magenta and laser-cyan shine.",
+            ["peak poptimism", "peak poptimism trend", "airbrush jeans", "rhinestone tops", "frutiger aero core", "belt charms", "uv resin jewelry", "pop maximalism", "glitter is the new neutral", "holographic pop"],
+            "#141026", "#251A3B", "#3B2854", "#FF64C8", "#59E8FF", "#F8F1FF", "#C9B9DE", "#594371"),
+        new("sheer-euphoria", "Sheer Euphoria", "Soft-focus rave euphoria: sheer lilac, organza blush and silk-mint light against a deep dancefloor violet.",
+            ["sheer euphoria", "sheer euphoria trend", "underground rave outfit", "sheer organza", "sheer skirt outfit", "organza shirt outfit", "angelic accessories", "oversized silk shirt", "soft rave", "euphoric dancefloor"],
+            "#171222", "#282035", "#3C2E4B", "#E9A9D2", "#9FE1D6", "#F8F2FC", "#D0C3DB", "#574768"),
+        new("high-camp", "High Camp", "Theatrical chaos with fearless coral, absurdist turquoise, velvet plum and spotlight ivory; too much is the point.",
+            ["high camp", "high camp trend", "campy aesthetic", "theater kid aesthetic", "mismatched outfit", "dramatic eye makeup", "outfit sandwich", "costume without occasion", "whimsical chaos", "maximalist performance"],
+            "#141118", "#29202B", "#423342", "#FF6B5A", "#68F0D2", "#FFF4F0", "#D8C1D7", "#684C69"),
     ];
 
     public static IReadOnlyList<Profile> Profiles => AllProfiles;
