@@ -38,6 +38,30 @@ public class ThemeGenerationQualityContractTests
                 $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
     }
 
+    [Theory]
+    [InlineData("neo-noir city with sodium-amber night lighting", "Rain City 2049")]
+    [InlineData("magical girl anime with lunar princess motifs", "Moon Prism")]
+    [InlineData("galactic empire starship cockpit", "Space Opera")]
+    [InlineData("spice melange desert planet", "Arrakis Spice")]
+    [InlineData("Nevermore Academy goth girl aesthetic", "Wednesday Goth")]
+    [InlineData("KPop Demon Hunters Huntrix supernatural concert", "Idol Exorcist")]
+    public void Generate_CulturalDescriptionLanguageResolvesToItsCuratedArtDirection(
+        string prompt, string expectedName)
+    {
+        var (theme, analysis) = _generator.GenerateAndExplain(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.Contains(analysis.MatchedKeywords,
+            keyword => keyword.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
+        Assert.NotEmpty(theme.Description);
+
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA,
+                $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
+    }
+
     [Fact]
     public void Generate_RecognizedAliasProducesTheSameCuratedArtDirection()
     {
