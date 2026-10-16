@@ -27,6 +27,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
     /// into the next one — see the comment in GenerateAsync for why this can't just be a local.</summary>
     private Mood _inferredMoodForNextGeneration = Mood.Neutral;
     private int _variationSeed;
+    private bool _forceNewGeneration;
 
     // ── Input ─────────────────────────────────────────────────────────────────
     private string _vibeText = string.Empty;
@@ -195,7 +196,7 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         try
         {
             var text = VibeText.Trim();
-            bool isRefinement = _refiner.IsRefinementInstruction(text);
+            bool isRefinement = !_forceNewGeneration && _refiner.IsRefinementInstruction(text);
 
             if (HasResult && GeneratedTheme != null && isRefinement)
             {
@@ -359,8 +360,16 @@ public sealed class VibeGeneratorViewModel : ViewModelBase
         // Candidate generation is deterministic by design. Rotate the preferred treatment so the
         // button returns the next art direction instead of presenting the same result repeatedly.
         _variationSeed = (_variationSeed + 1) % 3;
+        _forceNewGeneration = true;
         _logger.LogInformation("Regenerating theme with variation seed {VariationSeed}", _variationSeed);
-        await GenerateAsync();
+        try
+        {
+            await GenerateAsync();
+        }
+        finally
+        {
+            _forceNewGeneration = false;
+        }
     }
 
     /// <summary>Sets the vibe text from a suggestion chip and triggers generation.</summary>
