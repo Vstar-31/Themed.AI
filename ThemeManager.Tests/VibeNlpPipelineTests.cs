@@ -733,6 +733,7 @@ public class VibeNlpPipelineTests
     [InlineData("make the accents violet", true)]
     [InlineData("make it violet", true)]
     [InlineData("change the palette to more violet", true)]
+    [InlineData("use cyan accents", true)]
     [InlineData("make it glassy", true)]
     [InlineData("make the layout minimal and spacious", true)]
     [InlineData("more vibrant", true)]
