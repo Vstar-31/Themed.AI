@@ -131,7 +131,7 @@ public sealed class VibeThemeGenerator
         "darker", "make it darker", "darken", "less bright", "dim it", "dimmer",
         "lighter", "make it lighter", "lighten", "brighter", "make it brighter", "brighten it",
         "more muted", "muted", "desaturated", "less saturated", "soften the colors", "softer",
-        "subtle", "faded", "matte", "pastel", "quiet luxury",
+        "subtle", "faded", "matte", "pastel", "quiet luxury", "glassy",
         "more vibrant", "vibrant", "vivid", "more saturated", "punchier", "electric", "extra neon",
         "dopamine", "colorful", "bold", "maximalist", "camp", "brat", "hyperpop",
         "warm", "warmer", "more warm", "cozy", "cozier", "warmth", "amber glow",
@@ -145,7 +145,7 @@ public sealed class VibeThemeGenerator
         "magenta accents", "pink accents", "make accents red", "make accents orange", "make accents gold",
         "make accents yellow", "make accents green", "make accents teal", "make accents cyan",
         "make accents blue", "make accents indigo", "make accents purple", "make accents violet",
-        "make the accents violet", "more violet accents", "more purple accents", "more red accents",
+        "make the accents violet", "more violet accents", "more purple accents", "more violet", "more red accents",
         "more orange accents", "more gold accents", "more yellow accents", "more green accents",
         "more teal accents", "more cyan accents", "more blue accents", "more indigo accents",
         "more magenta accents", "more pink accents", "make it violet", "in violet",
@@ -165,6 +165,13 @@ public sealed class VibeThemeGenerator
     {
         var normalized = AestheticProfileCatalog.NormalizeForMatching(instructionText);
         if (normalized.Length == 0) return false;
+
+        // A verb alone is not enough: "change theme to Dark Academia" is a fresh aesthetic
+        // request, while "change the palette to more violet" is an edit. Require both an edit-like
+        // lead-in and a recognized color/composition cue before reusing the current result.
+        bool hasSupportedCue = RefinementCues.Any(cue =>
+            AestheticProfileCatalog.ContainsPositiveCue(instructionText, cue));
+        if (!hasSupportedCue) return false;
 
         string[] commandPrefixes =
         [
