@@ -477,15 +477,53 @@ public class VibeNlpPipelineTests
     }
 
     [Fact]
-    public void Generate_EveryCuratedProfilePassesThePaletteQualityGate()
+    public void Generate_EveryCuratedProfilePassesThePublicGenerationQualityGate()
     {
         foreach (var profile in AestheticProfileCatalog.Profiles)
         {
-            var theme = AestheticProfileCatalog.CreateTheme(profile, profile.Name);
+            var (theme, analysis) = _gen.GenerateAndExplain(profile.Name);
+            Assert.Equal(profile.Name, theme.Name);
+            Assert.Equal(theme.Name, analysis.GeneratedName);
+
             var report = PaletteQualityValidator.ValidateAndRepair(theme);
             Assert.True(report.PassesAA,
                 $"{profile.Name}: only {report.PassingPairs}/{report.TotalPairs} contrast pairs passed.");
             Assert.Equal(9, ContrastChecker.Check(theme).Count);
+        }
+    }
+
+    [Theory]
+    [InlineData("Neon Afterglow with violet accents", true)]
+    [InlineData("Dark Academia with candlelight", true)]
+    [InlineData("Cool-Wasabi palette with brutalist hard edges", true)]
+    [InlineData("Poetcore with glassy navy panels", false)]
+    [InlineData("clean girl pastel minimal", false)]
+    public void Generate_EveryCandidateVariantPassesPaletteQualityGate(string prompt, bool mustBeDark)
+    {
+        var context = new GenerationContext
+        {
+            Prompt = prompt,
+            Constraints = new GenerationConstraints
+            {
+                MustBeDarkTheme = mustBeDark && prompt.Contains("Neon", StringComparison.OrdinalIgnoreCase),
+                MustBeLightTheme = !mustBeDark && prompt.Contains("clean girl", StringComparison.OrdinalIgnoreCase)
+            }
+        };
+        var candidates = new CandidateEngine().GenerateThemeCandidates(context, count: 3);
+        Assert.Equal(3, candidates.Count);
+
+        foreach (var candidate in candidates)
+        {
+            var report = PaletteQualityValidator.ValidateAndRepair(candidate.Theme);
+            Assert.True(report.PassesAA,
+                $"{prompt} ({candidate.GenerationSource}): {report.PassingPairs}/{report.TotalPairs} pairs passed.");
+            Assert.All(ContrastChecker.Check(candidate.Theme), pair =>
+                Assert.True(pair.PassesAA, $"{candidate.GenerationSource}: {pair.PairName} {pair.Ratio:F2}:1"));
+            Assert.Equal(candidate.Theme.Name, candidate.Analysis?.GeneratedName);
+            Assert.Equal(
+                new[] { candidate.Theme.BackgroundBase, candidate.Theme.BackgroundAlt, candidate.Theme.Surface,
+                    candidate.Theme.AccentPrimary, candidate.Theme.AccentStrong },
+                candidate.Analysis?.Swatches);
         }
     }
 
