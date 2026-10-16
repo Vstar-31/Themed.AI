@@ -437,6 +437,9 @@ public class VibeNlpPipelineTests
     [InlineData("airbrush jeans and rhinestone tops", "Peak Poptimism")]
     [InlineData("organza shirt and angelic accessories", "Sheer Euphoria")]
     [InlineData("theater kid mismatched outfit", "High Camp")]
+    [InlineData("post-human futurism and chrome utility", "Y3K")]
+    [InlineData("digicam party with smudged eyeliner aesthetic", "Indie Sleaze")]
+    [InlineData("desi streetwear with handloom aesthetic", "Desi-Core")]
     public void Generate_TrendDescriptionLanguageResolvesToItsCuratedProfile(string prompt, string expectedName)
     {
         var (theme, analysis) = _gen.GenerateAndExplain(prompt);
