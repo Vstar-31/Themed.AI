@@ -168,9 +168,37 @@ public sealed class SkinRepository
                 changed = true;
             }
 
+            // v6 adds per-meter states and monitor anchoring. Both are optional additions, so older
+            // widgets need only the version bump; they keep their static look and saved X/Y.
+            if (skin.SchemaVersion < 6)
+            {
+                skin.SchemaVersion = 6;
+                changed = true;
+            }
+
             if (skin.Groups is null)
             {
                 skin.Groups = new List<WidgetGroupDefinition>();
+                changed = true;
+            }
+
+            if (skin.Meters is null)
+            {
+                skin.Meters = new List<MeterDefinition>();
+                changed = true;
+            }
+            foreach (var meter in skin.Meters)
+            {
+                if (meter.States is null)
+                {
+                    meter.States = new List<MeterStateDefinition>();
+                    changed = true;
+                }
+            }
+
+            if (skin.Anchor is { Responsive: null } anchor)
+            {
+                anchor.Responsive = new List<WidgetResponsiveRule>();
                 changed = true;
             }
 

@@ -123,6 +123,8 @@ public sealed class SkinPackageService
         Validate(skin);
         // Normalize only supported legacy versions; never silently downgrade future packages.
         if (skin.SchemaVersion < 4) skin.AlwaysOnTop = false;
+        foreach (var meter in skin.Meters) meter.States ??= new List<MeterStateDefinition>();
+        if (skin.Anchor is not null) skin.Anchor.Responsive ??= new List<WidgetResponsiveRule>();
         skin.SchemaVersion = SkinDefinition.CurrentSchemaVersion;
         skin.Id = Guid.NewGuid().ToString();
         skin.Enabled = false;

@@ -430,11 +430,17 @@ runtime platform. The first implementation slice is now in the codebase:
 - [x] Expression/formula measures and a safe arithmetic/function evaluator. Formula measures can reference other live measures and are refreshed after base measures.
 - [x] Initial plugin contracts and loader exist. API versioning, capability policy and full editor/host integration remain open.
 - [x] Skin package raster assets, constrained extraction, image meters and import/export UI implemented. Windows desktop validation remains open.
-- [ ] State machines: hover/pressed/active/threshold states with transitions.
-- [ ] Anchoring to monitor/work-area edges and responsive layouts.
+- [x] State machines: hover/pressed/active/threshold states with eased, retargetable transitions (schema v6, `docs/WIDGET_STATES_AND_ANCHORS.md`). Core evaluator and tracker are unit-tested; host wiring and the editor UI remain to be verified/built on Windows.
+- [x] Anchoring to monitor/work-area edges and responsive layouts (edge/corner/center pins, margins, responsive scale/hide rules, drag-to-adjust margins). Resolver is unit-tested; multi-monitor, mixed-DPI and hot-plug behavior need a real Windows check.
 - [x] Initial group property inspector and multi-select grouping workflow added to the widget editor. Full meter layer/timeline tooling remains next.
 - [x] Local package gallery foundation exists; package import/export UI remains next.
 
 ### 2026-10-05 — Vacation-resume checkpoint
 
 The Windows-native branch now has a passing Windows GitHub Actions build/test run after fixing the stale CI branch trigger and the Studio compile error around SceneWidgetPlacement cloning. Desktop world application now materializes widget snapshots and yields between top-level widget activations. Runtime 2.0 now also has first-class widget groups with persisted bounds, scale, rotation, opacity, clipping, membership and variables, plus editor multi-select grouping and a group transform inspector. The remaining validation that still needs the real Windows desktop is visual behavior across DPI and multi-monitor setups.
+
+### 2026-10-21 — State machines and anchoring
+
+Schema v6 adds `MeterDefinition.States` and `SkinDefinition.Anchor`. Core gained `WidgetStates.cs` (evaluator, transition tracker) and `WidgetAnchoring.cs` (resolver, responsive rules), with validator limits, a v5 to v6 repository migration and package round-trip coverage. `SkinHostWindow` applies states per meter through `MeterStateController` and re-checks anchor layout after each widget update. The Phase 10 commit snapshot now builds on Windows x64 with zero warnings and errors, and 594 tests pass. Eight legacy RepositoryTests are excluded from this isolated snapshot run because they use personal app-data paths. Review also fixed responsive margin reset, active text-color overrides during threshold refresh, and null-meter migration. This verifies compilation and automated behavior; desktop interaction, multi-monitor, mixed-DPI and hot-plug behavior remain unverified.
+
+Open: editor UI for states and anchors, color overrides for non-text meters, per-monitor DPI handling for `Monitor: Primary`.

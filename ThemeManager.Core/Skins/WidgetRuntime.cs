@@ -138,6 +138,8 @@ public static class WidgetDefinitionValidator
 
             if (!string.IsNullOrWhiteSpace(meter.MeasureName) && !measureNames.Contains(meter.MeasureName))
                 issues.Add(new($"meters.{meter.Id}.measureName", $"Measure '{meter.MeasureName}' does not exist."));
+
+            ValidateStates(meter, measureNames, issues);
         }
 
         var meterIds = skin.Meters
@@ -168,6 +170,105 @@ public static class WidgetDefinitionValidator
             }
         }
 
+        ValidateAnchor(skin.Anchor, issues);
         return issues;
+    }
+
+    public const int MaxStatesPerMeter = 16;
+    public const int MaxResponsiveRules = 16;
+    private const double MaxCoordinate = 100_000;
+
+    private static void ValidateStates(MeterDefinition meter, HashSet<string> measureNames, List<WidgetValidationIssue> issues)
+    {
+        if (meter.States is null || meter.States.Count == 0) return;
+        string path = $"meters.{meter.Id}.states";
+
+        if (meter.States.Count > MaxStatesPerMeter)
+            issues.Add(new(path, $"A meter can have at most {MaxStatesPerMeter} states."));
+        if (meter.States.Any(st => st is null))
+        {
+            issues.Add(new(path, "State entries cannot be null."));
+            return;
+        }
+
+        foreach (var group in meter.States.GroupBy(st => st.Id, StringComparer.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(group.Key) || group.Count() > 1)
+                issues.Add(new(path, "State ids must be unique and non-empty."));
+
+        foreach (var state in meter.States)
+        {
+            string sp = $"{path}.{state.Id}";
+            if (!Enum.IsDefined(state.Trigger))
+                issues.Add(new($"{sp}.trigger", "Unknown state trigger."));
+            if (!Enum.IsDefined(state.Comparison))
+                issues.Add(new($"{sp}.comparison", "Unknown state comparison."));
+            if (!Enum.IsDefined(state.Easing))
+                issues.Add(new($"{sp}.easing", "Unknown transition easing."));
+
+            bool hasMeasure = !string.IsNullOrWhiteSpace(state.MeasureName);
+            if (state.Trigger == MeterStateTrigger.Threshold && !hasMeasure)
+                issues.Add(new($"{sp}.measureName", "Threshold states need a measure."));
+            if (hasMeasure && !measureNames.Contains(state.MeasureName!))
+                issues.Add(new($"{sp}.measureName", $"Measure '{state.MeasureName}' does not exist."));
+            if (!double.IsFinite(state.Value))
+                issues.Add(new($"{sp}.value", "State threshold value must be finite."));
+            if (state.TransitionMs < 0 || state.TransitionMs > MeterStateEvaluator.MaxTransitionMs)
+                issues.Add(new($"{sp}.transitionMs", $"Transition must be between 0 and {MeterStateEvaluator.MaxTransitionMs} ms."));
+
+            if (state.Opacity is { } o && (!double.IsFinite(o) || o < 0 || o > 1))
+                issues.Add(new($"{sp}.opacity", "State opacity must be between 0 and 1."));
+            if (state.Scale is { } sc && (!double.IsFinite(sc) || sc <= 0 || sc > 10))
+                issues.Add(new($"{sp}.scale", "State scale must be greater than 0 and at most 10."));
+            if (state.Rotation is { } r && !double.IsFinite(r))
+                issues.Add(new($"{sp}.rotation", "State rotation must be finite."));
+            if (state.OffsetX is { } ox && (!double.IsFinite(ox) || Math.Abs(ox) > MaxCoordinate)
+                || state.OffsetY is { } oy && (!double.IsFinite(oy) || Math.Abs(oy) > MaxCoordinate))
+                issues.Add(new($"{sp}.offset", "State offsets must be finite."));
+            if (!string.IsNullOrWhiteSpace(state.ColorHex) && !MeterStateEvaluator.TryParseColor(state.ColorHex, out _))
+                issues.Add(new($"{sp}.colorHex", "State color must be #RRGGBB or #AARRGGBB."));
+        }
+    }
+
+    private static void ValidateAnchor(WidgetAnchorDefinition? anchor, List<WidgetValidationIssue> issues)
+    {
+        if (anchor is null) return;
+
+        if (!Enum.IsDefined(anchor.Edge))
+            issues.Add(new("anchor.edge", "Unknown anchor edge."));
+        if (!Enum.IsDefined(anchor.Monitor))
+            issues.Add(new("anchor.monitor", "Unknown anchor monitor."));
+        if (!double.IsFinite(anchor.MarginX) || !double.IsFinite(anchor.MarginY)
+            || Math.Abs(anchor.MarginX) > MaxCoordinate || Math.Abs(anchor.MarginY) > MaxCoordinate)
+            issues.Add(new("anchor.margin", "Anchor margins must be finite."));
+
+        if (anchor.Responsive is null || anchor.Responsive.Count == 0) return;
+        if (anchor.Responsive.Count > MaxResponsiveRules)
+            issues.Add(new("anchor.responsive", $"An anchor can have at most {MaxResponsiveRules} responsive rules."));
+        if (anchor.Responsive.Any(r => r is null))
+        {
+            issues.Add(new("anchor.responsive", "Responsive rules cannot be null."));
+            return;
+        }
+
+        foreach (var group in anchor.Responsive.GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(group.Key) || group.Count() > 1)
+                issues.Add(new("anchor.responsive.id", "Responsive rule ids must be unique and non-empty."));
+
+        foreach (var rule in anchor.Responsive)
+        {
+            string rp = $"anchor.responsive.{rule.Id}";
+            if (!double.IsFinite(rule.MaxWorkAreaWidth) || rule.MaxWorkAreaWidth < 0
+                || !double.IsFinite(rule.MaxWorkAreaHeight) || rule.MaxWorkAreaHeight < 0)
+                issues.Add(new($"{rp}.limits", "Work-area limits must be zero or greater."));
+            else if (rule.MaxWorkAreaWidth == 0 && rule.MaxWorkAreaHeight == 0)
+                issues.Add(new($"{rp}.limits", "Rule has no size limit and always applies.", IsError: false));
+            if (rule.Edge is { } edge && !Enum.IsDefined(edge))
+                issues.Add(new($"{rp}.edge", "Unknown anchor edge."));
+            if (rule.Scale is { } scale && (!double.IsFinite(scale) || scale <= 0 || scale > 4))
+                issues.Add(new($"{rp}.scale", "Responsive scale must be greater than 0 and at most 4."));
+            if (rule.MarginX is { } mx && (!double.IsFinite(mx) || Math.Abs(mx) > MaxCoordinate)
+                || rule.MarginY is { } my && (!double.IsFinite(my) || Math.Abs(my) > MaxCoordinate))
+                issues.Add(new($"{rp}.margin", "Responsive margins must be finite."));
+        }
     }
 }

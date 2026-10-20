@@ -54,6 +54,8 @@ public sealed class MeterDefinition
     public string? ImagePath { get; set; }
     /// <summary>Optional plugin capability id used by custom meter runtimes.</summary>
     public string? PluginType { get; set; }
+    /// <summary>Hover/pressed/active/threshold visual states with transitions. Empty means a static meter.</summary>
+    public List<MeterStateDefinition> States { get; set; } = new();
 }
 
 
@@ -100,7 +102,7 @@ public sealed class WidgetGroupDefinition
 
 public sealed class SkinDefinition
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
@@ -122,6 +124,8 @@ public sealed class SkinDefinition
     public List<MeterDefinition> Meters { get; set; } = new();
     public List<WidgetGroupDefinition> Groups { get; set; } = new();
     public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Monitor-edge anchoring and responsive rules. Null keeps the saved X/Y.</summary>
+    public WidgetAnchorDefinition? Anchor { get; set; }
 
     /// <summary>
     /// Creates an independent copy suitable for embedding in a desktop-world placement or
@@ -187,14 +191,19 @@ public sealed class SkinDefinition
                     SecondaryActionUrl = m.SecondaryActionUrl,
                     WebEmbedUrl = m.WebEmbedUrl,
                     ImagePath = m.ImagePath,
-                    PluginType = m.PluginType
+                    PluginType = m.PluginType,
+                    States = (m.States ?? new List<MeterStateDefinition>())
+                        .Where(st => st is not null)
+                        .Select(st => st.Clone())
+                        .ToList()
                 }).ToList(),
             Groups = (Groups ?? new List<WidgetGroupDefinition>())
                 .Select(g => g.Clone())
                 .ToList(),
             Variables = Variables is null
                 ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase),
+            Anchor = Anchor?.Clone()
         };
     }
 }

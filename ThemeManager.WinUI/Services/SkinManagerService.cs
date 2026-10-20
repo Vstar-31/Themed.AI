@@ -202,6 +202,12 @@ public sealed class SkinManagerService : IDisposable
     public async Task ResetPositionAsync(SkinDefinition skin)
     {
         skin.X = 60; skin.Y = 60;
+        // An anchored widget resets to its default distance from the anchored edge; its position
+        // is derived from the anchor, so X/Y alone would have no visible effect.
+        if (skin.Anchor is { } anchor)
+        {
+            anchor.ResetMargins();
+        }
         if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyPosition(skin.X, skin.Y);
         await PersistAsync(false);
     }
