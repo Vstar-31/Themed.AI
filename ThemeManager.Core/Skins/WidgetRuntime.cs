@@ -136,6 +136,20 @@ public static class WidgetDefinitionValidator
             if (!double.IsFinite(meter.Width) || !double.IsFinite(meter.Height) || meter.Width <= 0 || meter.Height <= 0)
                 issues.Add(new($"meters.{meter.Id}.size", "Meter width and height must be greater than zero."));
 
+            if (!double.IsFinite(meter.FontSize) || meter.FontSize <= 0 || meter.FontSize > 512)
+                issues.Add(new($"meters.{meter.Id}.fontSize", "Font size must be between 1 and 512."));
+            if (!double.IsFinite(meter.BarMax) || meter.BarMax <= 0)
+                issues.Add(new($"meters.{meter.Id}.barMax", "The full-scale value must be greater than zero."));
+            if (!double.IsFinite(meter.ThresholdPercent) || meter.ThresholdPercent < 0 || meter.ThresholdPercent > 100)
+                issues.Add(new($"meters.{meter.Id}.thresholdPercent", "Threshold must be between 0 and 100."));
+            if (meter.HistoryLength < 1 || meter.HistoryLength > 10000)
+                issues.Add(new($"meters.{meter.Id}.historyLength", "Graph history must contain between 1 and 10000 samples."));
+            try { _ = string.Format(meter.Format ?? "{0}", 0d, "preview"); }
+            catch (FormatException)
+            {
+                issues.Add(new($"meters.{meter.Id}.format", "Invalid display format. Use {0} for a number or {1} for text."));
+            }
+
             if (!string.IsNullOrWhiteSpace(meter.MeasureName) && !measureNames.Contains(meter.MeasureName))
                 issues.Add(new($"meters.{meter.Id}.measureName", $"Measure '{meter.MeasureName}' does not exist."));
 

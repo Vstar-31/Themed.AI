@@ -68,9 +68,7 @@ public static class VibeFinderAuth
                 var target = measure.Target?.TrimStart('|');
                 var parts = target?.Split('|', 3);
                 if (parts is { Length: >= 2 }
-                    && !string.IsNullOrWhiteSpace(parts[0])
-                    && !string.IsNullOrWhiteSpace(parts[1])
-                    && !parts[0].Equals("listener", StringComparison.OrdinalIgnoreCase))
+                    && ThemeManager.Core.Services.VibeFinderCredentials.IsConfigured(parts[0], parts[1]))
                 {
                     return (parts[0], parts[1]);
                 }

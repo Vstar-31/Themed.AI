@@ -430,7 +430,7 @@ runtime platform. The first implementation slice is now in the codebase:
 - [x] Expression/formula measures and a safe arithmetic/function evaluator. Formula measures can reference other live measures and are refreshed after base measures.
 - [x] Initial plugin contracts and loader exist. API versioning, capability policy and full editor/host integration remain open.
 - [x] Skin package raster assets, constrained extraction, image meters and import/export UI implemented. Windows desktop validation remains open.
-- [x] State machines: hover/pressed/active/threshold states with eased, retargetable transitions (schema v6, `docs/WIDGET_STATES_AND_ANCHORS.md`). Core evaluator and tracker are unit-tested; host wiring and the editor UI remain to be verified/built on Windows.
+- [x] State machines: hover/pressed/active/threshold states with eased, retargetable transitions (schema v6, `docs/WIDGET_STATES_AND_ANCHORS.md`). Core evaluator and tracker are unit-tested; the editor now exposes states and their shared-controller preview; desktop behavior still needs verification.
 - [x] Anchoring to monitor/work-area edges and responsive layouts (edge/corner/center pins, margins, responsive scale/hide rules, drag-to-adjust margins). Resolver is unit-tested; multi-monitor, mixed-DPI and hot-plug behavior need a real Windows check.
 - [x] Initial group property inspector and multi-select grouping workflow added to the widget editor. Full meter layer/timeline tooling remains next.
 - [x] Local package gallery foundation exists; package import/export UI remains next.
@@ -443,4 +443,80 @@ The Windows-native branch now has a passing Windows GitHub Actions build/test ru
 
 Schema v6 adds `MeterDefinition.States` and `SkinDefinition.Anchor`. Core gained `WidgetStates.cs` (evaluator, transition tracker) and `WidgetAnchoring.cs` (resolver, responsive rules), with validator limits, a v5 to v6 repository migration and package round-trip coverage. `SkinHostWindow` applies states per meter through `MeterStateController` and re-checks anchor layout after each widget update. The Phase 10 commit snapshot now builds on Windows x64 with zero warnings and errors, and 594 tests pass. Eight legacy RepositoryTests are excluded from this isolated snapshot run because they use personal app-data paths. Review also fixed responsive margin reset, active text-color overrides during threshold refresh, and null-meter migration. This verifies compilation and automated behavior; desktop interaction, multi-monitor, mixed-DPI and hot-plug behavior remain unverified.
 
-Open: editor UI for states and anchors, color overrides for non-text meters, per-monitor DPI handling for `Monitor: Primary`.
+Open: color overrides for non-text meters, per-monitor DPI handling for `Monitor: Primary`, and desktop verification of the new authoring controls.
+
+
+### 2026-10-21 — Visual state and placement authoring
+
+The widget editor now supports adding, duplicating, ordering, editing and removing meter states,
+plus monitor anchors and responsive placement/scale/hide rules. Optional overrides retain their
+inherit semantics, edits stay in the existing draft, and Save uses runtime definition validation.
+An interaction preview reuses MeterStateController; a sample monitor diagram reuses
+WidgetAnchorResolver. Preview inputs do not affect live widgets. Windows compilation is checked;
+automated and desktop tests are deferred as requested. This implements an authoring slice, not
+the full milestone 5 acceptance gate (see the following history/layout slice; keyboard-only workflows remain unverified).
+
+### 2026-10-21 — Draft history and layout tools
+
+- Added bounded session undo/redo for widget draft properties and structure, including states and anchors.
+- Group operations, dragging, meter ordering, alignment, and distribution each form one undo step.
+- Added Arrange controls within a parent and multi-select edge/center alignment and equal-gap distribution.
+- Matched preview stacking to host ZIndex ordering and used parent coordinates for transformed-group dragging.
+- Windows Release x64 build/publish completed; automated and GUI tests remain deferred by request.
+- Full layer-tree/group ordering, asset browsing, template remix, and end-to-end keyboard acceptance remain open.
+
+Usage and scope: [Widget editor tools](docs/WIDGET_EDITOR_TOOLS.md).
+
+### 2026-10-21 — Layer tree and group duplication
+
+- Added a front-to-back tree with group expansion and selection linked to the existing inspectors.
+- Added group/root ordering, preserving group contents and child order; each operation is undoable.
+- Added meter and group duplication with fresh IDs, copied visual states, and remapped group membership.
+- Corrected preview group stacking to use the same maximum member ZIndex as the desktop host.
+- Removed empty containers left after regrouping all their meters; retained group selection across undo.
+- Windows build/publish verification is separate from automated/GUI testing, which remains deferred.
+- Asset browser, template remix, advanced tree manipulation, and keyboard-only acceptance remain open.
+
+### 2026-10-21 — Image asset browser
+
+- Added managed raster imports with readable filenames, content-based reuse, bounded copying and cancellation cleanup.
+- Added searchable thumbnails for library/package assets and current draft references, including missing-file messages.
+- Added image replacement/reuse and new-image-meter creation as single undo steps; source files remain untouched.
+- Added 15 repository regression cases; full suite passes 660/660 and separate editor logic harness passes 37/37.
+- Windows build/publish completed; actual dialog/picker/thumbnail GUI acceptance remains unverified.
+- Template remix and reference-aware asset cleanup remain open. See [asset browser usage](docs/WIDGET_ASSET_BROWSER.md).
+
+### 2026-10-22 — Local template remix and integrated regression coverage
+
+- Added searchable bundled starters and Remix on existing widget cards, opening independent unsaved drafts.
+- Fresh widget/meter/measure/group/state IDs and remapped group membership preserve source definitions.
+- First Save persists new drafts before opening hosts; discard creates no saved widget and Delete is disabled for unsaved copies.
+- Moved 37 editor regressions into the normal repository test project; added seven remix and four draft/save cases.
+- Fixed save concurrency so newer edits remain dirty; handled removed-widget save errors without losing the draft.
+- Main suite: 708/708. Windows build/publish completed; GUI acceptance remains outstanding.
+- Usage and limits: [Widget remix](docs/WIDGET_REMIX.md). Remote gallery browsing, visual template thumbnails, and asset cleanup remain open.
+
+### 2026-10-22 — Blank draft lifecycle and export hardening
+
+- New blank widgets now stay unsaved until Save; cancelling leaves no empty saved widget.
+- Added Export draft to package unsaved designs without enabling or saving them, retaining undo history.
+- Added six regressions for success, cancellation, invalid definitions, missing images, existing-destination preservation and blank drafts.
+- Reproduced and fixed escaped InvalidDataException in export; corrected the same catch gap in image imports.
+- Full suite: 714/714. Native picker/dialog and other GUI acceptance remain unverified.
+
+### 2026-10-22 — Keyboard movement and source-loss recovery
+
+- Added Ctrl+D duplication and Ctrl+Alt+arrow movement (1 DIP; Shift: 10 DIP) with compound undo.
+- Multi-selected meters require a shared parent; group movement preserves child geometry and transforms.
+- Shortcuts preserve text/control editing and avoid operating behind dialogs and native picker flows.
+- Failed saves due to a missing/conflicting source offer a new unsaved remix of the current edits, with an explicit second Save.
+- Added 15 movement/recovery regressions. Full suite: 729/729; Windows x64 publish succeeded. GUI acceptance remains outstanding.
+
+### 2026-10-22 — Visual starter previews and discovery
+
+- Added scaled sample previews and descriptions for the five bundled starters, using the editor's shared static renderer.
+- Added multi-word prefix search by name, data source, meter kind and descriptive labels, plus result counts and empty-state guidance.
+- Filtering clears hidden selections; browsing does not start measures, network requests or hosts.
+- Graph previews now use illustrative line/area history instead of a filled rectangle.
+- Added 19 catalog/search/sample regressions, including a reproduced/fixed `ring` matching `String` search issue.
+- Full suite: 748/748. Windows x64 publish passed. Preview aesthetics, theme contrast, keyboard routing and scrolling remain unverified through GUI.

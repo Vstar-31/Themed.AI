@@ -11,7 +11,7 @@ public sealed class SkinRepository
 
     public SkinRepository(string? storageFolder = null)
     {
-        StorageFolder = storageFolder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
+        StorageFolder = storageFolder ?? Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
         SkinsFilePath = Path.Combine(StorageFolder, "skins.json");
     }
     private static readonly JsonSerializerOptions JsonOptions = new()

@@ -32,13 +32,14 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ConfigureTitleBar();
+        ApplyWindowTheme(App.ThemeService.ActiveTheme);
         InitializeSidebarState();
         ContentFrame.Navigate(typeof(ThemesPage));
         SetActiveNav(NavThemes);
 
-        // WinUI 3 Window has no XAML Loaded event. Start the provisioning pipeline from the
-        // constructor; the pipeline itself waits asynchronously for SkinManagerService.
-        _ = InitializeVibeProvisioningAsync();
+        // App enables navigation only after saved widgets and startup services are ready.
+        // Constructor-time provisioning can otherwise persist defaults over the loading library.
+        StartupContent.IsEnabled = false;
 
         // Keep the hidden VibeFinder session in lock-step with the active Themed.AI world.
         // ThemeService commits a theme only once at the end of a crossfade, so this does not
@@ -46,6 +47,8 @@ public sealed partial class MainWindow : Window
         App.ThemeService.ThemeChanged += MainWindow_ThemeChanged;
         Closed += (_, _) => App.ThemeService.ThemeChanged -= MainWindow_ThemeChanged;
     }
+
+    internal void CompleteStartup() => StartupContent.IsEnabled = true;
 
     private void MainWindow_ThemeChanged(object? sender, ThemeManager.Core.Models.CozyTheme theme)
     {
@@ -333,6 +336,23 @@ public sealed partial class MainWindow : Window
         finally { Interlocked.Exchange(ref _vibeFinderDialogOpen, 0); }
     }
 
+    internal void ApplyWindowTheme(ThemeManager.Core.Models.CozyTheme theme)
+    {
+        // Popups and stock controls must use the same light/dark variant as the app palette,
+        // independently of Windows' theme or whether system theme synchronization is enabled.
+        StartupContent.RequestedTheme =
+            ThemeManager.Core.Utilities.ContrastChecker.BestBlackOrWhiteForeground(theme.BackgroundBase) == "#FFFFFF"
+                ? ElementTheme.Dark : ElementTheme.Light;
+        if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+        var titleBar = AppWindow.TitleBar;
+        titleBar.ButtonForegroundColor = App.HexToColor(theme.TextPrimary);
+        titleBar.ButtonInactiveForegroundColor = App.HexToColor(theme.TextMuted);
+        titleBar.ButtonHoverForegroundColor = App.HexToColor(theme.TextPrimary);
+        titleBar.ButtonPressedForegroundColor = App.HexToColor(theme.TextPrimary);
+        titleBar.ButtonHoverBackgroundColor = App.HexToColor(theme.Surface);
+        titleBar.ButtonPressedBackgroundColor = App.HexToColor(theme.BackgroundAlt);
+    }
+
     private void ConfigureTitleBar()
     {
         ExtendsContentIntoTitleBar = true;
@@ -344,9 +364,6 @@ public sealed partial class MainWindow : Window
             tb.ExtendsContentIntoTitleBar = true;
             tb.ButtonBackgroundColor = Colors.Transparent;
             tb.ButtonInactiveBackgroundColor = Colors.Transparent;
-            tb.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(0x20, 0, 0, 0);
-            tb.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(0x30, 0, 0, 0);
-            tb.ButtonForegroundColor = Windows.UI.Color.FromArgb(0xFF, 0x3B, 0x2A, 0x20);
         }
         if (appWindow is not null)
         {
@@ -395,7 +412,7 @@ public sealed partial class MainWindow : Window
     private static readonly object SidebarPreferencesLock = new();
 
     private static string SidebarPreferencesPath => System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        ThemeManager.Core.Services.AppDataPaths.LocalRoot,
         "ThemedAI",
         "navigation-state.json");
 

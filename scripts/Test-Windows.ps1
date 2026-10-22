@@ -33,6 +33,11 @@ try {
         if (-not (Test-Path (Join-Path $output 'ThemeManager.WinUI.exe'))) {
             throw 'Publish completed without ThemeManager.WinUI.exe.'
         }
+        foreach ($resource in @('MainWindow.xbf', 'ThemeManager.WinUI.pri', 'Views/StudioPage.xbf', 'Views/SkinsPage.xbf', 'Views/SkinEditorPage.xbf', 'Resources/ThemeResources.xbf')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $output $resource))) {
+                throw "Publish is missing required UI resource: $resource"
+            }
+        }
         git rev-parse HEAD | Set-Content (Join-Path $output 'source-commit.txt')
         Write-Host "Launch $output/ThemeManager.WinUI.exe and follow docs/WINDOWS_TESTING.md."
     }

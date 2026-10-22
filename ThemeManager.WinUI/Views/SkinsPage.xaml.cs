@@ -141,11 +141,13 @@ public sealed partial class SkinsPage : Page
         finally { _packageOperation = false; }
     }
 
-    private async void NewWidgetButton_Click(object sender, RoutedEventArgs e)
+    private void NewWidgetButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.CreateSkinAsync();
-        if (ViewModel.SelectedSkin is not null)
-            Frame.Navigate(typeof(SkinEditorPage), ViewModel.SelectedSkin);
+        var names = ViewModel.Skins.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string name = "New Widget";
+        for (int suffix = 2; names.Contains(name); suffix++) name = "New Widget " + suffix;
+        var draft = new SkinDefinition { Name = name, Enabled = false, X = 60, Y = 60, Width = 200, Height = 100 };
+        Frame.Navigate(typeof(SkinEditorPage), new SkinEditorDraft(draft));
     }
 
     private void EditButton_Click(object sender, RoutedEventArgs e)

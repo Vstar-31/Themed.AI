@@ -26,7 +26,7 @@ public sealed class SkinPackageService
     public SkinPackageService(string? assetRoot = null)
     {
         _assetRoot = Path.GetFullPath(assetRoot ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI", "WidgetAssets"));
+            ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI", "WidgetAssets"));
     }
 
     public static bool IsSupportedImage(string path) => ImageExtensions.Contains(Path.GetExtension(path));

@@ -254,6 +254,38 @@ public sealed class SkinPackageServiceTests : IDisposable
         Assert.Empty(Directory.GetFiles(_root, "*.tmp"));
     }
 
+    [Theory]
+    [InlineData("-", "")]
+    [InlineData("(", ")")]
+    [InlineData("abs(", ")")]
+    public async Task Import_RejectsExcessiveNestingEvenWhenDisabled(string prefix, string suffix)
+    {
+        var expression = string.Concat(Enumerable.Repeat(prefix, 64)) + "1"
+            + string.Concat(Enumerable.Repeat(suffix, 64));
+        var skin = new SkinDefinition { Enabled = false };
+        skin.Measures.Add(new MeasureDefinition { Name = "Formula", Type = MeasureType.Formula, Expression = expression });
+        CreatePackage(skin);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => Service.ImportAsync(Package));
+        Assert.False(Directory.Exists(Assets));
+    }
+
+    [Fact]
+    public async Task ExportImport_PreservesValidFormula()
+    {
+        var skin = new SkinDefinition();
+        var expression = "clamp(abs(-10) + max(2, 3), 0, 100)";
+        skin.Measures.Add(new MeasureDefinition { Name = "Formula", Type = MeasureType.Formula, Expression = expression });
+        await Service.ExportAsync(skin, Package);
+
+        var imported = await Service.ImportAsync(Package);
+
+        Assert.False(imported.Enabled);
+        Assert.Equal(expression, Assert.Single(imported.Measures).Expression);
+        Assert.True(SafeExpressionEvaluator.TryEvaluate(expression, _ => null, out var value));
+        Assert.Equal(13d, value);
+    }
+
     private void CreatePackage(SkinDefinition skin, params (string Name, byte[] Content)[] assets)
     {
         using var archive = ZipFile.Open(Package, ZipArchiveMode.Create);

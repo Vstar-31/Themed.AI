@@ -5,10 +5,7 @@ using ThemeManager.WinUI.Services;
 namespace ThemeManager.WinUI.ViewModels;
 
 /// <summary>
-/// Wraps a single <see cref="MeasureDefinition"/> for editing. Like <c>ThemeEditorViewModel</c>'s
-/// token properties, each setter writes straight through to the underlying definition — there's
-/// no separate "draft" object, the definition IS the draft (it already lives in
-/// <see cref="SkinManagerService"/>'s list from the moment the widget was created).
+/// Wraps one measure in the editor draft and notifies the preview of changes.
 /// </summary>
 public sealed class MeasureEditorItem : ViewModelBase
 {
@@ -33,6 +30,7 @@ public sealed class MeasureEditorItem : ViewModelBase
             OnPropertyChanged(nameof(NeedsTarget));
             OnPropertyChanged(nameof(TargetPlaceholder));
             OnPropertyChanged(nameof(IsWebJson));
+            OnPropertyChanged(nameof(IsFormula));
             _onChanged();
         }
     }
@@ -100,14 +98,14 @@ public sealed class GroupEditorItem : ViewModelBase
     private int _meterCount;
 
     public string Name { get => _name; set { if (SetProperty(ref _name, value)) { Definition.Name = value; _onChanged(); } } }
-    public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
-    public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
-    public double Width { get => _width; set { var v = Math.Max(1, value); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
-    public double Height { get => _height; set { var v = Math.Max(1, value); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
-    public double ScaleX { get => _scaleX; set { var v = Math.Max(0.01, value); if (SetProperty(ref _scaleX, v)) { Definition.ScaleX = v; _onChanged(); } } }
-    public double ScaleY { get => _scaleY; set { var v = Math.Max(0.01, value); if (SetProperty(ref _scaleY, v)) { Definition.ScaleY = v; _onChanged(); } } }
-    public double Rotation { get => _rotation; set { if (SetProperty(ref _rotation, value)) { Definition.Rotation = value; _onChanged(); } } }
-    public double Opacity { get => _opacity; set { var v = Math.Clamp(value, 0, 1); if (SetProperty(ref _opacity, v)) { Definition.Opacity = v; _onChanged(); } } }
+    public double X { get => _x; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
+    public double Y { get => _y; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
+    public double Width { get => _width; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
+    public double Height { get => _height; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
+    public double ScaleX { get => _scaleX; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0.01, 100); if (SetProperty(ref _scaleX, v)) { Definition.ScaleX = v; _onChanged(); } } }
+    public double ScaleY { get => _scaleY; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0.01, 100); if (SetProperty(ref _scaleY, v)) { Definition.ScaleY = v; _onChanged(); } } }
+    public double Rotation { get => _rotation; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _rotation, value)) { Definition.Rotation = value; _onChanged(); } } }
+    public double Opacity { get => _opacity; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0, 1); if (SetProperty(ref _opacity, v)) { Definition.Opacity = v; _onChanged(); } } }
     public bool Clip { get => _clip; set { if (SetProperty(ref _clip, value)) { Definition.Clip = value; _onChanged(); } } }
 
     public int MeterCount { get => _meterCount; private set => SetProperty(ref _meterCount, value); }
@@ -175,13 +173,13 @@ public sealed class MeterEditorItem : ViewModelBase
     private string? _actionUrl, _secondaryActionUrl;
     private bool _bold, _thresholdAppliesToText, _centerText;
 
-    public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
-    public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
-    public double Width { get => _width; set { var v = Math.Max(0, value); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
-    public double Height { get => _height; set { var v = Math.Max(0, value); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
-    public double FontSize { get => _fontSize; set { if (SetProperty(ref _fontSize, value)) { Definition.FontSize = value; _onChanged(); } } }
-    public double BarMax { get => _barMax; set { if (SetProperty(ref _barMax, value)) { Definition.BarMax = value; _onChanged(); } } }
-    public int HistoryLength { get => _historyLength; set { if (SetProperty(ref _historyLength, value)) { Definition.HistoryLength = value; _onChanged(); } } }
+    public double X { get => _x; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
+    public double Y { get => _y; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
+    public double Width { get => _width; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
+    public double Height { get => _height; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
+    public double FontSize { get => _fontSize; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } value = Math.Clamp(value, 1, 512); if (SetProperty(ref _fontSize, value)) { Definition.FontSize = value; _onChanged(); } } }
+    public double BarMax { get => _barMax; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } value = Math.Max(0.001, value); if (SetProperty(ref _barMax, value)) { Definition.BarMax = value; _onChanged(); } } }
+    public int HistoryLength { get => _historyLength; set { value = Math.Clamp(value, 1, 10000); if (SetProperty(ref _historyLength, value)) { Definition.HistoryLength = value; _onChanged(); } } }
     public bool Bold { get => _bold; set { if (SetProperty(ref _bold, value)) { Definition.Bold = value; _onChanged(); } } }
     public bool CenterText { get => _centerText; set { if (SetProperty(ref _centerText, value)) { Definition.CenterText = value; _onChanged(); } } }
     public string StaticText { get => _staticText; set { if (SetProperty(ref _staticText, value)) { Definition.StaticText = value; _onChanged(); } } }
@@ -194,7 +192,7 @@ public sealed class MeterEditorItem : ViewModelBase
     public double ThresholdPercent
     {
         get => _thresholdPercent;
-        set { var v = Math.Clamp(value, 0, 100); if (SetProperty(ref _thresholdPercent, v)) { Definition.ThresholdPercent = v; OnPropertyChanged(nameof(HasThreshold)); _onChanged(); } }
+        set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0, 100); if (SetProperty(ref _thresholdPercent, v)) { Definition.ThresholdPercent = v; OnPropertyChanged(nameof(HasThreshold)); _onChanged(); } }
     }
     public string ThresholdColorHex
     {
@@ -355,11 +353,9 @@ internal static class MeterPreview
 }
 
 /// <summary>
-/// Backs <see cref="Views.SkinEditorPage"/>. Edits a <see cref="SkinDefinition"/> in place —
-/// the same "mutate the real object, Save just persists + refreshes the live window" approach
-/// <c>ThemeEditorViewModel</c> uses for themes.
+/// Backs the widget editor with an independent draft. Live widgets change only after Save succeeds.
 /// </summary>
-public sealed class SkinEditorViewModel : ViewModelBase
+public sealed partial class SkinEditorViewModel : ViewModelBase
 {
     private readonly SkinManagerService _manager;
     private SkinDefinition _working = null!;
@@ -372,21 +368,21 @@ public sealed class SkinEditorViewModel : ViewModelBase
     public string Name
     {
         get => _name;
-        set { if (SetProperty(ref _name, value)) { _working.Name = value; Dirty = true; } }
+        set { if (SetProperty(ref _name, value)) { _working.Name = value; MarkDirty(); } }
     }
 
     private double _width = 200;
     public double Width
     {
         get => _width;
-        set { var v = Math.Max(0, value); if (SetProperty(ref _width, v)) { _working.Width = v; Dirty = true; } }
+        set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _width, v)) { _working.Width = v; MarkDirty(); } }
     }
 
     private double _height = 100;
     public double Height
     {
         get => _height;
-        set { var v = Math.Max(0, value); if (SetProperty(ref _height, v)) { _working.Height = v; Dirty = true; } }
+        set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _height, v)) { _working.Height = v; MarkDirty(); } }
     }
 
     private bool _dirty;
@@ -414,7 +410,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
     public MeterEditorItem? SelectedMeter
     {
         get => _selectedMeter;
-        set { if (SetProperty(ref _selectedMeter, value)) OnPropertyChanged(nameof(HasSelectedMeter)); }
+        set { if (SetProperty(ref _selectedMeter, value)) { LoadSelectedStates(); OnPropertyChanged(nameof(HasSelectedMeter)); } }
     }
 
     /// <summary>Drives the property panel's Visibility — x:Bind can't null-check inline, so this
@@ -435,8 +431,9 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public SkinEditorViewModel(SkinManagerService manager) => _manager = manager;
 
-    public void LoadSkin(SkinDefinition skin)
+    private void ApplyDraft(SkinDefinition skin)
     {
+        skin = skin.Clone();
         _working = skin;
         _name = skin.Name;
         _width = skin.Width;
@@ -456,15 +453,23 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
         SelectedMeter = Meters.FirstOrDefault();
         SelectedGroup = Groups.FirstOrDefault();
+        LoadBehaviors();
         RecomputeAllPreviews();
         Dirty = false;
+        StatusMessage = "Changes are a preview until you save.";
         OnPropertyChanged(string.Empty);
     }
 
     private void MarkDirty()
     {
-        Dirty = true;
+        if (IsRestoringDraft) return;
+        RecordHistory();
+        Dirty = _newDraft || _editDepth > 0 || Snapshot() != _savedSnapshot;
+        StatusMessage = "Unsaved changes — preview only.";
         RecomputeAllPreviews();
+        OnPropertyChanged(nameof(BehaviorValidation));
+        OnPropertyChanged(nameof(AvailableMeasureNames));
+        BehaviorPreviewChanged?.Invoke();
     }
 
     private void RecomputeAllPreviews()
@@ -523,6 +528,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public void RemoveMeter(MeterEditorItem item)
     {
+        using var edit = BeginEdit();
         foreach (var group in Groups.ToList())
         {
             group.Definition.MeterIds.RemoveAll(id => id.Equals(item.Definition.Id, StringComparison.OrdinalIgnoreCase));
@@ -547,6 +553,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public void GroupMeters(IEnumerable<MeterEditorItem> selectedMeters)
     {
+        using var edit = BeginEdit();
         var selected = selectedMeters.Distinct().ToList();
         if (selected.Count == 0)
         {
@@ -565,6 +572,12 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
             group.Definition.MeterIds.RemoveAll(id => selectedIds.Contains(id));
             group.RefreshCount(group.Definition.MeterIds.Count);
+        }
+
+        foreach (var empty in Groups.Where(g => g.Definition.MeterIds.Count == 0).ToList())
+        {
+            _working.Groups.Remove(empty.Definition);
+            Groups.Remove(empty);
         }
 
         double minX = selected.Min(m => m.X);
@@ -594,6 +607,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public void UngroupMeters(IEnumerable<MeterEditorItem> selectedMeters)
     {
+        using var edit = BeginEdit();
         var selectedIds = selectedMeters.Select(m => m.Definition.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -672,6 +686,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public void RemoveGroup(GroupEditorItem item)
     {
+        using var edit = BeginEdit();
         foreach (var meter in Meters.Where(m => item.Definition.MeterIds.Contains(m.Definition.Id, StringComparer.OrdinalIgnoreCase)))
             BakeGroupTransform(meter, item.Definition);
 
@@ -683,19 +698,54 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     // ── Save / Delete ─────────────────────────────────────────────────────────
 
-    public async Task SaveAsync()
+    public async Task<bool> SaveAsync()
     {
-        // Auto-enable on save so the widget immediately appears on the desktop —
-        // a freshly-generated or newly-edited widget shouldn't require a separate
-        // trip to the Widgets page just to flip the Enabled toggle.
-        _working.Enabled = true;
-        await _manager.SaveSkinAsync(_working);
-        Dirty = false;
-        StatusMessage = $"\"{_working.Name}\" saved and enabled.";
+        var nameAtSave = Name;
+        var candidate = _working.Clone();
+        candidate.Name = nameAtSave.Trim();
+        var errors = WidgetDefinitionValidator.Validate(candidate).Where(i => i.IsError).ToList();
+        if (errors.Count > 0)
+        {
+            StatusMessage = string.Join(" ", errors.Take(3).Select(i => i.Message));
+            return false;
+        }
+
+        candidate.Enabled = true;
+        try
+        {
+            await _manager.SaveSkinDraftAsync(candidate, _newDraft);
+            _working.Enabled = true;
+            _newDraft = false;
+            CanRecoverAsCopy = false;
+            OnPropertyChanged(nameof(CanDelete));
+            if (_name == nameAtSave)
+            {
+                _name = candidate.Name;
+                _working.Name = candidate.Name;
+                OnPropertyChanged(nameof(Name));
+            }
+            RecordHistory();
+            _savedSnapshot = System.Text.Json.JsonSerializer.Serialize(candidate, HistoryJson);
+            Dirty = Snapshot() != _savedSnapshot;
+            StatusMessage = Dirty ? "Saved the earlier draft. Your newer edits still need saving." : $"\"{candidate.Name}\" saved and enabled.";
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            CanRecoverAsCopy = true;
+            StatusMessage = "This widget changed or was removed. Your edits are still here. Keep them as a new widget, then Save again.";
+            return false;
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = "Couldn't save this widget. Check available storage and file access, then try Save again. Your draft is still here.";
+            return false;
+        }
     }
 
     public async Task DeleteAsync()
     {
+        if (_newDraft) return;
         await _manager.DeleteSkinAsync(_working);
         StatusMessage = $"\"{_working.Name}\" deleted.";
     }

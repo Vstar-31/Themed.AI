@@ -104,7 +104,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="WORLDS" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding ElementName=ScenesList, Path=Items.Count, Mode=OneWay}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" x:Name="WorldCountText" Text="0" FontSize="11" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
                         </Grid>
                         <ListView x:Name="ScenesList" Grid.Row="1" Margin="0,12,0,0" SelectionChanged="ScenesList_SelectionChanged" ItemContainerStyle="{StaticResource StudioWorldListItemStyle}">
                             <ListView.ItemTemplate>
@@ -191,11 +191,11 @@
                                     </StackPanel>
                                     <StackPanel Spacing="3">
                                         <ToggleSwitch x:Name="SelectedWorldAestheticToggle"
-                                                      Header="Auto-apply this world (override)"
+                                                      Header="Allow auto-apply for this world"
                                                       IsOn="False"
                                                       Toggled="SelectedWorldAestheticToggle_Toggled"
                                                       VerticalAlignment="Center" />
-                                        <TextBlock Text="Overrides the global setting for this world. ON or OFF is remembered separately."
+                                        <TextBlock Text="Requires Apply aesthetic on selection to be ON. Turn this off to keep this world preview-only."
                                                    FontSize="12"
                                                    Margin="4,0,0,0"
                                                    Foreground="{StaticResource TextMutedBrush}"

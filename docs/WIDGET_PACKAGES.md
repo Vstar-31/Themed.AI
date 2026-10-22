@@ -33,6 +33,10 @@ Imported widgets receive new identities and a reachable initial position `(40, 4
 For this version, asset entries use flat ASCII filenames under `assets/`; arbitrary files,
 subdirectories, scripts, SVGs and plugin binaries are not supported. Limits are 128 entries,
 1 MiB of manifest JSON, 16 MiB per image, 64 MiB expanded total and 65 MiB compressed input.
+Formula expressions are limited to 4096 characters and 64 active parser levels, including the
+base value. Unary operators, parentheses and function arguments share the nesting budget.
+These limits apply to import, export and runtime evaluation; oversized expressions are rejected,
+not truncated. Existing arithmetic, scientific notation and supported functions remain available.
 The importer rejects duplicate names case-insensitively, symbolic links, missing image
 references, absolute paths and traversal paths. Stream copying enforces size limits in addition
 to checking ZIP metadata. Images still need to be decodable by Windows; a missing or corrupt

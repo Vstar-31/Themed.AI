@@ -76,7 +76,34 @@ resolution changes and DPI changes are picked up on the next widget update.
 
 ## Limits
 
-- Editor UI for states and anchors is not built yet; author them in `skin.json` or a package.
+- The editor supports states, anchors and responsive rules; JSON/package authoring remains available.
+- Editor previews use simulated input and area sizes. They do not replace desktop checks across monitors or DPI settings.
 - With `Monitor: Primary`, layout uses the widget window's current DPI to convert units.
   Primary and secondary monitors with different scaling are untested.
 - Mixed DPI, multiple monitors and monitor hot-plug need verification on a real Windows desktop.
+
+
+## Visual authoring in the widget editor
+
+Select a meter and open **Meter states**. Add or duplicate a state, choose its trigger, then set
+priority, transition duration, easing and the visual overrides. Leave optional numeric fields
+or color blank to inherit the meter's value. Text colors accept `#RRGGBB` or `#AARRGGBB` and
+apply to text meters only. Measure-name suggestions come from this widget's measures.
+For equal priorities, Later states win; Earlier/Later changes the persisted ordering.
+
+Under **Monitor placement**, turn on anchors and responsive rules. Choose an edge, monitor,
+work area and margins. Add responsive rules for smaller work areas, with optional edge,
+margin and scale overrides or a hide rule. The editor enforces the 16-state/16-rule limits,
+shows definition errors and uses the existing checked Save path. Turning anchors off preserves
+the unsaved configuration within the current editor session but saves a free-positioned widget.
+
+**Preview interactions** disables dragging and lets pointer hover/press drive the shared desktop
+state controller. Simulate window focus and a measure value to inspect Active/Threshold states;
+the sample value is used for each named measure in the state preview, not for real data refresh.
+The placement diagram uses the runtime anchor resolver with sample work-area dimensions in DIP.
+Preview controls never alter the saved definition or the running desktop. Animations stop when
+the editor is unloaded, and the frame timer runs only during a transition.
+
+Implementation is Windows build-verified; automated and GUI tests for this authoring slice are
+deferred at the user's request. Undo/redo, full layers tooling, and mixed-DPI desktop verification
+remain separate roadmap work.

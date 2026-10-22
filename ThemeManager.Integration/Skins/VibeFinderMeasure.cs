@@ -113,9 +113,9 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
         }
 
         var parts = _target.Split('|', 3);
-        if (parts.Length < 3 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]) || string.IsNullOrWhiteSpace(parts[2]))
+        if (parts.Length < 3 || !VibeFinderCredentials.IsConfigured(parts[0], parts[1]) || string.IsNullOrWhiteSpace(parts[2]))
         {
-            Text = "Config Err";
+            Text = "Sign in to VibeFinder";
             LogTextTransitionIfChanged();
             return;
         }
@@ -184,7 +184,7 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
         }
         else if (vibeText is null)
         {
-            Text = "Config Err";
+            Text = "Sign in to VibeFinder";
         }
         LogTextTransitionIfChanged();
     }
