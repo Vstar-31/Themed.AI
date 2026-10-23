@@ -1402,7 +1402,11 @@ public sealed partial class SkinHostWindow : Window
             _anchorLayout = layout;
 
             ApplyLayoutScale(layout.Scale, dpi);
-            AppWindow.Move(new PointInt32((int)Math.Round(layout.X * dpi), (int)Math.Round(layout.Y * dpi)));
+            // Saved free-position coordinates use the construction-time scale in both
+            // ApplyPosition and PositionChanged. Anchor geometry uses the current monitor DPI.
+            // Keep those spaces distinct when a responsive rule has no pinned edge.
+            double positionScale = layout.Edge == WidgetAnchorEdge.None ? _scaleFactor : dpi;
+            AppWindow.Move(new PointInt32((int)Math.Round(layout.X * positionScale), (int)Math.Round(layout.Y * positionScale)));
             SetAnchorHidden(layout.Hidden);
         }
         catch (Exception ex)
