@@ -60,9 +60,10 @@ Windows Release build/publish verifies the picker and editor wiring compile. The
 [22–23 October desktop pass](GUI_ACCEPTANCE_2026-10-23.md) checked bundled previews,
 search/selection, scrolling, light/dark contrast, keyboard duplication/movement,
 undo/redo, first save, reopen after restart, storage-failure draft retention/retry,
-and a user-assisted native export. It found and fixed stale stock-control colors
-and the dialog/title-bar light/dark mismatch. The source-loss recovery button,
-source-instance independence and remaining desktop coverage are distinguished
-from automated coverage in that report.
+and user-assisted native export/reimport. It found and fixed stale stock-control
+colors and the dialog/title-bar light/dark mismatch. A follow-up checked asset
+selection, transformed-group dragging and source-loss recovery through the real
+manager in a temporary fault-injection build. The report distinguishes that
+setup and remaining desktop coverage from automated coverage.
 Remote gallery package browsing/remix, richer previews for complex templates and reference-aware asset cleanup
 remain separate future work.

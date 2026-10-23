@@ -50,13 +50,67 @@ and backend changes before committing; this was not a deployment validation.
 
 ## Coverage limits
 
-- The source-loss/identity-conflict **Keep edits as new widget** button path was
-  covered by editor logic tests, not exercised through the live desktop manager.
-  The GUI recovery result above concerns storage failure and retry.
+- The initial pass covered storage failure and retry. The follow-up below also
+  exercised source-loss recovery through the live desktop manager using a
+  temporary fault-injection build.
 - Recovery is in-session. Autosave and recovery after a crash are not implemented
   or claimed by this acceptance pass.
-- The native file picker step was user-assisted. GUI package reimport, image
-  selection, transformed-group dragging, multi-monitor/DPI behavior and backend
-  startup/database/deployment were not validated in this pass.
+- Native package file picker steps were user-assisted. The follow-up covered
+  GUI package reimport, asset-browser image selection and transformed-group
+  dragging. Native image-file import, multi-monitor/DPI behavior and backend
+  startup/database/deployment remain outside this pass.
 - Light/dark contrast was visually inspected; no numerical accessibility audit
   or exhaustive custom-palette matrix was performed.
+
+## Follow-up desktop checks, 23 October
+
+Package reimport used the unchanged published build from commit `5023da6` and
+the original isolated profile. The user selected `rings-draft.themedwidget` in
+the native Open dialog, which Computer Use could observe but not target as a
+separate PickerHost process. The app reported a successful import and left the
+widget off. Its editor showed the rings and all nine meters. Changing its name
+to `QA Reimported Rings` and saving persisted the edit, three measures and nine
+meters under a fresh imported identity.
+
+Source-loss testing used an archived copy of `5023da6` under the separate
+`qa-harness/source` artifact directory, with only a test button and its handler
+added. This temporary build was not committed or substituted for the release
+build. The button called the real `SkinManagerService.DeleteSkinAsync` on the
+fixture named `QA Recovery Source`; it was guarded to require exactly the
+dedicated `test-evidence/2026-10-23-followup/recovery-profile` data root. Normal
+save, recovery, image selection and dragging code was unchanged. This setup was
+needed because ordinary navigation cannot remove the source while retaining the
+same single-window editor instance.
+
+The disabled fixture contained two labels in a group with scale 1.25 and rotation
+15 degrees. A pointer drag of 60 horizontal and 20 vertical screen pixels moved
+the selected label from local (20,20) to (70,20), as expected with 10-DIP snapping
+in transformed local coordinates. The other label and group transform stayed
+unchanged. One Undo returned to (20,20), and Redo restored (70,20).
+
+The asset browser displayed a generated checkerboard PNG from the isolated asset
+library. Selecting it enabled Add image meter; applying it added a third meter
+and rendered the image in the editor. This verified asset selection and decoding,
+not the native image-import file picker.
+
+After source removal, Save displayed **Keep edits as new widget** without losing
+the group edit or image. Recovery disabled Delete, reset history and left a new
+unsaved draft. Explicit Save created a fresh identity and enabled the host. A
+second pass typed `QA Typed After Failure` after the failed save and immediately
+clicked recovery with the pointer; the resulting `QA Typed After Failure remix`
+retained that latest edit. The final saved JSON confirmed three meters, the
+1.25/15-degree group transform, local X=70, valid remapped group references, a
+readable image path and no recreated source identity. Reopening the first saved
+recovery also retained the image and group edit.
+
+An initial accessibility SetValue/Invoke attempt skipped the textbox's normal
+focus-loss binding update and recovered the previous name. The real keyboard/
+pointer reproduction above preserved the typed name; no production defect was
+established and no code change was made for that automation artifact.
+
+Follow-up evidence is stored outside the repository under
+`test-evidence/2026-10-23-followup`: `reimported.json`, `fixture-before.json`,
+`recovered-first-pass.json`, `recovered-final.json`, `source-loss-prompt.png`,
+`recovered-draft.png`, and the fixture preparation script. No new production
+source changed after the successful 748-test run and Windows publish; this
+follow-up adds desktop evidence only.
