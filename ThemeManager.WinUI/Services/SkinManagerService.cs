@@ -163,6 +163,13 @@ public sealed class SkinManagerService : IDisposable
         await PersistAsync(false);
     }
 
+    // A transient visual adjustment must not alter saved skins or scene snapshots.
+    internal void ApplyAtmosphereOpacity(SkinDefinition skin, double multiplier)
+    {
+        if (_open.TryGetValue(skin.Id, out var entry))
+            entry.Window.ApplyOpacity(Math.Clamp(skin.Opacity * multiplier, 0.0, 1.0));
+    }
+
     public async Task SetClickThroughAsync(SkinDefinition skin, bool enabled)
     {
         skin.ClickThrough = enabled;

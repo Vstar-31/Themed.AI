@@ -114,3 +114,55 @@ Follow-up evidence is stored outside the repository under
 `recovered-draft.png`, and the fixture preparation script. No new production
 source changed after the successful 748-test run and Windows publish; this
 follow-up adds desktop evidence only.
+
+## World runtime follow-up, 24 October
+
+Computer Use recovered and controlled the combined build on the interactive
+Windows desktop. The final self-contained build includes the atmosphere queue and
+opacity fixes described below. It used only the process-scoped data root
+`test-evidence/2026-10-23-worlds/final-profile`, with two static label fixtures and
+no enabled VibeFinder widgets. QA Amber saves both labels at (80,120) and
+(360,120); QA Blue saves the first at (80,340) and hides the second at (360,340).
+Both fixtures use opacity 0.72 in the final regression pass.
+
+- Studio started before any widget host without the earlier transparency warning.
+- With Apply aesthetic on selection off, choosing QA Blue displayed Preview only
+  and left Amber's enabled flags, positions and opacity unchanged.
+- Explicit Apply to desktop made Blue active, moved the saved layout and closed
+  label B. Applying Amber again restored B and both original positions. The GUI
+  displayed the active world and label B disappearing/reappearing; persisted JSON
+  verified both coordinates and flags, and host logs reported two open windows.
+- Opacity stayed exactly 0.72 in skins and both scene placements through the round
+  trip. Previously the runtime changed 1.0 to 0.92 and then 0.8464 while saving
+  those presentation values back into the model.
+- After terminating only the test process once persistence had completed and
+  relaunching the same build/profile, Studio showed QA Amber active, both fixture
+  hosts reopened at their saved positions, and opacity remained 0.72. This is a
+  process-restart persistence check, not a crash-recovery or graceful-exit test.
+- The final log contains no atmosphere transparency/DispatcherQueue error. Its
+  existing global-hotkey registration warning remains; the hotkey was not tested.
+- SHA-256 hashes for personal skins.json, themes.json and scenes.json match the
+  baseline taken after the initial isolated launch and before GUI interactions.
+  Explicit world application did apply Windows Light mode and accent #7B563F;
+  data-folder isolation does not isolate OS appearance. No wallpaper was bound.
+
+Two production defects were fixed. DesktopAtmosphereWindow now initializes and
+retains a Windows.System dispatcher queue before creating its system compositor,
+matching the existing requirement in the widget host. DesktopWorldRuntime now
+applies atmosphere opacity to the open window only, without editing or persisting
+SkinDefinition. Static worlds keep their saved opacity; reactive effects multiply
+the current saved value, preserve zero opacity, and restore it when stopped.
+
+The final Windows Release publish succeeded. All 748 Release tests passed with
+zero failures and skips using isolated storage. These tests do not cover the native
+queue or compositor; the startup and static-world persistence regressions above
+provide that desktop evidence. Authenticated reactive playback, rapid 20-switch
+stress, native image import, multi-monitor/DPI changes and exhaustive Windows
+appearance synchronization remain unverified.
+
+Evidence remains outside the repository in `test-evidence/2026-10-23-worlds`:
+`opacity-before-fix.json`, `amber-fixed.json`, `blue-preview-fixed.json`,
+`blue-fixed.json`, `amber-roundtrip-fixed.json`, `scenes-roundtrip-fixed.json`,
+`after-restart-fixed.json`, personal hash comparisons, profile logs,
+`publish-final.log` and `test-results/world-fixes.trx`. The test process was closed
+after verification; no personal widget data was modified.
