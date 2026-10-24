@@ -43,6 +43,19 @@ dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(dotenv_path=dotenv_path)
 logger.info(f"Environment variables loaded from: {dotenv_path}")
 
+def _load_secret_key() -> str:
+    secret = os.getenv("SECRET_KEY")
+    if (
+        not secret
+        or not secret.strip()
+        or len(secret.encode("utf-8")) < 32
+        or secret == "super_secret_student_budget_key_dont_leak_this"
+    ):
+        raise RuntimeError("SECRET_KEY must be configured with a private random value of at least 32 bytes.")
+    return secret
+
+SECRET_KEY = _load_secret_key()
+
 try:
     import aiohttp as _aiohttp
     _AIOHTTP_AVAILABLE = True
@@ -181,10 +194,10 @@ async def lifespan(app: FastAPI):
         analytics_set_db(db)
         logger.info("Playlist and analytics routes wired to DB.")
     if _SPOTIFY_ROUTES_AVAILABLE and spotify_router:
-        spotify_set_db(db, os.getenv("SECRET_KEY", "super_secret_student_budget_key_dont_leak_this"))
+        spotify_set_db(db, SECRET_KEY)
         logger.info("Spotify routes wired to DB.")
     if _SERVICES_ROUTES_AVAILABLE and services_router:
-        services_set_db(db, os.getenv("SECRET_KEY", "super_secret_student_budget_key_dont_leak_this"))
+        services_set_db(db, SECRET_KEY)
         logger.info("Services routes wired to DB.")
 
     # TrackFeatureCache → TRACK_FEATURE_INDEX
@@ -386,7 +399,6 @@ if _SERVICES_ROUTES_AVAILABLE and services_router:
 if _METRICS_ROUTES_AVAILABLE and metrics_router:
     app.include_router(metrics_router)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_student_budget_key_dont_leak_this")
 ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
@@ -1284,7 +1296,7 @@ async def fetch_lastfm_tracks_sync(genre: str, limit: int = 200):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         return []
-    url = f"http://ws.audioscrobbler.com/2.0/?method=tag.gettoptracks&tag={urllib.parse.quote(genre)}&api_key={api_key}&format=json&limit={limit}"
+    url = f"https://ws.audioscrobbler.com/2.0/?method=tag.gettoptracks&tag={urllib.parse.quote(genre)}&api_key={api_key}&format=json&limit={limit}"
     data = await _fetch_with_retry(url, label=f"Last.fm genre:'{genre}'")
     if data:
         tracks = data.get("tracks", {}).get("track", [])
@@ -1301,7 +1313,7 @@ async def fetch_lastfm_artist_tracks_sync(artist: str, limit: int = 200):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         return []
-    url = f"http://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={urllib.parse.quote(artist)}&api_key={api_key}&format=json&limit={limit}"
+    url = f"https://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={urllib.parse.quote(artist)}&api_key={api_key}&format=json&limit={limit}"
     data = await _fetch_with_retry(url, label=f"Last.fm artist:'{artist}'")
     if data:
         tracks = data.get("toptracks", {}).get("track", [])
@@ -1314,7 +1326,7 @@ async def fetch_lastfm_track_search_sync(query: str, limit: int = 100):
     api_key = os.getenv("LASTFM_API_KEY")
     if not api_key:
         return []
-    url = f"http://ws.audioscrobbler.com/2.0/?method=track.search&track={urllib.parse.quote(query)}&api_key={api_key}&format=json&limit={limit}"
+    url = f"https://ws.audioscrobbler.com/2.0/?method=track.search&track={urllib.parse.quote(query)}&api_key={api_key}&format=json&limit={limit}"
     data = await _fetch_with_retry(url, label=f"Last.fm direct track search for '{query}'")
     if data:
         tracks = data.get("results", {}).get("trackmatches", {}).get("track", [])
@@ -2336,6 +2348,14 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 @app.post("/api/vibe/story")
 async def generate_vibe_story(req: VibeStoryRequest, token: str = Depends(oauth2_scheme)):
+    try:
+        claims = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp", "sub"]})
+        subject = claims.get("sub")
+        if not isinstance(subject, str) or not subject.strip():
+            raise jwt.InvalidTokenError("Invalid subject")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token", headers={"WWW-Authenticate": "Bearer"})
+
     if not GEMINI_API_KEY:
         return {"story": None}
     top_tracks_str = ", ".join(f"{t.get('title','')}" for t in req.tracks[:3] if t.get("title"))

@@ -14,7 +14,7 @@ public sealed partial class SettingsPage : Page
 
     private static readonly string DataFolder =
         Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            ThemeManager.Core.Services.AppDataPaths.LocalRoot,
             "ThemedAI");
 
     public SettingsPage()

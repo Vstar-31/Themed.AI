@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Media;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Personalization;
 using ThemeManager.Core.Services;
+using ThemeManager.Core.Skins;
 using ThemeManager.Core.Utilities;
 using ThemeManager.Integration;
 using ThemeManager.WinUI.Services;
@@ -43,6 +44,9 @@ public partial class App : Application
 
     public static ILoggerFactory LoggerFactory { get; private set; } = null!;
 
+    /// <summary>Trusted in-process extension registry for custom widget measures, meters and actions.</summary>
+    public static WidgetPluginRegistry PluginRegistry { get; private set; } = null!;
+
     /// <summary>General app preferences, including the Phase 7 theme-automation schedule — see
     /// ThemeManager.Core.Services.AppSettings.</summary>
     public static AppSettings Settings { get; private set; } = null!;
@@ -74,6 +78,7 @@ public partial class App : Application
         InitializeComponent();
         ThemeRepository = new ThemeRepository();
         ThemeService = new ThemeService(ThemeRepository);
+        ThemeSyncModule.Initialize();
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -84,13 +89,22 @@ public partial class App : Application
             .Enrich.WithThreadId()
             .Enrich.WithMachineName()
             .WriteTo.Debug(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj} (Thread:{ThreadId}){NewLine}{Exception}")
-            .WriteTo.File(System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "ThemeManager.AI", "logs", "app-.log"), 
+            .WriteTo.File(System.IO.Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemeManager.AI", "logs", "app-.log"),
                           rollingInterval: RollingInterval.Day,
                           outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj} (Thread:{ThreadId}){NewLine}{Exception}")
             .CreateLogger();
 
         LoggerFactory = new LoggerFactory().AddSerilog(Log.Logger);
+        PluginRegistry = new WidgetPluginRegistry();
         var logger = LoggerFactory.CreateLogger<App>();
+
+        // Optional local extensions: any trusted plugin DLL dropped in the app's Plugins folder is
+        // discovered before widgets start, so custom measures/actions are available immediately.
+        var pluginDirectory = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Plugins");
+        var pluginLoader = new WidgetPluginLoader(PluginRegistry, LoggerFactory.CreateLogger<WidgetPluginLoader>());
+        var loadedPluginCount = pluginLoader.LoadFromDirectory(pluginDirectory);
+        logger.LogInformation("Widget plugin bootstrap complete: {PluginCount} plugin(s) loaded from {PluginDirectory}",
+            loadedPluginCount, pluginDirectory);
         logger.LogInformation("Application Starting...");
 
         // These two are static classes shared across every VibeFinder widget instance (see their
@@ -106,7 +120,6 @@ public partial class App : Application
             logger.LogCritical((Exception)e.ExceptionObject, "AppDomain Unhandled Exception. Terminating: {IsTerminating}", e.IsTerminating);
             Log.CloseAndFlush();
         };
-
         TaskScheduler.UnobservedTaskException += (s, e) =>
         {
             logger.LogCritical(e.Exception, "Unobserved Task Exception");
@@ -142,12 +155,13 @@ public partial class App : Application
         // Widgets start up after the main window so its DispatcherQueue is definitely
         // running (SkinManagerService's tick timer needs one). A widget that was left
         // enabled last session reappears on the desktop right away, same as Rainmeter.
-        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory);
+        SkinManager = new SkinManagerService(new SkinRepository(), LoggerFactory, PluginRegistry);
 
         Personalization = new PersonalizationOrchestrator(System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+            ThemeManager.Core.Services.AppDataPaths.LocalRoot,
             "ThemedAI", "profile.json"));
         await SkinManager.InitializeAsync();
+        await MainWindow.InitializeVibeProvisioningAsync();
 
         // VibeFinderAI pre-warm: log the hidden embed in ahead of time if a VibeFinder widget
         // is already active (covers "a few seconds after launch"), and again whenever one gets
@@ -231,6 +245,7 @@ public partial class App : Application
             logger.LogInformation("Application Shutting Down...");
             Log.CloseAndFlush();
         };
+        MainWindow.CompleteStartup();
     }
 
     // ── Live theming ──────────────────────────────────────────────────────────
@@ -269,6 +284,8 @@ public partial class App : Application
         resources["ColorTextPrimary"] = HexToColor(theme.TextPrimary);
         resources["ColorTextMuted"] = HexToColor(theme.TextMuted);
         resources["ColorBorderSubtle"] = HexToColor(theme.BorderSubtle);
+        resources["ColorSurfaceHover"] = HexToColor(LightenHex(theme.Surface, 0.15));
+        resources["ColorSurfacePressed"] = HexToColor(DarkenHex(theme.Surface, 0.10));
 
         // Brushes (the binding targets throughout the visual tree)
         UpdateBrush("AppBackgroundBrush", HexToColor(theme.BackgroundBase));
@@ -281,9 +298,56 @@ public partial class App : Application
         UpdateBrush("TextMutedBrush", HexToColor(theme.TextMuted));
         UpdateBrush("BorderSubtleBrush", HexToColor(theme.BorderSubtle));
 
+        // Derived foregrounds must follow the generated palette too. Surface labels use the
+        // palette's validated primary text; filled primary buttons choose whichever of black/white
+        // contrasts best against AccentStrong instead of assuming every accent is dark enough for white.
+        UpdateBrush("TextOnSurfaceBrush", HexToColor(theme.TextPrimary));
+        UpdateBrush("TextOnAccentBrush", HexToColor(
+            ThemeManager.Core.Utilities.ContrastChecker.BestBlackOrWhiteForeground(theme.AccentStrong)));
+
         // Hover/pressed variants (auto-computed from base surface color).
         UpdateBrush("SurfaceHoverBrush", HexToColor(LightenHex(theme.Surface, 0.15)));
         UpdateBrush("SurfacePressedBrush", HexToColor(DarkenHex(theme.Surface, 0.10)));
+
+        // Stock controls retain brush instances too. Updating a boxed color resource alone
+        // does not invalidate every ThemeResource alias when the palette changes at runtime.
+        foreach (var (key, colorKey) in new (string, string)[]
+        {
+            ("SystemControlForegroundBaseHighBrush", "ColorTextPrimary"),
+            ("SystemControlForegroundBaseMediumBrush", "ColorTextMuted"),
+            ("SystemControlForegroundBaseLowBrush", "ColorTextMuted"),
+            ("SystemControlForegroundBaseMediumLowBrush", "ColorTextMuted"),
+            ("TextFillColorPrimaryBrush", "ColorTextPrimary"),
+            ("TextFillColorSecondaryBrush", "ColorTextMuted"),
+            ("TextFillColorTertiaryBrush", "ColorTextMuted"),
+            ("TextFillColorDisabledBrush", "ColorTextMuted"),
+            ("ControlFillColorDefaultBrush", "ColorBackgroundAlt"),
+            ("ControlFillColorSecondaryBrush", "ColorBackgroundBase"),
+            ("ControlFillColorTertiaryBrush", "ColorSurfaceHover"),
+            ("ControlFillColorDisabledBrush", "ColorBackgroundAlt"),
+            ("ControlStrokeColorDefaultBrush", "ColorBorderSubtle"),
+            ("ControlStrokeColorSecondaryBrush", "ColorBorderSubtle"),
+            ("ControlStrongStrokeColorDefaultBrush", "ColorAccentPrimary"),
+            ("ButtonForeground", "ColorTextPrimary"),
+            ("ButtonForegroundPointerOver", "ColorTextPrimary"),
+            ("ButtonForegroundPressed", "ColorTextPrimary"),
+            ("ButtonForegroundDisabled", "ColorTextMuted"),
+            ("ButtonBackground", "ColorSurface"),
+            ("ButtonBackgroundPointerOver", "ColorSurfaceHover"),
+            ("ButtonBackgroundPressed", "ColorSurfacePressed"),
+            ("TextControlForeground", "ColorTextPrimary"),
+            ("TextControlPlaceholderForeground", "ColorTextMuted"),
+            ("TextControlBorderBrush", "ColorBorderSubtle"),
+            ("ComboBoxForeground", "ColorTextPrimary"),
+            ("ComboBoxPlaceholderForeground", "ColorTextMuted"),
+            ("ComboBoxItemForeground", "ColorTextPrimary"),
+            ("ListViewForeground", "ColorTextPrimary"),
+            ("ListViewItemForeground", "ColorTextPrimary"),
+            ("NavigationViewItemForeground", "ColorTextPrimary"),
+            ("NavigationViewItemForegroundSelected", "ColorTextPrimary")
+        }) UpdateBrush(key, (Color)resources[colorKey]);
+
+        MainWindow?.ApplyWindowTheme(theme);
 
         // Corner radius tokens (scaled by theme preference)
         double s = Math.Clamp(theme.CornerRadiusScale, 0.25, 2.0);

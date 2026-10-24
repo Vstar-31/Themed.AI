@@ -10,19 +10,36 @@ namespace ThemeManager.WinUI.ViewModels;
 public sealed class SkinHostViewModel : ViewModelBase
 {
     public SkinDefinition Definition { get; }
+    // Compatibility shim for older widget-host call sites that treated the host as a wrapper.
+    public SkinHostViewModel ViewModel => this;
     public ObservableCollection<MeterViewModelBase> Meters { get; } = new();
-    public bool IsClosed { get; set; }
+    private volatile bool _isClosed;
+    public bool IsClosed { get => _isClosed; set => _isClosed = value; }
+    public WidgetRefreshCoordinator RefreshCoordinator { get; } = new();
     public System.Collections.Generic.IEnumerable<IMeasure> Measures => _measuresByName.Values;
 
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
+    private readonly List<IMeasure> _formulaMeasures = new();
     private readonly ILogger? _logger;
+    private readonly IActiveThemeProvider? _activeThemeProvider;
+    private readonly WidgetPluginRegistry? _pluginRegistry;
+    private readonly object _measureGate = new();
+    private int _measuresDisposed;
 
-    public SkinHostViewModel(SkinDefinition definition, ILogger? logger = null, IActiveThemeProvider? activeThemeProvider = null)
+    public SkinHostViewModel(
+        SkinDefinition definition,
+        ILogger? logger = null,
+        IActiveThemeProvider? activeThemeProvider = null,
+        WidgetPluginRegistry? pluginRegistry = null)
     {
         Definition = definition;
         _logger = logger;
-        foreach (var measureDef in definition.Measures)
-            _measuresByName[measureDef.Name] = MeasureFactory.Create(measureDef, logger, activeThemeProvider);
+        _activeThemeProvider = activeThemeProvider;
+        _pluginRegistry = pluginRegistry;
+        // Build base measures first so every Formula measure can resolve them regardless of JSON
+        // ordering. Formula measures are then refreshed in their definition order, allowing simple
+        // formula chains such as "Total = Cpu + Mem".
+        BuildMeasures();
         foreach (var meterDef in definition.Meters)
         {
             MeterViewModelBase vm = meterDef.Kind switch
@@ -31,6 +48,7 @@ public sealed class SkinHostViewModel : ViewModelBase
                 MeterKind.Graph => new GraphMeterViewModel(meterDef),
                 MeterKind.Icon => new IconMeterViewModel(meterDef),
                 MeterKind.Ring => new RingMeterViewModel(meterDef),
+                MeterKind.Image => new ImageMeterViewModel(meterDef),
                 MeterKind.WebEmbed => new WebEmbedMeterViewModel(meterDef),
                 _ => new StringMeterViewModel(meterDef),
             };
@@ -38,10 +56,52 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
+    private void BuildMeasures()
+    {
+        foreach (var measureDef in Definition.Measures.Where(m => m.Type != MeasureType.Formula))
+            _measuresByName[measureDef.Name] = MeasureFactory.Create(
+                measureDef, _logger, _activeThemeProvider, ResolveMeasure, _pluginRegistry);
+
+        foreach (var measureDef in Definition.Measures.Where(m => m.Type == MeasureType.Formula))
+        {
+            var formula = MeasureFactory.Create(
+                measureDef, _logger, _activeThemeProvider, ResolveMeasure, _pluginRegistry);
+            _measuresByName[measureDef.Name] = formula;
+            _formulaMeasures.Add(formula);
+        }
+    }
+
+    /// <summary>Rebuilds measure instances after a target/credential change without recreating the native widget window.</summary>
+    public void ReloadMeasures()
+    {
+        lock (_measureGate)
+        {
+            if (IsClosed) return;
+            foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+            {
+                try { disposable.Dispose(); }
+                catch (Exception ex) { _logger?.LogDebug(ex, "Skin \"{Skin}\": measure disposal during reload failed", Definition.Name); }
+            }
+
+            _measuresByName.Clear();
+            _formulaMeasures.Clear();
+            Interlocked.Exchange(ref _measuresDisposed, 0);
+            BuildMeasures();
+        }
+    }
+
+    private double? ResolveMeasure(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        return _measuresByName.TryGetValue(name, out var measure) ? measure.Value : null;
+    }
+
     public void RefreshMeasures()
     {
-        if (IsClosed) return;
-        foreach (var measure in _measuresByName.Values)
+        lock (_measureGate)
+        {
+            if (IsClosed) return;
+            foreach (var measure in _measuresByName.Values.Where(m => !_formulaMeasures.Contains(m)))
         {
             try { measure.Refresh(); }
             catch (Exception ex)
@@ -50,33 +110,82 @@ public sealed class SkinHostViewModel : ViewModelBase
                     Definition.Name, measure.Name, measure.GetType().Name);
             }
         }
+
+            foreach (var formula in _formulaMeasures)
+            {
+                try { formula.Refresh(); }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Skin \"{Skin}\": formula measure \"{Measure}\" threw during Refresh()",
+                        Definition.Name, formula.Name);
+                }
+            }
+        }
     }
+
+    /// <summary>Raised on the UI thread after every meter update, so the host window can re-evaluate
+    /// threshold/active states and anchor layout against fresh values.</summary>
+    public event Action? MetersUpdated;
+
+    private volatile IReadOnlyDictionary<string, double> _measureSnapshot =
+        new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Latest value of a measure as of the last meter update. Reads a snapshot, never the
+    /// measure gate, so it is safe to call from pointer handlers while a background refresh runs.</summary>
+    public double? GetMeasureValue(string name) =>
+        !string.IsNullOrWhiteSpace(name) && _measureSnapshot.TryGetValue(name, out var value) ? value : null;
 
     public void UpdateMeters()
     {
-        if (IsClosed) return;
-        foreach (var meter in Meters)
+        lock (_measureGate)
         {
-            try { meter.Tick(_measuresByName); }
-            catch (Exception ex)
+            if (IsClosed) return;
+            foreach (var meter in Meters)
             {
-                _logger?.LogWarning(ex, "Skin \"{Skin}\": meter \"{Meter}\" ({MeterType}) threw during Tick()",
-                    Definition.Name, meter.LogLabel, meter.GetType().Name);
+                try { meter.Tick(_measuresByName); }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Skin \"{Skin}\": meter \"{Meter}\" ({MeterType}) threw during Tick()",
+                        Definition.Name, meter.LogLabel, meter.GetType().Name);
+                }
             }
+
+            var snapshot = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (name, measure) in _measuresByName)
+            {
+                try { snapshot[name] = measure.Value; }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" threw while reading Value",
+                        Definition.Name, name);
+                }
+            }
+            _measureSnapshot = snapshot;
+        }
+
+        try { MetersUpdated?.Invoke(); }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Skin \"{Skin}\": a MetersUpdated handler threw", Definition.Name);
         }
     }
 
     /// <summary>Disposes all measure-owned resources. Safe to call after IsClosed was already set.</summary>
     public void DisposeMeasures()
     {
-        IsClosed = true;
-        foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
+        lock (_measureGate)
         {
-            try { disposable.Dispose(); }
-            catch (Exception ex)
+            IsClosed = true;
+            if (Interlocked.Exchange(ref _measuresDisposed, 1) != 0) return;
+
+            foreach (var disposable in _measuresByName.Values.OfType<IDisposable>().Distinct())
             {
-                _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" failed during disposal",
-                    Definition.Name, disposable.GetType().Name);
+                try { disposable.Dispose(); }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" failed during disposal",
+                        Definition.Name, disposable.GetType().Name);
+                }
             }
         }
     }

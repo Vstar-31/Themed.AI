@@ -3,27 +3,57 @@ name: Windows Build
 on:
   push:
     branches:
-      - rehaul/desktop-experience-v7
+      - feature/windows-app-theming
+      - feat/widget-package-workflow
   pull_request:
     branches:
-      - rehaul/desktop-experience-v7
+      - feature/windows-app-theming
+      - feat/widget-package-workflow
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Widget/runtime work is committed in small slices; cancel stale builds so the newest branch state
+# gets the Windows compiler slot instead of queuing dozens of superseded runs.
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  build-and-test:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup pinned SDK and .NET 8 runtime
         uses: actions/setup-dotnet@v4
         with:
+          global-json-file: global.json
           dotnet-version: '8.0.x'
 
-      - name: Restore
-        run: dotnet restore
+      - name: Build and test on Windows
+        shell: pwsh
+        run: ./scripts/Test-Windows.ps1 -Configuration '${{ matrix.configuration }}' -Publish:('${{ matrix.configuration }}' -eq 'Release')
 
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results-${{ matrix.configuration }}
+          path: artifacts/test-results/${{ matrix.configuration }}
+          if-no-files-found: ignore
+
+      - name: Upload unpackaged Windows app
+        if: matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThemedAI-windows-x64-${{ github.sha }}
+          path: artifacts/windows-x64
+          if-no-files-found: error

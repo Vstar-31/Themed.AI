@@ -11,7 +11,6 @@ public sealed class DesktopWorldRuntime : IDisposable
 {
     private readonly DesktopSceneService _scenes;
     private readonly DispatcherQueue _dispatcher;
-    private readonly Dictionary<string, double> _baseOpacity = new(StringComparer.OrdinalIgnoreCase);
     private DesktopAtmosphereHost? _atmosphere;
     private DispatcherQueueTimer? _timer;
     private bool _started;
@@ -65,8 +64,8 @@ public sealed class DesktopWorldRuntime : IDisposable
         var warmth = signal.HasSignal ? atmosphere.Warmth : 0.5;
 
         var profile = VibeFinderWebState.Profile;
-        if (profile.Signals >= 2 && !string.IsNullOrWhiteSpace(profile.TopMood))
-            mood = profile.TopMood!;
+        if (profile is { Signals: >= 2 } && !string.IsNullOrWhiteSpace(profile.TopMood))
+            mood = profile.TopMood;
 
         VibeSnapshotHub.Publish(new VibeSnapshot(
             mood,
@@ -85,7 +84,6 @@ public sealed class DesktopWorldRuntime : IDisposable
 
     private void OnSceneChanged(object? sender, DesktopScene? scene)
     {
-        _baseOpacity.Clear();
         if (_dispatcher.HasThreadAccess) RecalculateTarget(VibeSnapshotHub.Current); else _dispatcher.TryEnqueue(() => RecalculateTarget(VibeSnapshotHub.Current));
     }
 
@@ -171,16 +169,15 @@ public sealed class DesktopWorldRuntime : IDisposable
 
         if (App.SkinManager is null) return;
         var motion = Math.Clamp(CurrentAtmosphere.Motion * Math.Max(0, scene.Behavior.MotionIntensity), 0, 1);
+        // Atmosphere is a presentation effect, never a persisted widget edit.
+        // Static worlds retain their exact saved opacity, including transparent cards.
+        var reactive = scene.Behavior.ReactToVibeFinder || scene.Behavior.ReactToMedia;
+        var multiplier = reactive && scene.Behavior.MotionIntensity > 0
+            ? 0.92 + motion * 0.08
+            : 1.0;
         foreach (var widget in App.SkinManager.Skins)
         {
-            if (!widget.Enabled) continue;
-            if (!_baseOpacity.ContainsKey(widget.Id)) _baseOpacity[widget.Id] = Math.Clamp(widget.Opacity, 0.05, 1.0);
-            var targetOpacity = Math.Clamp(_baseOpacity[widget.Id] * (0.92 + motion * 0.08), 0.05, 1.0);
-            if (Math.Abs(widget.Opacity - targetOpacity) > 0.015)
-            {
-                widget.Opacity = targetOpacity;
-                _ = App.SkinManager.SetOpacityAsync(widget, targetOpacity);
-            }
+            if (widget.Enabled) App.SkinManager.ApplyAtmosphereOpacity(widget, multiplier);
         }
     }
 
@@ -246,7 +243,11 @@ public sealed class DesktopWorldRuntime : IDisposable
         _scenes.ActiveSceneChanged -= OnSceneChanged;
         _timer?.Stop();
         _timer = null;
-        _baseOpacity.Clear();
+        if (App.SkinManager is not null)
+        {
+            foreach (var widget in App.SkinManager.Skins)
+                App.SkinManager.ApplyAtmosphereOpacity(widget, 1.0);
+        }
         _atmosphere?.Dispose();
         _atmosphere = null;
     }

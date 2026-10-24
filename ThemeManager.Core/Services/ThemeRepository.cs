@@ -6,8 +6,15 @@ namespace ThemeManager.Core.Services;
 
 public sealed class ThemeRepository
 {
-    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
-    private static readonly string ThemesFilePath = Path.Combine(StorageFolder, "themes.json");
+    private readonly string StorageFolder;
+    private readonly string ThemesFilePath;
+
+    public ThemeRepository(string? storageFolder = null)
+    {
+        StorageFolder = storageFolder ?? Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
+        ThemesFilePath = Path.Combine(StorageFolder, "themes.json");
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -81,7 +88,7 @@ public sealed class ThemeRepository
         catch { return null; }
     }
 
-    private static void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
+    private void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
 
     private static void EnsureBuiltInThemesPresent(List<CozyTheme> themes)
     {

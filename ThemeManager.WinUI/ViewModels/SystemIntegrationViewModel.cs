@@ -7,15 +7,14 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
     private readonly ISystemThemeIntegrator _integrator;
     private readonly EventHandler<ThemeManager.Core.Models.CozyTheme> _themeChangedHandler;
 
-    // ── System info ───────────────────────────────────────────────────────────
-    private string _currentAccentHex = "\u2026";
+    private string _currentAccentHex = "…";
     public string CurrentAccentHex
     {
         get => _currentAccentHex;
         set => SetProperty(ref _currentAccentHex, value);
     }
 
-    private string _windowsBuild = "\u2026";
+    private string _windowsBuild = "…";
     public string WindowsBuild
     {
         get => _windowsBuild;
@@ -29,18 +28,45 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
         set => SetProperty(ref _isLightMode, value);
     }
 
-    // ── Active theme wallpaper proxy ──────────────────────────────────────────
     public bool ActiveThemeApplyWallpaper
     {
         get => App.ThemeService.ActiveTheme.ApplyToWallpaper;
         set
         {
+            if (App.ThemeService.ActiveTheme.ApplyToWallpaper == value) return;
             App.ThemeService.ActiveTheme.ApplyToWallpaper = value;
             OnPropertyChanged();
         }
     }
 
-    // ── Advanced toggle ───────────────────────────────────────────────────────
+    public bool ActiveThemeApplyWindowsApps
+    {
+        get => App.ThemeService.ActiveTheme.ApplyToWindowsApps;
+        set
+        {
+            if (App.ThemeService.ActiveTheme.ApplyToWindowsApps == value) return;
+            App.ThemeService.ActiveTheme.ApplyToWindowsApps = value;
+            OnPropertyChanged();
+            _ = PersistWindowsAppsPreferenceAsync();
+        }
+    }
+
+    private async Task PersistWindowsAppsPreferenceAsync()
+    {
+        try
+        {
+            var theme = App.ThemeService.ActiveTheme;
+            await App.ThemeService.SaveThemeAsync(theme);
+            StatusMessage = theme.ApplyToWindowsApps
+                ? "Windows app appearance sync enabled."
+                : "Windows app appearance sync disabled for this theme.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not save Windows app appearance preference: {ex.Message}";
+        }
+    }
+
     private bool _advancedEnabled;
     public bool AdvancedEnabled
     {
@@ -52,10 +78,8 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Fades advanced controls when toggle is off.</summary>
     public double AdvancedEnabledOpacity => _advancedEnabled ? 1.0 : 0.4;
 
-    // ── Status ────────────────────────────────────────────────────────────────
     private string _statusMessage = "Ready.";
     public string StatusMessage
     {
@@ -73,17 +97,13 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
     public SystemIntegrationViewModel(ISystemThemeIntegrator integrator)
     {
         _integrator = integrator;
-
-        // Store the handler so it can be properly unsubscribed in Dispose().
-        // Previously this was an inline lambda — every new instance leaked a
-        // permanent subscription that could never be removed.
         _themeChangedHandler = (_, _) =>
+        {
             OnPropertyChanged(nameof(ActiveThemeApplyWallpaper));
-
+            OnPropertyChanged(nameof(ActiveThemeApplyWindowsApps));
+        };
         App.ThemeService.ThemeChanged += _themeChangedHandler;
     }
-
-    // ── Commands ──────────────────────────────────────────────────────────────
 
     public async Task RefreshSystemInfoAsync()
     {
@@ -92,27 +112,22 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
         {
             var info = await _integrator.GetCurrentSystemThemeAsync();
             CurrentAccentHex = info.AccentHex;
-            WindowsBuild     = info.WindowsBuild;
-            IsLightMode      = info.IsLightMode;
+            WindowsBuild = info.WindowsBuild;
+            IsLightMode = info.IsLightMode;
         }
         finally { IsBusy = false; }
     }
 
     public async Task ApplyAccentColorAsync(string hexColor)
     {
-        // Removed the AdvancedEnabled guard because when called from ThemesPage
-        // directly to apply a theme, the user hasn't explicitly navigated to the
-        // SystemPage to flip the toggle — and we want 'Set Active' to force it
-        // directly for better UX.
-
         IsBusy = true;
-        StatusMessage = "Applying accent color\u2026";
+        StatusMessage = "Applying accent color…";
         try
         {
             bool ok = await _integrator.ApplyAccentColorAsync(hexColor);
             StatusMessage = ok
-                ? "Accent color applied. A sign-out may be required."
-                : "Failed to apply accent color \u2014 check permissions.";
+                ? "Accent color applied."
+                : "Failed to apply accent color — check permissions.";
         }
         finally { IsBusy = false; }
     }
@@ -125,7 +140,7 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
             return;
         }
         IsBusy = true;
-        StatusMessage = "Setting wallpaper\u2026";
+        StatusMessage = "Setting wallpaper…";
         try
         {
             bool ok = await _integrator.ApplyWallpaperAsync(path);
@@ -138,7 +153,7 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
     {
         if (!AdvancedEnabled) return;
         IsBusy = true;
-        StatusMessage = "Resetting accent to Windows default\u2026";
+        StatusMessage = "Resetting accent to Windows default…";
         try
         {
             bool ok = await _integrator.ResetAccentColorAsync();
@@ -146,8 +161,6 @@ public sealed class SystemIntegrationViewModel : ViewModelBase, IDisposable
         }
         finally { IsBusy = false; }
     }
-
-    // ── Cleanup ───────────────────────────────────────────────────────────────
 
     public void Dispose()
     {

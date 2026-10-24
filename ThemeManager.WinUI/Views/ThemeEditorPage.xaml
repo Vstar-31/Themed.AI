@@ -21,49 +21,56 @@
 
         <!-- ════════ HEADER ════════════════════════════════════════════════ -->
         <Grid Grid.Row="0" Padding="32,24,32,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*"    />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Content="← Back"
-                    Style="{StaticResource GhostButtonStyle}"
-                    Click="BackButton_Click"
-                    VerticalAlignment="Center"
-                    Margin="0,0,16,0" />
+                <Button Grid.Column="0" Content="← Back"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Click="BackButton_Click"
+                        VerticalAlignment="Center"
+                        Margin="0,0,16,0" />
 
-            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                <TextBlock Text="Theme Editor"
-                           FontSize="{StaticResource FontSizeDisplay}"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Palette updates live · Ctrl+Z to undo · Ctrl+Y to redo"
-                           Style="{StaticResource CaptionStyle}" />
-            </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Theme Editor"
+                               FontSize="{StaticResource FontSizeDisplay}"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="Palette updates live · Ctrl+Z to undo · Ctrl+Y to redo"
+                               Style="{StaticResource CaptionStyle}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
 
-            <!-- Header actions -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-
-                <!-- Undo / Redo -->
+            <!-- Actions occupy their own row so they never compete with the title. -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                        Spacing="8" Margin="0,12,0,0">
                 <Button x:Name="UndoButton"
                         Content="{x:Bind ViewModel.UndoDepthLabel, Mode=OneWay}"
                         Style="{StaticResource GhostButtonStyle}"
                         IsEnabled="{x:Bind ViewModel.CanUndo, Mode=OneWay}"
                         Click="UndoButton_Click"
                         Padding="12,8,12,8" />
-
                 <Button x:Name="RedoButton"
                         Content="Redo"
                         Style="{StaticResource GhostButtonStyle}"
                         IsEnabled="{x:Bind ViewModel.CanRedo, Mode=OneWay}"
                         Click="RedoButton_Click"
                         Padding="12,8,12,8" />
-
-                <Button Content="Revert"
+                <Button Content="Repair palette"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Click="RepairPaletteButton_Click"
+                        ToolTipService.ToolTip="Adjust colors to pass the palette readability checks" />
+                <Button Content="Revert palette"
                         Style="{StaticResource GhostButtonStyle}"
                         Click="RevertButton_Click" />
-
                 <Button Content="Save Theme"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Click="SaveButton_Click" />
@@ -73,9 +80,9 @@
         <!-- ════════ EDITOR + PREVIEW ══════════════════════════════════════ -->
         <Grid Grid.Row="1" Margin="32,0,32,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" />
-                <ColumnDefinition Width="20"  />
-                <ColumnDefinition Width="*"   />
+                <ColumnDefinition Width="0.9*" MinWidth="260" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="1.1*" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
             <!-- ── LEFT: Editor form ──────────────────────────────────── -->
@@ -139,35 +146,35 @@
 
                             <local:ColorTokenRow Label="Background Base"
                                 HexValue="{x:Bind ViewModel.BackgroundBase, Mode=TwoWay}"
-                                DefaultHex="#F5F1EA" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineBackgroundBase, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Background Alt"
                                 HexValue="{x:Bind ViewModel.BackgroundAlt, Mode=TwoWay}"
-                                DefaultHex="#D7C9B8" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineBackgroundAlt, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Surface / Controls"
                                 HexValue="{x:Bind ViewModel.Surface, Mode=TwoWay}"
-                                DefaultHex="#B2967D" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineSurface, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Accent Primary  ← harmony anchor"
                                 HexValue="{x:Bind ViewModel.AccentPrimary, Mode=TwoWay}"
-                                DefaultHex="#7D5A44" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineAccentPrimary, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Accent Strong"
                                 HexValue="{x:Bind ViewModel.AccentStrong, Mode=TwoWay}"
-                                DefaultHex="#4A342A" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineAccentStrong, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Text Primary"
                                 HexValue="{x:Bind ViewModel.TextPrimary, Mode=TwoWay}"
-                                DefaultHex="#3B2A20" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineTextPrimary, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Text Muted"
                                 HexValue="{x:Bind ViewModel.TextMuted, Mode=TwoWay}"
-                                DefaultHex="#7F7065" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineTextMuted, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
 
                             <local:ColorTokenRow Label="Border Subtle"
                                 HexValue="{x:Bind ViewModel.BorderSubtle, Mode=TwoWay}"
-                                DefaultHex="#E0D5C7" ColorChanged="OnColorTokenChanged" />
+                                DefaultHex="{x:Bind ViewModel.BaselineBorderSubtle, Mode=OneWay}" ColorChanged="OnColorTokenChanged" />
                         </StackPanel>
                     </Border>
 

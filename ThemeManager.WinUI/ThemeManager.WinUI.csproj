@@ -50,6 +50,20 @@
 
   <!-- Reverted implicit item settings to use defaults and removed explicit duplications -->
 
+  <!-- Unpackaged dotnet publish must include the compiled UI and its resource index.
+       The WinUI SDK copies these to build output but does not include them in publish. -->
+  <Target Name="IncludeCompiledUiInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_AppCompiledUi Include="$(TargetDir)**\*.xbf;$(TargetDir)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Include="@(_AppCompiledUi)"
+                             Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>%(_AppCompiledUi.RecursiveDir)%(_AppCompiledUi.Filename)%(_AppCompiledUi.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <Error Condition="!Exists('$(TargetDir)MainWindow.xbf') Or !Exists('$(TargetDir)$(AssemblyName).pri')"
+           Text="Compiled WinUI resources are missing. Build the app before publishing." />
+  </Target>
 </Project>
 
   

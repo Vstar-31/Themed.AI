@@ -13,30 +13,24 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Padding="32,28,32,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="2">
-                <TextBlock Text="Widgets"
-                           FontSize="{StaticResource FontSizeTitle}"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
-                <TextBlock Text="Rainmeter-style desktop widgets. Normal desktop layering by default — opt into Stay on top only when you need it. Toggle, tint, lock, and drag widgets here."
-                           Style="{StaticResource CaptionStyle}"
-                           TextWrapping="Wrap" />
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top" Margin="0,0,16,0">
-                <TextBlock Text="Master visibility" VerticalAlignment="Center" Style="{StaticResource CaptionStyle}"/>
-                <ToggleSwitch x:Name="MasterVisibilityToggle" IsOn="True" Toggled="MasterVisibilityToggle_Toggled" Style="{StaticResource CozyToggleStyle}" OnContent="" OffContent="" />
-            </StackPanel>
-            <Button Grid.Column="2" Content="+ New Widget"
-                    Style="{StaticResource PrimaryButtonStyle}"
-                    VerticalAlignment="Top"
-                    Click="NewWidgetButton_Click" />
-        </Grid>
+        <StackPanel Grid.Row="0" Padding="32,28,32,16" Spacing="12">
+            <TextBlock Text="Widgets" FontSize="{StaticResource FontSizeTitle}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Text="Desktop tools you can arrange, customize and save. Use Studio to apply a complete world." Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <ToggleSwitch x:Name="MasterVisibilityToggle" Header="Desktop widgets" IsOn="True" Toggled="MasterVisibilityToggle_Toggled" Style="{StaticResource CozyToggleStyle}" OnContent="Visible" OffContent="Hidden" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                    <Button Content="Add widget" Style="{StaticResource PrimaryButtonStyle}">
+                        <Button.Flyout><MenuFlyout>
+                            <MenuFlyoutItem Text="Remix a starter…" Click="BrowseTemplates_Click"/>
+                            <MenuFlyoutItem Text="New blank widget" Click="NewWidgetButton_Click" />
+                            <MenuFlyoutItem Text="Generate with AI" Click="GenerateWidgetButton_Click" />
+                            <MenuFlyoutItem Text="Import widget…" Click="ImportWidgetButton_Click" />
+                        </MenuFlyout></Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
 
         <ScrollViewer Grid.Row="1"
                       Padding="32,0,32,32"
@@ -44,7 +38,7 @@
             <ItemsRepeater x:Name="SkinsRepeater"
                            ItemsSource="{x:Bind ViewModel.Skins, Mode=OneWay}">
                 <ItemsRepeater.Layout>
-                    <UniformGridLayout MinItemWidth="300"
+                    <UniformGridLayout ItemsStretch="Fill" MinItemWidth="300"
                                        MinColumnSpacing="16"
                                        MinRowSpacing="16" />
                 </ItemsRepeater.Layout>
@@ -65,7 +59,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0"
-                                               Text="{x:Bind Name}"
+                                               Text="{x:Bind Name}" TextWrapping="Wrap" Height="48" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Name}" Margin="0,0,8,0"
                                                FontSize="{StaticResource FontSizeSubtitle}"
                                                FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"
@@ -92,7 +86,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="4">
                                         <TextBlock Text="Click-through" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
                                                       IsOn="{x:Bind ClickThrough}"
@@ -100,7 +94,7 @@
                                                       OnContent="" OffContent=""
                                                       Toggled="ClickThroughToggle_Toggled" />
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <StackPanel Grid.Column="1" Spacing="4">
                                         <TextBlock Text="Stay on top" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
                                                       IsOn="{x:Bind AlwaysOnTop}"
@@ -110,12 +104,13 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <Grid Grid.Row="3">
+                                <Grid Grid.Row="3" RowSpacing="12">
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                    <StackPanel Grid.Column="0" Spacing="4">
                                         <TextBlock Text="Locked" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" />
                                         <ToggleSwitch Tag="{x:Bind}"
                                                       IsOn="{x:Bind Locked}"
@@ -123,10 +118,18 @@
                                                       OnContent="" OffContent=""
                                                       Toggled="LockedToggle_Toggled" />
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
                                         <Button Content="Reset" Tag="{x:Bind}" Click="ResetPositionButton_Click" />
                                         <Button Content="Edit" Tag="{x:Bind}" Click="EditButton_Click" />
-                                        <Button Content="Delete" Tag="{x:Bind}" Style="{StaticResource DangerButtonStyle}" Click="DeleteButton_Click" />
+                                        <Button Content="Remix" Tag="{x:Bind}" Click="RemixWidget_Click"/>
+                                        <Button Content="More" AutomationProperties.Name="More widget actions">
+                                            <Button.Flyout>
+                                                <MenuFlyout>
+                                                    <MenuFlyoutItem Text="Export widget…" Tag="{x:Bind}" Click="ExportWidgetButton_Click" />
+                                                    <MenuFlyoutItem Text="Delete" Tag="{x:Bind}" Click="DeleteButton_Click" />
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </Grid>
@@ -141,7 +144,7 @@
                 BorderBrush="{StaticResource BorderSubtleBrush}"
                 BorderThickness="0,1,0,0"
                 Padding="32,10,32,10">
-            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap"
                        Style="{StaticResource CaptionStyle}" />
         </Border>
     </Grid>

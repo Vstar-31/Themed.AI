@@ -1,3 +1,4 @@
+using ThemeManager.Core.Skins;
 using System.Linq;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
@@ -8,6 +9,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Microsoft.Extensions.Logging;
 using Windows.Graphics;
@@ -51,6 +53,21 @@ public sealed partial class SkinHostWindow : Window
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<SkinHostWindow>();
 
     private bool _dragging;
+
+    // Meter states (hover/pressed/active/threshold) and the animation clock that drives them.
+    private readonly List<MeterStateController> _stateControllers = new();
+    private readonly System.Diagnostics.Stopwatch _stateClock = System.Diagnostics.Stopwatch.StartNew();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _stateTimer;
+    private bool _widgetActive;
+    private bool _windowClosed;
+
+    // Monitor anchoring. The key records the inputs of the last applied layout so the per-tick
+    // check is a cheap comparison and only moves/resizes the window when something changed.
+    private WidgetLayout? _anchorLayout;
+    private string? _anchorKey;
+    private double _layoutScale = 1.0;
+    private bool _anchorHidden;
+
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
     
@@ -103,14 +120,37 @@ public sealed partial class SkinHostWindow : Window
 
         BuildMeterVisuals();
 
+        // Anchored widgets take their position (and responsive size/visibility) from the monitor
+        // they are on; this runs after the unscaled Resize above so a responsive scale wins.
+        ApplyAnchorLayout(force: true);
+
         RootCanvas.PointerPressed += RootCanvas_PointerPressed;
         RootCanvas.PointerMoved += RootCanvas_PointerMoved;
         RootCanvas.PointerReleased += RootCanvas_PointerReleased;
-        RootCanvas.PointerCaptureLost += (_, _) => _dragging = false;
+        RootCanvas.PointerCaptureLost += (_, _) =>
+        {
+            _dragging = false;
+            ClearPressedStates();
+        };
+
+        // Threshold/active states and anchor layout are re-checked after every meter update.
+        _viewModel.MetersUpdated += OnMetersUpdated;
+        Activated += (_, args) =>
+        {
+            _widgetActive = args.WindowActivationState != WindowActivationState.Deactivated;
+            EvaluateStates();
+        };
+        EvaluateStates();
 
         // Keep the card's tint in step with live theme switches from the Themes page.
         App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
-        Closed += (_, _) => App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
+        Closed += (_, _) =>
+        {
+            _windowClosed = true;
+            _stateTimer?.Stop();
+            _viewModel.MetersUpdated -= OnMetersUpdated;
+            App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
+        };
     }
 
     // ── Window setup ─────────────────────────────────────────────────────────
@@ -184,6 +224,16 @@ public sealed partial class SkinHostWindow : Window
 
     public void PrepareForClose()
     {
+        _windowClosed = true;
+        try
+        {
+            _stateTimer?.Stop();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "PrepareForClose: stopping the state timer failed for skin \"{Skin}\"", _viewModel.Definition.Name);
+        }
+
         try
         {
             // If the widget is currently attached to the desktop layer, it MUST be detached 
@@ -207,8 +257,17 @@ public sealed partial class SkinHostWindow : Window
 
     // ── Applied live by SkinManagerService when a setting changes ─────────────
 
-    public void ApplyPosition(double x, double y) =>
+    public void ApplyPosition(double x, double y)
+    {
+        // An anchored widget's position comes from its anchor, not from saved coordinates.
+        if (_viewModel.Definition.Anchor is not null)
+        {
+            ApplyAnchorLayout(force: true);
+            if (_anchorLayout is { Edge: not WidgetAnchorEdge.None }) return;
+        }
+
         AppWindow.Move(new PointInt32((int)(x * _scaleFactor), (int)(y * _scaleFactor)));
+    }
 
     public void ApplyOpacity(double opacity)
     {
@@ -224,10 +283,18 @@ public sealed partial class SkinHostWindow : Window
         else
         {
             var cardBrush = (SolidColorBrush)Application.Current.Resources["CardBackgroundBrush"];
+            var sideBrush = (SolidColorBrush)Application.Current.Resources["SidebarBackgroundBrush"];
             var borderBrush = (SolidColorBrush)Application.Current.Resources["BorderSubtleBrush"];
-            var color = cardBrush.Color;
-            CardBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(
-                (byte)(opacity * 255), color.R, color.G, color.B));
+            CardBorder.Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop { Color = Windows.UI.Color.FromArgb((byte)Math.Clamp(opacity * 242, 0, 255), cardBrush.Color.R, cardBrush.Color.G, cardBrush.Color.B), Offset = 0.0 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb((byte)Math.Clamp(opacity * 214, 0, 255), sideBrush.Color.R, sideBrush.Color.G, sideBrush.Color.B), Offset = 1.0 },
+                }
+            };
             CardBorder.BorderBrush = borderBrush;
             CardBorder.BorderThickness = new Thickness(1);
         }
@@ -267,6 +334,68 @@ public sealed partial class SkinHostWindow : Window
 
     private void BuildMeterVisuals()
     {
+        // Groups are real visual containers, not just metadata. This lets a set of independent
+        // meters share scale/rotation/opacity and optionally clip to a local rectangle.
+        var groups = _viewModel.Definition.Groups ?? new List<WidgetGroupDefinition>();
+        var groupByMeterId = new Dictionary<string, WidgetGroupDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups)
+        {
+            foreach (var meterId in group.MeterIds ?? new List<string>())
+            {
+                if (string.IsNullOrWhiteSpace(meterId)) continue;
+                if (groupByMeterId.ContainsKey(meterId))
+                    _logger.LogWarning("Widget \"{Widget}\": meter {MeterId} belongs to multiple groups; using the first group",
+                        _viewModel.Definition.Name, meterId);
+                else
+                    groupByMeterId[meterId] = group;
+            }
+        }
+
+        var groupCanvases = new Dictionary<string, Canvas>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups.OrderBy(g => g.ZIndexForOrdering(_viewModel.Definition.Meters)))
+        {
+            if (string.IsNullOrWhiteSpace(group.Id)) continue;
+            var canvas = new Canvas
+            {
+                Width = Math.Max(0, group.Width),
+                Height = Math.Max(0, group.Height),
+                Opacity = Math.Clamp(group.Opacity, 0, 1),
+                IsHitTestVisible = true,
+            };
+
+            if (group.Clip)
+            {
+                canvas.Clip = new RectangleGeometry
+                {
+                    Rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, group.Width), Math.Max(0, group.Height))
+                };
+            }
+
+            var transforms = new TransformGroup();
+            if (Math.Abs(group.ScaleX - 1.0) > 0.0001 || Math.Abs(group.ScaleY - 1.0) > 0.0001)
+                transforms.Children.Add(new ScaleTransform { ScaleX = group.ScaleX, ScaleY = group.ScaleY });
+            if (Math.Abs(group.Rotation) > 0.0001)
+                transforms.Children.Add(new RotateTransform
+                {
+                    Angle = group.Rotation,
+                    CenterX = Math.Max(0, group.Width) / 2,
+                    CenterY = Math.Max(0, group.Height) / 2
+                });
+            if (transforms.Children.Count > 0)
+                canvas.RenderTransform = transforms;
+
+            Canvas.SetLeft(canvas, group.X);
+            Canvas.SetTop(canvas, group.Y);
+
+            var groupZ = group.MeterIds
+                .Select(id => _viewModel.Definition.Meters.FirstOrDefault(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.ZIndex ?? 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            Canvas.SetZIndex(canvas, groupZ);
+            RootCanvas.Children.Add(canvas);
+            groupCanvases[group.Id] = canvas;
+        }
+
         foreach (var meter in _viewModel.Meters.OrderBy(m => m.Definition.ZIndex).ThenBy(m => m.Definition.Id))
         {
             FrameworkElement element = meter switch
@@ -276,9 +405,22 @@ public sealed partial class SkinHostWindow : Window
                 IconMeterViewModel icon => BuildIconVisual(icon),
                 RingMeterViewModel ring => BuildRingVisual(ring),
                 StringMeterViewModel str => BuildStringVisual(str),
+                ImageMeterViewModel image => ImageMeterVisual.Create(image.Definition),
                 WebEmbedMeterViewModel embed => BuildWebEmbedVisual(embed),
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };
+
+            if (meter.Definition.States is { Count: > 0 } meterStates)
+            {
+                var controller = new MeterStateController(element, meter.Definition, meterStates, _viewModel.GetMeasureValue);
+                _stateControllers.Add(controller);
+                element.PointerEntered += (_, _) => { controller.Hovered = true; EvaluateStates(); };
+                element.PointerExited += (_, _) => { controller.Hovered = false; controller.Pressed = false; EvaluateStates(); };
+                element.PointerPressed += (_, _) => { controller.Pressed = true; EvaluateStates(); };
+                element.PointerReleased += (_, _) => { controller.Pressed = false; EvaluateStates(); };
+                element.PointerCanceled += (_, _) => { controller.Pressed = false; EvaluateStates(); };
+                element.PointerCaptureLost += (_, _) => { controller.Pressed = false; EvaluateStates(); };
+            }
 
             element.PointerPressed += (s, e) =>
             {
@@ -302,38 +444,76 @@ public sealed partial class SkinHostWindow : Window
                     const string vibeFinderPreviewPrefix = "themed://vibefinder/preview?url=";
                     if (url.StartsWith(vibeFinderPreviewPrefix, StringComparison.OrdinalIgnoreCase))
                     {
-                        // VibeFinderMeasure's own-preview playback action: use the native media player
-                        // to play the iTunes preview clip.
+                        // All VibeFinder controls must use one authority at a time. Once the cached
+                        // primary WebView exists, a title/artist click starts its web player (without
+                        // toggling off a track already playing). Before that first visit, the native
+                        // 30-second preview remains the safe widget-only fallback.
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
-                        if (vibeMeasure != null)
+                        bool webEmbedActive =
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedReady &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
+                        // A native preview can be playing (or paused with its source loaded) before
+                        // the cached VibeFinder page takes over. Keep all widget commands on that
+                        // player until its source is cleared; switching control planes mid-track made
+                        // Pause/Next operate on a different, silent browser player.
+                        bool useWebPlayback = webEmbedActive &&
+                            !VibeFinderPreviewPlayer.HasSource;
+
+                        if (vibeMeasure is null)
                         {
-                            _logger.LogDebug("Skin \"{Skin}\": preview-play click -> VibeFinderPreviewPlayer.Play({Url})",
-                                _viewModel.Definition.Name, vibeMeasure.CurrentPreviewUrl ?? "(null)");
-                            VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
+                            _logger.LogWarning("Skin \"{Skin}\": clicked a VibeFinder preview URL but this widget has no VibeFinderMeasure", _viewModel.Definition.Name);
+                        }
+                        else if (useWebPlayback)
+                        {
+                            if (!ThemeManager.Integration.Skins.VibeFinderWebState.IsPlaying)
+                            {
+                                _logger.LogDebug("Skin \"{Skin}\": preview-play click -> primary VibeFinder WebView playpause",
+                                    _viewModel.Definition.Name);
+                                ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"playpause\"}");
+                            }
+                            else
+                            {
+                                _logger.LogTrace("Skin \"{Skin}\": preview-play click ignored because primary VibeFinder playback is already active",
+                                    _viewModel.Definition.Name);
+                            }
                         }
                         else
                         {
-                            // Previously a complete silent no-op with no fallback and nothing logged —
-                            // this specific URL scheme only exists on a VibeFinderMeasure's own meter,
-                            // so a widget without one clicking it is a skins.json authoring mistake, not
-                            // a runtime state to recover from. Worth a Warning so it's visible either way.
-                            _logger.LogWarning("Skin \"{Skin}\": clicked a vibefinder/preview URL but this widget has no VibeFinderMeasure", _viewModel.Definition.Name);
+                            _logger.LogDebug("Skin \"{Skin}\": preview-play click -> native preview {Url} (hasSource={HasSource})",
+                                _viewModel.Definition.Name, vibeMeasure.CurrentPreviewUrl ?? "(null)",
+                                VibeFinderPreviewPlayer.HasSource);
+                            if (VibeFinderPreviewPlayer.HasSource)
+                                VibeFinderPreviewPlayer.TogglePause(vibeMeasure.CurrentPreviewUrl);
+                            else
+                                VibeFinderPreviewPlayer.Play(vibeMeasure.CurrentPreviewUrl);
                         }
                     }
                     else if (url.StartsWith(mediaPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         var command = url.Substring(mediaPrefix.Length);
                         var vibeMeasure = _viewModel.Measures.OfType<VibeFinderMeasure>().FirstOrDefault();
-                        bool webEmbedActive = ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand != null;
+                        bool webEmbedActive =
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedReady &&
+                            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is not null;
+                        // A native preview can be playing (or paused with its source loaded) before
+                        // the cached VibeFinder page takes over. Keep all widget commands on that
+                        // player until its source is cleared; switching control planes mid-track made
+                        // Pause/Next operate on a different, silent browser player.
+                        bool useWebPlayback = webEmbedActive &&
+                            !VibeFinderPreviewPlayer.HasSource;
 
-                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webEmbedActive={WebActive})",
-                            _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive);
+                        _logger.LogDebug("Skin \"{Skin}\": media command \"{Command}\" (hasVibeMeasure={HasVibe}, webBridgeActive={WebActive}, visibleEmbed={VisibleEmbed}, playerActive={PlayerActive})",
+                            _viewModel.Definition.Name, command, vibeMeasure != null, webEmbedActive,
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsVisibleEmbedActive,
+                            ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive);
 
                         if (command.Equals("playpause", StringComparison.OrdinalIgnoreCase))
                         {
                             if (vibeMeasure != null)
                             {
-                                if (webEmbedActive)
+                                if (useWebPlayback)
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"playpause\"}");
                                 else
                                     VibeFinderPreviewPlayer.TogglePause(vibeMeasure.CurrentPreviewUrl);
@@ -345,7 +525,7 @@ public sealed partial class SkinHostWindow : Window
                         {
                             if (vibeMeasure != null)
                             {
-                                if (webEmbedActive)
+                                if (useWebPlayback)
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"next\"}");
                                 else
                                 {
@@ -360,7 +540,7 @@ public sealed partial class SkinHostWindow : Window
                         {
                             if (vibeMeasure != null)
                             {
-                                if (webEmbedActive)
+                                if (useWebPlayback)
                                     ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand!("{\"command\":\"prev\"}");
                                 else
                                 {
@@ -380,6 +560,24 @@ public sealed partial class SkinHostWindow : Window
                     }
                     else
                     {
+                        if (Uri.TryCreate(url, UriKind.Absolute, out var actionUri) &&
+                            App.PluginRegistry.TryGetActionPlugin(actionUri.Scheme, out var actionPlugin) &&
+                            actionPlugin is not null &&
+                            actionPlugin.CanHandle(actionUri))
+                        {
+                            _logger.LogDebug("Skin \"{Skin}\": dispatching plugin action {Scheme}:// for meter {MeterId}",
+                                _viewModel.Definition.Name, actionUri.Scheme, meter.Definition.Id);
+                            e.Handled = true;
+                            _ = ExecutePluginActionAsync(actionPlugin, url, meter.Definition.Id);
+                            return;
+                        }
+
+                        if (!WidgetActionPolicy.CanOpenExternal(url))
+                        {
+                            _logger.LogWarning("Skin \"{Skin}\": blocked unsupported external action", _viewModel.Definition.Name);
+                            e.Handled = true;
+                            return;
+                        }
                         _logger.LogDebug("Skin \"{Skin}\": launching external URL {Url}", _viewModel.Definition.Name, url);
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
                     }
@@ -402,13 +600,44 @@ public sealed partial class SkinHostWindow : Window
                 ProtectedCursorProperty?.SetValue(element, null);
             };
 
+            var group = groupByMeterId.GetValueOrDefault(meter.Definition.Id);
+            var parent = group is not null && groupCanvases.TryGetValue(group.Id, out var groupCanvas)
+                ? groupCanvas
+                : RootCanvas;
+
             Canvas.SetLeft(element, meter.X);
             Canvas.SetTop(element, meter.Y);
-            if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
-                element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
-            element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
+            // A meter with states gets its transform and opacity from its state controller, which
+            // already folded in the configured rotation and opacity as the base values.
+            if (meter.Definition.States is not { Count: > 0 })
+            {
+                if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
+                    element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
+                element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
+            }
             Canvas.SetZIndex(element, meter.Definition.ZIndex);
-            RootCanvas.Children.Add(element);
+            parent.Children.Add(element);
+        }
+    }
+
+    private async Task ExecutePluginActionAsync(IWidgetActionPlugin plugin, string actionUri, string meterId)
+    {
+        try
+        {
+            var uri = new Uri(actionUri, UriKind.Absolute);
+            var context = new WidgetActionContext(
+                _viewModel.Definition.Id,
+                meterId,
+                actionUri,
+                name => _viewModel.Definition.Variables.TryGetValue(name, out var value) ? value : null);
+
+            var handled = await plugin.ExecuteAsync(context);
+            if (!handled)
+                _logger.LogDebug("Plugin action {ActionUri} declined handling for skin \"{Skin}\"", actionUri, _viewModel.Definition.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Plugin action {ActionUri} failed for skin \"{Skin}\"", actionUri, _viewModel.Definition.Name);
         }
     }
 
@@ -562,6 +791,39 @@ public sealed partial class SkinHostWindow : Window
         }
     }
 
+    private static Windows.UI.Color BlendColor(Windows.UI.Color a, Windows.UI.Color b, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        return Windows.UI.Color.FromArgb(
+            (byte)Math.Round(a.A + (b.A - a.A) * amount),
+            (byte)Math.Round(a.R + (b.R - a.R) * amount),
+            (byte)Math.Round(a.G + (b.G - a.G) * amount),
+            (byte)Math.Round(a.B + (b.B - a.B) * amount));
+    }
+
+    private static Windows.UI.Color WithAlpha(Windows.UI.Color color, byte alpha) =>
+        Windows.UI.Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    /// <summary>
+    /// Shared soft-accent gradient used by the live widget renderer. The middle tone is blended
+    /// from the two theme accents so saturated palettes transition smoothly instead of banding.
+    /// </summary>
+    private static LinearGradientBrush CreateAccentSweep(SolidColorBrush primary, SolidColorBrush strong)
+    {
+        var middle = BlendColor(primary.Color, strong.Color, 0.38);
+        return new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = WithAlpha(primary.Color, 0xEA), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(middle, 0xF2), Offset = 0.52 },
+                new GradientStop { Color = WithAlpha(strong.Color, 0xDA), Offset = 1.0 },
+            },
+        };
+    }
+
     /// <summary>A track + fill pair wrapped in one Grid, so it can be positioned as a single element.</summary>
     private static Grid BuildBarVisual(BarMeterViewModel vm)
     {
@@ -578,16 +840,7 @@ public sealed partial class SkinHostWindow : Window
         // (not a hardcoded color pair) so it reads as "a nicer bar" under any palette, not just
         // the Cozy Café defaults — same reasoning as every other brush lookup in this file.
         var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
-        var gradientFill = new LinearGradientBrush
-        {
-            StartPoint = new Windows.Foundation.Point(0, 0),
-            EndPoint = new Windows.Foundation.Point(1, 0),
-            GradientStops =
-            {
-                new GradientStop { Color = normalBrush.Color, Offset = 0 },
-                new GradientStop { Color = strongBrush.Color, Offset = 1 },
-            },
-        };
+        var gradientFill = CreateAccentSweep(normalBrush, strongBrush);
 
         var fill = new Border
         {
@@ -625,16 +878,35 @@ public sealed partial class SkinHostWindow : Window
 
         // Tint is a low-alpha cut of the accent color itself, not a separate token, so it's
         // correct for any theme rather than just the Cozy Café defaults.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var chipGradient = new RadialGradientBrush
+        {
+            Center = new Windows.Foundation.Point(0.35, 0.28),
+            GradientOrigin = new Windows.Foundation.Point(0.35, 0.28),
+            RadiusX = 0.92,
+            RadiusY = 0.92,
+            GradientStops =
+            {
+                new GradientStop { Color = WithAlpha(normalBrush.Color, 0x34), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(BlendColor(normalBrush.Color, strongBrush.Color, 0.5), 0x1B), Offset = 0.55 },
+                new GradientStop { Color = WithAlpha(strongBrush.Color, 0x07), Offset = 1.0 },
+            }
+        };
+
         var chip = new Border
         {
             Width = vm.Width,
             Height = vm.Height,
             CornerRadius = new CornerRadius(Math.Min(vm.Width, vm.Height) * 0.25),
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B)),
+            Background = chipGradient,
         };
 
         var icon = new FontIcon
         {
+            // Use the Windows 11 symbol font explicitly. The app's icon catalogue includes
+            // current Fluent glyphs as well as the compatible Play/Pause/transport code points;
+            // forcing MDL2 can turn Fluent-only glyphs into the tiny outlined missing-glyph boxes.
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"),
             Glyph = vm.Glyph,
             Width = vm.Width,
             Height = vm.Height,
@@ -655,7 +927,26 @@ public sealed partial class SkinHostWindow : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IconMeterViewModel.Glyph))
+            {
+                var oldGlyph = icon.Glyph;
                 icon.Glyph = vm.Glyph;
+
+                if (oldGlyph != vm.Glyph)
+                {
+                    var fade = new DoubleAnimation
+                    {
+                        From = 0.25,
+                        To = 1,
+                        Duration = TimeSpan.FromMilliseconds(140),
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                    };
+                    Storyboard.SetTarget(fade, icon);
+                    Storyboard.SetTargetProperty(fade, "Opacity");
+                    var story = new Storyboard();
+                    story.Children.Add(fade);
+                    story.Begin();
+                }
+            }
         };
 
         // Cover art (from a bound measure's ImageUrl, e.g. VibeFinderMeasure) layers over the
@@ -669,12 +960,69 @@ public sealed partial class SkinHostWindow : Window
             Height = vm.Height,
             Stretch = Stretch.UniformToFill,
             Visibility = Visibility.Collapsed,
+            Opacity = 0,
+            RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
+            RenderTransform = new ScaleTransform { ScaleX = 0.96, ScaleY = 0.96 },
         };
-        image.ImageOpened += (_, _) => image.Visibility = Visibility.Visible;
-        image.ImageFailed += (_, _) => image.Visibility = Visibility.Collapsed;
+
+        void AnimateArtworkIn()
+        {
+            image.Visibility = Visibility.Visible;
+
+            if (image.RenderTransform is ScaleTransform scale)
+            {
+                var scaleX = new DoubleAnimation
+                {
+                    From = scale.ScaleX,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                var scaleY = new DoubleAnimation
+                {
+                    From = scale.ScaleY,
+                    To = 1.0,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(scaleX, scale);
+                Storyboard.SetTargetProperty(scaleX, "ScaleX");
+                Storyboard.SetTarget(scaleY, scale);
+                Storyboard.SetTargetProperty(scaleY, "ScaleY");
+
+                var fade = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                };
+                Storyboard.SetTarget(fade, image);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+
+                var story = new Storyboard();
+                story.Children.Add(scaleX);
+                story.Children.Add(scaleY);
+                story.Children.Add(fade);
+                story.Begin();
+            }
+            else
+            {
+                image.Opacity = 1;
+            }
+        }
+
+        image.ImageOpened += (_, _) => AnimateArtworkIn();
+        image.ImageFailed += (_, _) =>
+        {
+            image.Visibility = Visibility.Collapsed;
+            image.Opacity = 0;
+        };
 
         if (vm.ImageUrl is string initialUrl && Uri.TryCreate(initialUrl, UriKind.Absolute, out var initialUri))
+        {
             image.Source = new BitmapImage(initialUri);
+        }
 
         vm.PropertyChanged += (_, e) =>
         {
@@ -682,12 +1030,23 @@ public sealed partial class SkinHostWindow : Window
 
             if (vm.ImageUrl is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
+                // Start the new frame just behind the old one, then fade/scale it in once the
+                // network image has decoded. This prevents the widget from hard-cutting between
+                // album covers when VibeFinder changes tracks.
+                image.Opacity = 0;
+                image.Visibility = Visibility.Visible;
+                if (image.RenderTransform is ScaleTransform scale)
+                {
+                    scale.ScaleX = 0.96;
+                    scale.ScaleY = 0.96;
+                }
                 image.Source = new BitmapImage(uri);
             }
             else
             {
                 image.Source = null;
                 image.Visibility = Visibility.Collapsed;
+                image.Opacity = 0;
             }
         };
 
@@ -735,11 +1094,12 @@ public sealed partial class SkinHostWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
         var arc = new Microsoft.UI.Xaml.Shapes.Path
         {
             Width = vm.Width,
             Height = vm.Height,
-            Stroke = normalBrush,
+            Stroke = CreateAccentSweep(normalBrush, strongBrush),
             StrokeThickness = thickness,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -790,7 +1150,7 @@ public sealed partial class SkinHostWindow : Window
             if (e.PropertyName == nameof(RingMeterViewModel.FillFraction))
                 Redraw();
             if (e.PropertyName == nameof(RingMeterViewModel.IsThresholdCrossed) && thresholdBrush is not null)
-                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : normalBrush;
+                arc.Stroke = vm.IsThresholdCrossed ? thresholdBrush : CreateAccentSweep(normalBrush, strongBrush);
         };
 
         var grid = new Grid { Width = vm.Width, Height = vm.Height };
@@ -817,21 +1177,37 @@ public sealed partial class SkinHostWindow : Window
 
         // Fades from a translucent cut of the line's own color down to nothing, so it stays
         // correct for any accent color rather than a separately-maintained fill token.
+        var strongBrush = (SolidColorBrush)Application.Current.Resources["StrongAccentBrush"];
+        var blended = BlendColor(normalBrush.Color, strongBrush.Color, 0.35);
+
         var areaFill = new LinearGradientBrush
         {
             StartPoint = new Windows.Foundation.Point(0, 0),
             EndPoint = new Windows.Foundation.Point(0, 1),
             GradientStops =
             {
-                new GradientStop { Color = Windows.UI.Color.FromArgb(0x55, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 0 },
-                new GradientStop { Color = Windows.UI.Color.FromArgb(0x00, normalBrush.Color.R, normalBrush.Color.G, normalBrush.Color.B), Offset = 1 },
+                new GradientStop { Color = WithAlpha(normalBrush.Color, 0x46), Offset = 0.0 },
+                new GradientStop { Color = WithAlpha(blended, 0x1E), Offset = 0.45 },
+                new GradientStop { Color = WithAlpha(strongBrush.Color, 0x00), Offset = 1.0 },
             },
         };
         var area = new Polygon { Fill = areaFill };
 
+        var lineGradient = new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 0),
+            GradientStops =
+            {
+                new GradientStop { Color = normalBrush.Color, Offset = 0.0 },
+                new GradientStop { Color = blended, Offset = 0.52 },
+                new GradientStop { Color = strongBrush.Color, Offset = 1.0 },
+            },
+        };
+
         var line = new Polyline
         {
-            Stroke = normalBrush,
+            Stroke = lineGradient,
             StrokeThickness = 2,
             StrokeLineJoin = PenLineJoin.Round,
         };
@@ -881,6 +1257,226 @@ public sealed partial class SkinHostWindow : Window
         overlay.Children.Add(line);
         background.Child = overlay;
         return background;
+    }
+
+    // ── Meter states ─────────────────────────────────────────────────────────
+
+    private void OnMetersUpdated()
+    {
+        if (_windowClosed) return;
+        try
+        {
+            EvaluateStates();
+            ApplyAnchorLayout(force: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin \"{Skin}\": post-update state/anchor pass failed", _viewModel.Definition.Name);
+        }
+    }
+
+    /// <summary>Re-evaluates every stateful meter and keeps the ~60 fps timer running only while at
+    /// least one of them is still blending. An idle widget costs nothing between ticks.</summary>
+    private void EvaluateStates()
+    {
+        if (_windowClosed || _stateControllers.Count == 0) return;
+
+        long now = _stateClock.ElapsedMilliseconds;
+        bool animating = false;
+        foreach (var controller in _stateControllers)
+        {
+            try
+            {
+                controller.WidgetActive = _widgetActive;
+                controller.Evaluate(now);
+                animating |= controller.IsAnimating;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Skin \"{Skin}\": a meter state failed to evaluate", _viewModel.Definition.Name);
+            }
+        }
+
+        if (animating)
+        {
+            if (_stateTimer is null)
+            {
+                _stateTimer = DispatcherQueue.CreateTimer();
+                _stateTimer.Interval = TimeSpan.FromMilliseconds(16);
+                _stateTimer.Tick += (_, _) => EvaluateStates();
+            }
+            if (!_stateTimer.IsRunning) _stateTimer.Start();
+        }
+        else
+        {
+            _stateTimer?.Stop();
+        }
+    }
+
+    private void ClearPressedStates()
+    {
+        bool changed = false;
+        foreach (var controller in _stateControllers)
+        {
+            if (!controller.Pressed) continue;
+            controller.Pressed = false;
+            changed = true;
+        }
+        if (changed) EvaluateStates();
+    }
+
+    // ── Monitor anchoring and responsive layout ──────────────────────────────
+
+    private double CurrentScale()
+    {
+        try
+        {
+            double scale = GetDpiForWindow(_hwnd) / 96.0;
+            if (scale > 0) return scale;
+        }
+        catch { /* fall through to the scale captured at construction */ }
+        return _scaleFactor;
+    }
+
+    /// <summary>The monitor area the anchor refers to, in DIPs, or null when no display can be found.</summary>
+    private WidgetRect? GetAnchorArea(WidgetAnchorDefinition anchor, double dpi)
+    {
+        try
+        {
+            var display = anchor.Monitor == WidgetMonitorTarget.Primary
+                ? DisplayArea.Primary
+                : DisplayArea.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(_hwnd), DisplayAreaFallback.Nearest);
+            if (display is null) return null;
+
+            var rect = anchor.UseWorkArea ? display.WorkArea : display.OuterBounds;
+            if (rect.Width <= 0 || rect.Height <= 0) return null;
+            return new WidgetRect(rect.X / dpi, rect.Y / dpi, rect.Width / dpi, rect.Height / dpi);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Skin \"{Skin}\": could not read the monitor area for anchoring", _viewModel.Definition.Name);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Places the window from the widget's anchor and responsive rules: position, uniform scale and
+    /// visibility. Cheap to call every tick; nothing moves unless the monitor area, DPI or the
+    /// anchor settings changed since the last layout. Never throws and never runs mid-drag.
+    /// </summary>
+    private void ApplyAnchorLayout(bool force)
+    {
+        var def = _viewModel.Definition;
+        var anchor = def.Anchor;
+        if (anchor is null)
+        {
+            // An anchor removed while the widget is open must not leave it hidden or scaled.
+            if (_anchorLayout is not null || _anchorHidden || Math.Abs(_layoutScale - 1.0) > 0.0001)
+            {
+                _anchorLayout = null;
+                _anchorKey = null;
+                ApplyLayoutScale(1.0, CurrentScale());
+                SetAnchorHidden(false);
+            }
+            return;
+        }
+        if (_dragging) return;
+
+        try
+        {
+            double dpi = CurrentScale();
+            var area = GetAnchorArea(anchor, dpi);
+            if (area is null) return;
+            var a = area.Value;
+
+            string key = BuildAnchorKey(def, anchor, a, dpi);
+
+            // The manager shows a freshly created window after construction, which would undo a
+            // rule-driven hide; re-hide on the next pass even when nothing else changed.
+            if (_anchorHidden && AppWindow.IsVisible) AppWindow.Hide();
+
+            if (!force && key == _anchorKey) return;
+            _anchorKey = key;
+
+            var layout = WidgetAnchorResolver.Resolve(anchor, a, def.Width, def.Height, def.X, def.Y);
+            _anchorLayout = layout;
+
+            ApplyLayoutScale(layout.Scale, dpi);
+            // Saved free-position coordinates use the construction-time scale in both
+            // ApplyPosition and PositionChanged. Anchor geometry uses the current monitor DPI.
+            // Keep those spaces distinct when a responsive rule has no pinned edge.
+            double positionScale = layout.Edge == WidgetAnchorEdge.None ? _scaleFactor : dpi;
+            AppWindow.Move(new PointInt32((int)Math.Round(layout.X * positionScale), (int)Math.Round(layout.Y * positionScale)));
+            SetAnchorHidden(layout.Hidden);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin \"{Skin}\": anchor layout failed; keeping the current position", def.Name);
+        }
+    }
+
+    private static string BuildAnchorKey(SkinDefinition def, WidgetAnchorDefinition anchor, WidgetRect area, double dpi)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder(128);
+        sb.Append(area.X.ToString("F1", inv)).Append('|').Append(area.Y.ToString("F1", inv)).Append('|')
+          .Append(area.Width.ToString("F1", inv)).Append('|').Append(area.Height.ToString("F1", inv)).Append('|')
+          .Append(dpi.ToString("F3", inv)).Append('|').Append(anchor.Edge).Append('|')
+          .Append(anchor.MarginX.ToString("F2", inv)).Append('|').Append(anchor.MarginY.ToString("F2", inv)).Append('|')
+          .Append(def.Width.ToString("F1", inv)).Append('|').Append(def.Height.ToString("F1", inv)).Append('|')
+          .Append(def.X.ToString("F1", inv)).Append('|').Append(def.Y.ToString("F1", inv));
+        foreach (var rule in anchor.Responsive ?? new List<WidgetResponsiveRule>())
+        {
+            sb.Append('|').Append(rule.MaxWorkAreaWidth.ToString("F0", inv)).Append(':')
+              .Append(rule.MaxWorkAreaHeight.ToString("F0", inv)).Append(':').Append(rule.Edge).Append(':')
+              .Append(rule.MarginX?.ToString("F2", inv)).Append(':').Append(rule.MarginY?.ToString("F2", inv)).Append(':')
+              .Append(rule.Scale?.ToString("F3", inv)).Append(':').Append(rule.Hidden);
+        }
+        return sb.ToString();
+    }
+
+    private void ApplyLayoutScale(double scale, double dpi)
+    {
+        var def = _viewModel.Definition;
+        AppWindow.Resize(new SizeInt32(
+            Math.Max(1, (int)Math.Round(def.Width * scale * dpi)),
+            Math.Max(1, (int)Math.Round(def.Height * scale * dpi))));
+
+        if (Math.Abs(scale - _layoutScale) > 0.0001)
+        {
+            _layoutScale = scale;
+            RootCanvas.RenderTransform = Math.Abs(scale - 1.0) > 0.0001
+                ? new ScaleTransform { ScaleX = scale, ScaleY = scale }
+                : null;
+        }
+    }
+
+    private void SetAnchorHidden(bool hidden)
+    {
+        if (hidden == _anchorHidden) return;
+        _anchorHidden = hidden;
+        if (hidden) AppWindow.Hide();
+        else AppWindow.Show();
+    }
+
+    /// <summary>After a drag, folds the new position back into the anchor's margins so the widget
+    /// stays pinned to the same edge at its new distance. A responsive rule that overrides a
+    /// margin on this axis receives the change instead of the base anchor.</summary>
+    private bool TryStoreDraggedAnchorMargins(double xDips, double yDips)
+    {
+        var anchor = _viewModel.Definition.Anchor;
+        if (anchor is null || _anchorLayout is not { Edge: not WidgetAnchorEdge.None } layout) return false;
+
+        var area = GetAnchorArea(anchor, CurrentScale());
+        if (area is null) return false;
+
+        var def = _viewModel.Definition;
+        var (mx, my) = WidgetAnchorResolver.MarginsFromPosition(
+            layout.Edge, area.Value, def.Width, def.Height, layout.Scale, xDips, yDips);
+
+        if (layout.ActiveRule?.MarginX is not null) layout.ActiveRule.MarginX = mx; else anchor.MarginX = mx;
+        if (layout.ActiveRule?.MarginY is not null) layout.ActiveRule.MarginY = my; else anchor.MarginY = my;
+        return true;
     }
 
     // ── Drag to move (disabled while locked; naturally inert while click-through is on,
@@ -960,8 +1556,18 @@ public sealed partial class SkinHostWindow : Window
         _dragging = false;
         RootCanvas.ReleasePointerCapture(e.Pointer);
 
+        ClearPressedStates();
+
         // Convert physical-pixel position back to DIPs for storage in SkinDefinition.
         var pos = AppWindow.Position;
+        double dpi = CurrentScale();
+        if (TryStoreDraggedAnchorMargins(pos.X / dpi, pos.Y / dpi))
+        {
+            // Re-resolve so the widget settles on the clamped, edge-pinned position it will have
+            // on the next launch, then persist those coordinates.
+            ApplyAnchorLayout(force: true);
+            pos = AppWindow.Position;
+        }
         PositionChanged?.Invoke(pos.X / _scaleFactor, pos.Y / _scaleFactor);
     }
 
@@ -994,4 +1600,14 @@ public sealed partial class SkinHostWindow : Window
 
         menu.ShowAt(RootCanvas, new FlyoutShowOptions { Position = position });
     }
+}
+
+
+internal static class WidgetGroupOrderingExtensions
+{
+    public static int ZIndexForOrdering(this WidgetGroupDefinition group, IReadOnlyList<MeterDefinition> meters) =>
+        group.MeterIds
+            .Select(id => meters.FirstOrDefault(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.ZIndex ?? 0)
+            .DefaultIfEmpty(0)
+            .Min();
 }
