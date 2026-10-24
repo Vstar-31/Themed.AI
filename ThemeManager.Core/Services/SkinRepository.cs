@@ -6,8 +6,14 @@ namespace ThemeManager.Core.Services;
 
 public sealed class SkinRepository
 {
-    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
-    private static readonly string SkinsFilePath = Path.Combine(StorageFolder, "skins.json");
+    private readonly string StorageFolder;
+    private readonly string SkinsFilePath;
+
+    public SkinRepository(string? storageFolder = null)
+    {
+        StorageFolder = storageFolder ?? Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
+        SkinsFilePath = Path.Combine(StorageFolder, "skins.json");
+    }
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -65,49 +71,44 @@ public sealed class SkinRepository
 
     public async Task SaveAllAsync(IEnumerable<SkinDefinition> skins)
     {
-        try
-        {
-            EnsureStorageFolderExists();
-            await _saveLock.WaitAsync();
-            try
-            {
-                var list = skins.ToList();
-                var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
-                try
-                {
-                    await WriteAndMoveAsync(list, tempPath);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // A reader/another instance/AV scanner may briefly own the target. Retry once,
-                    // then deliberately leave the in-memory state authoritative instead of failing
-                    // the UI operation or crashing startup.
-                    await Task.Delay(200);
-                    try
-                    {
-                        await WriteAndMoveAsync(list, tempPath);
-                    }
-                    catch (Exception retryEx) when (retryEx is IOException or UnauthorizedAccessException)
-                    {
-                    }
-                }
-            }
-            finally { _saveLock.Release(); }
-        }
+        try { await SaveAllCheckedAsync(skins); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Storage is persistence, not a prerequisite for rendering the desktop.
+            // Existing edits keep their in-memory fallback when storage is unavailable.
         }
     }
 
-    private static async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
+    /// <summary>Use for imports, which must not report success unless persistence succeeds.</summary>
+    public async Task SaveAllCheckedAsync(IEnumerable<SkinDefinition> skins)
+    {
+        EnsureStorageFolderExists();
+        await _saveLock.WaitAsync();
+        var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            var snapshot = skins.ToList();
+            try { await WriteAndMoveAsync(snapshot, tempPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(200);
+                await WriteAndMoveAsync(snapshot, tempPath);
+            }
+        }
+        finally
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            finally { _saveLock.Release(); }
+        }
+    }
+
+    private async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
     {
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, list, JsonOptions);
         File.Move(tempPath, SkinsFilePath, overwrite: true);
     }
 
-    private static void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
+    private void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
 
     private static bool Migrate(List<SkinDefinition> skins)
     {
@@ -167,9 +168,37 @@ public sealed class SkinRepository
                 changed = true;
             }
 
+            // v6 adds per-meter states and monitor anchoring. Both are optional additions, so older
+            // widgets need only the version bump; they keep their static look and saved X/Y.
+            if (skin.SchemaVersion < 6)
+            {
+                skin.SchemaVersion = 6;
+                changed = true;
+            }
+
             if (skin.Groups is null)
             {
                 skin.Groups = new List<WidgetGroupDefinition>();
+                changed = true;
+            }
+
+            if (skin.Meters is null)
+            {
+                skin.Meters = new List<MeterDefinition>();
+                changed = true;
+            }
+            foreach (var meter in skin.Meters)
+            {
+                if (meter.States is null)
+                {
+                    meter.States = new List<MeterStateDefinition>();
+                    changed = true;
+                }
+            }
+
+            if (skin.Anchor is { Responsive: null } anchor)
+            {
+                anchor.Responsive = new List<WidgetResponsiveRule>();
                 changed = true;
             }
 

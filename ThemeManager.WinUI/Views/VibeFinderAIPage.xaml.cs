@@ -1,3 +1,4 @@
+using ThemeManager.Core.Services;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using Microsoft.UI.Xaml;
@@ -39,10 +40,20 @@ public sealed partial class VibeFinderAIPage : Page
 
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
+            if (e.Exception is not null || VibeFinderWebView.CoreWebView2 is null)
+            {
+                _logger.LogWarning(e.Exception, "VibeFinder browser initialization failed");
+                StatusText.Text = "The browser could not start. Install or repair the Microsoft Edge WebView2 Runtime.";
+                StatusText.Visibility = Visibility.Visible;
+                return;
+            }
             ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
-                var json = args.TryGetWebMessageAsString();
+                if (!VibeFinderSite.IsTrusted(args.Source)) return;
+                string json;
+                try { json = args.TryGetWebMessageAsString(); }
+                catch (ArgumentException) { return; }
                 if (string.IsNullOrEmpty(json))
                 {
                     _logger.LogDebug("VibeFinderAIPage: WebMessageReceived fired with an empty/non-string payload — ignored");
@@ -61,7 +72,9 @@ public sealed partial class VibeFinderAIPage : Page
                     ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(hasToken);
                     StatusText.Text = hasToken
                         ? "Connected to VibeFinder AI ✓"
-                        : "VibeFinder AI loaded — signing in…";
+                        : VibeFinderCredentials.IsConfigured(UsernameBox.Text, PasswordBox.Password)
+                            ? "VibeFinder AI loaded — signing in…"
+                            : "Enter your VibeFinder account details to connect.";
                     StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                         hasToken ? Microsoft.UI.Colors.Green : Microsoft.UI.Colors.Gray);
                     StatusText.Visibility = Visibility.Visible;
@@ -107,12 +120,19 @@ public sealed partial class VibeFinderAIPage : Page
             };
             BindVisibleEmbedBridge();
             ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
-            VibeFinderWebView.CoreWebView2.NavigationStarting += (_, _) =>
-                ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+            VibeFinderWebView.CoreWebView2.NavigationStarting += (_, args) =>
+            {
+                args.Cancel = !VibeFinderSite.IsTrusted(args.Uri);
+                if (!args.Cancel)
+                    ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+            };
+            VibeFinderWebView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
 
-        _skinManager.EnsureVibeFinderSkinsExist();
+        VibeFinderWebView.Source = new Uri(VibeFinderSite.AppUrl);
+
+        _ = _skinManager.EnsureVibeFinderSkinsExist();
         SyncWidgetTogglesFromActiveWorld();
 
         var vibeSkin = _skinManager.Skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
@@ -125,10 +145,13 @@ public sealed partial class VibeFinderAIPage : Page
             if (measure != null && !string.IsNullOrWhiteSpace(measure.Target))
             {
                 var targetStr = measure.Target;
-                if (targetStr.StartsWith("|")) targetStr = targetStr.Substring(1);
+                if (targetStr.StartsWith("|") && !targetStr.StartsWith("||")) targetStr = targetStr.Substring(1);
                 var parts = targetStr.Split('|', 3);
-                if (parts.Length >= 1) UsernameBox.Text = parts[0];
-                if (parts.Length >= 2) PasswordBox.Password = parts[1];
+                if (parts.Length >= 2 && VibeFinderCredentials.IsConfigured(parts[0], parts[1]))
+                {
+                    UsernameBox.Text = parts[0];
+                    PasswordBox.Password = parts[1];
+                }
                 if (parts.Length >= 3) PromptBox.Text = parts[2];
             }
         }
@@ -147,6 +170,22 @@ public sealed partial class VibeFinderAIPage : Page
         App.SceneService.ActiveSceneChanged += _activeSceneChangedHandler;
     }
 
+    private bool? _wideLayout;
+
+    private void MediaLayout_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool wide = e.NewSize.Width >= 960;
+        if (_wideLayout == wide) return;
+        _wideLayout = wide;
+        MediaSplit.DisplayMode = wide ? SplitViewDisplayMode.Inline : SplitViewDisplayMode.Overlay;
+        MediaSplit.IsPaneOpen = wide;
+        ConnectionButton.Visibility = wide ? Visibility.Collapsed : Visibility.Visible;
+        CloseConnectionButton.Visibility = wide ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ToggleConnection_Click(object sender, RoutedEventArgs e) =>
+        MediaSplit.IsPaneOpen = !MediaSplit.IsPaneOpen;
+
     private async void CoreWebView2_NavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
         if (!args.IsSuccess)
@@ -155,7 +194,7 @@ public sealed partial class VibeFinderAIPage : Page
             return;
         }
         var uri = sender.Source;
-        if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+        if (!VibeFinderSite.IsTrusted(uri)) return;
         BindVisibleEmbedBridge();
         _logger.LogDebug("VibeFinderAIPage: navigation completed for {Uri}", uri);
         string user = UsernameBox.Text?.Trim() ?? "";
@@ -168,7 +207,7 @@ public sealed partial class VibeFinderAIPage : Page
         {
             _logger.LogDebug(ex, "VibeFinderAIPage: SkipTutorialScript injection failed — WebView2 may have been torn down");
         }
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
+        if (!VibeFinderCredentials.IsConfigured(user, pass))
         {
             _logger.LogDebug("VibeFinderAIPage: no saved credentials — skipping auto-login injection");
             return;
@@ -199,7 +238,7 @@ public sealed partial class VibeFinderAIPage : Page
                 try
                 {
                     var core = VibeFinderWebView.CoreWebView2;
-                    if (core is null)
+                    if (core is null || !VibeFinderSite.IsTrusted(core.Source))
                     {
                         _logger.LogDebug("VibeFinderAIPage: command dropped because CoreWebView2 is unavailable");
                         return;
@@ -312,13 +351,13 @@ public sealed partial class VibeFinderAIPage : Page
 
     private async void SaveCredentials_Click(object sender, RoutedEventArgs e)
     {
-        string user = UsernameBox.Text;
+        string user = UsernameBox.Text.Trim();
         string pass = PasswordBox.Password;
         string prompt = PromptBox.Text;
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass) || string.IsNullOrWhiteSpace(prompt))
+        if (!VibeFinderCredentials.IsConfigured(user, pass) || string.IsNullOrWhiteSpace(prompt))
         {
             _logger.LogDebug("VibeFinderAIPage: Save & Apply blocked — one or more fields empty");
-            StatusText.Text = "Please fill all fields.";
+            StatusText.Text = "Enter your own username, password, and a vibe prompt.";
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red);
             StatusText.Visibility = Visibility.Visible;
             return;
@@ -374,7 +413,8 @@ public sealed partial class VibeFinderAIPage : Page
     {
         try
         {
-            if (VibeFinderWebView.CoreWebView2 is null)
+            if (VibeFinderWebView.CoreWebView2 is null
+                || !VibeFinderSite.IsTrusted(VibeFinderWebView.CoreWebView2.Source))
             {
                 _logger.LogDebug("VibeFinderAIPage: TryInjectLoginAsync skipped — CoreWebView2 not yet initialized");
                 return;

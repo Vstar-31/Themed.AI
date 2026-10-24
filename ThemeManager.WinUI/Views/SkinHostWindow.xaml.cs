@@ -53,6 +53,21 @@ public sealed partial class SkinHostWindow : Window
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<SkinHostWindow>();
 
     private bool _dragging;
+
+    // Meter states (hover/pressed/active/threshold) and the animation clock that drives them.
+    private readonly List<MeterStateController> _stateControllers = new();
+    private readonly System.Diagnostics.Stopwatch _stateClock = System.Diagnostics.Stopwatch.StartNew();
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _stateTimer;
+    private bool _widgetActive;
+    private bool _windowClosed;
+
+    // Monitor anchoring. The key records the inputs of the last applied layout so the per-tick
+    // check is a cheap comparison and only moves/resizes the window when something changed.
+    private WidgetLayout? _anchorLayout;
+    private string? _anchorKey;
+    private double _layoutScale = 1.0;
+    private bool _anchorHidden;
+
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
     
@@ -105,14 +120,37 @@ public sealed partial class SkinHostWindow : Window
 
         BuildMeterVisuals();
 
+        // Anchored widgets take their position (and responsive size/visibility) from the monitor
+        // they are on; this runs after the unscaled Resize above so a responsive scale wins.
+        ApplyAnchorLayout(force: true);
+
         RootCanvas.PointerPressed += RootCanvas_PointerPressed;
         RootCanvas.PointerMoved += RootCanvas_PointerMoved;
         RootCanvas.PointerReleased += RootCanvas_PointerReleased;
-        RootCanvas.PointerCaptureLost += (_, _) => _dragging = false;
+        RootCanvas.PointerCaptureLost += (_, _) =>
+        {
+            _dragging = false;
+            ClearPressedStates();
+        };
+
+        // Threshold/active states and anchor layout are re-checked after every meter update.
+        _viewModel.MetersUpdated += OnMetersUpdated;
+        Activated += (_, args) =>
+        {
+            _widgetActive = args.WindowActivationState != WindowActivationState.Deactivated;
+            EvaluateStates();
+        };
+        EvaluateStates();
 
         // Keep the card's tint in step with live theme switches from the Themes page.
         App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
-        Closed += (_, _) => App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
+        Closed += (_, _) =>
+        {
+            _windowClosed = true;
+            _stateTimer?.Stop();
+            _viewModel.MetersUpdated -= OnMetersUpdated;
+            App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
+        };
     }
 
     // ── Window setup ─────────────────────────────────────────────────────────
@@ -186,6 +224,16 @@ public sealed partial class SkinHostWindow : Window
 
     public void PrepareForClose()
     {
+        _windowClosed = true;
+        try
+        {
+            _stateTimer?.Stop();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "PrepareForClose: stopping the state timer failed for skin \"{Skin}\"", _viewModel.Definition.Name);
+        }
+
         try
         {
             // If the widget is currently attached to the desktop layer, it MUST be detached 
@@ -209,8 +257,17 @@ public sealed partial class SkinHostWindow : Window
 
     // ── Applied live by SkinManagerService when a setting changes ─────────────
 
-    public void ApplyPosition(double x, double y) =>
+    public void ApplyPosition(double x, double y)
+    {
+        // An anchored widget's position comes from its anchor, not from saved coordinates.
+        if (_viewModel.Definition.Anchor is not null)
+        {
+            ApplyAnchorLayout(force: true);
+            if (_anchorLayout is { Edge: not WidgetAnchorEdge.None }) return;
+        }
+
         AppWindow.Move(new PointInt32((int)(x * _scaleFactor), (int)(y * _scaleFactor)));
+    }
 
     public void ApplyOpacity(double opacity)
     {
@@ -348,9 +405,22 @@ public sealed partial class SkinHostWindow : Window
                 IconMeterViewModel icon => BuildIconVisual(icon),
                 RingMeterViewModel ring => BuildRingVisual(ring),
                 StringMeterViewModel str => BuildStringVisual(str),
+                ImageMeterViewModel image => ImageMeterVisual.Create(image.Definition),
                 WebEmbedMeterViewModel embed => BuildWebEmbedVisual(embed),
                 _ => new TextBlock(), // defensive: an unrecognized meter kind renders as an empty label, not a crash
             };
+
+            if (meter.Definition.States is { Count: > 0 } meterStates)
+            {
+                var controller = new MeterStateController(element, meter.Definition, meterStates, _viewModel.GetMeasureValue);
+                _stateControllers.Add(controller);
+                element.PointerEntered += (_, _) => { controller.Hovered = true; EvaluateStates(); };
+                element.PointerExited += (_, _) => { controller.Hovered = false; controller.Pressed = false; EvaluateStates(); };
+                element.PointerPressed += (_, _) => { controller.Pressed = true; EvaluateStates(); };
+                element.PointerReleased += (_, _) => { controller.Pressed = false; EvaluateStates(); };
+                element.PointerCanceled += (_, _) => { controller.Pressed = false; EvaluateStates(); };
+                element.PointerCaptureLost += (_, _) => { controller.Pressed = false; EvaluateStates(); };
+            }
 
             element.PointerPressed += (s, e) =>
             {
@@ -502,6 +572,12 @@ public sealed partial class SkinHostWindow : Window
                             return;
                         }
 
+                        if (!WidgetActionPolicy.CanOpenExternal(url))
+                        {
+                            _logger.LogWarning("Skin \"{Skin}\": blocked unsupported external action", _viewModel.Definition.Name);
+                            e.Handled = true;
+                            return;
+                        }
                         _logger.LogDebug("Skin \"{Skin}\": launching external URL {Url}", _viewModel.Definition.Name, url);
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
                     }
@@ -531,9 +607,14 @@ public sealed partial class SkinHostWindow : Window
 
             Canvas.SetLeft(element, meter.X);
             Canvas.SetTop(element, meter.Y);
-            if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
-                element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
-            element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
+            // A meter with states gets its transform and opacity from its state controller, which
+            // already folded in the configured rotation and opacity as the base values.
+            if (meter.Definition.States is not { Count: > 0 })
+            {
+                if (!double.IsNaN(meter.Definition.Rotation) && Math.Abs(meter.Definition.Rotation) > 0.001)
+                    element.RenderTransform = new RotateTransform { Angle = meter.Definition.Rotation, CenterX = meter.Width / 2, CenterY = meter.Height / 2 };
+                element.Opacity = Math.Clamp(meter.Definition.Opacity, 0.0, 1.0);
+            }
             Canvas.SetZIndex(element, meter.Definition.ZIndex);
             parent.Children.Add(element);
         }
@@ -1178,6 +1259,226 @@ public sealed partial class SkinHostWindow : Window
         return background;
     }
 
+    // ── Meter states ─────────────────────────────────────────────────────────
+
+    private void OnMetersUpdated()
+    {
+        if (_windowClosed) return;
+        try
+        {
+            EvaluateStates();
+            ApplyAnchorLayout(force: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin \"{Skin}\": post-update state/anchor pass failed", _viewModel.Definition.Name);
+        }
+    }
+
+    /// <summary>Re-evaluates every stateful meter and keeps the ~60 fps timer running only while at
+    /// least one of them is still blending. An idle widget costs nothing between ticks.</summary>
+    private void EvaluateStates()
+    {
+        if (_windowClosed || _stateControllers.Count == 0) return;
+
+        long now = _stateClock.ElapsedMilliseconds;
+        bool animating = false;
+        foreach (var controller in _stateControllers)
+        {
+            try
+            {
+                controller.WidgetActive = _widgetActive;
+                controller.Evaluate(now);
+                animating |= controller.IsAnimating;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Skin \"{Skin}\": a meter state failed to evaluate", _viewModel.Definition.Name);
+            }
+        }
+
+        if (animating)
+        {
+            if (_stateTimer is null)
+            {
+                _stateTimer = DispatcherQueue.CreateTimer();
+                _stateTimer.Interval = TimeSpan.FromMilliseconds(16);
+                _stateTimer.Tick += (_, _) => EvaluateStates();
+            }
+            if (!_stateTimer.IsRunning) _stateTimer.Start();
+        }
+        else
+        {
+            _stateTimer?.Stop();
+        }
+    }
+
+    private void ClearPressedStates()
+    {
+        bool changed = false;
+        foreach (var controller in _stateControllers)
+        {
+            if (!controller.Pressed) continue;
+            controller.Pressed = false;
+            changed = true;
+        }
+        if (changed) EvaluateStates();
+    }
+
+    // ── Monitor anchoring and responsive layout ──────────────────────────────
+
+    private double CurrentScale()
+    {
+        try
+        {
+            double scale = GetDpiForWindow(_hwnd) / 96.0;
+            if (scale > 0) return scale;
+        }
+        catch { /* fall through to the scale captured at construction */ }
+        return _scaleFactor;
+    }
+
+    /// <summary>The monitor area the anchor refers to, in DIPs, or null when no display can be found.</summary>
+    private WidgetRect? GetAnchorArea(WidgetAnchorDefinition anchor, double dpi)
+    {
+        try
+        {
+            var display = anchor.Monitor == WidgetMonitorTarget.Primary
+                ? DisplayArea.Primary
+                : DisplayArea.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(_hwnd), DisplayAreaFallback.Nearest);
+            if (display is null) return null;
+
+            var rect = anchor.UseWorkArea ? display.WorkArea : display.OuterBounds;
+            if (rect.Width <= 0 || rect.Height <= 0) return null;
+            return new WidgetRect(rect.X / dpi, rect.Y / dpi, rect.Width / dpi, rect.Height / dpi);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Skin \"{Skin}\": could not read the monitor area for anchoring", _viewModel.Definition.Name);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Places the window from the widget's anchor and responsive rules: position, uniform scale and
+    /// visibility. Cheap to call every tick; nothing moves unless the monitor area, DPI or the
+    /// anchor settings changed since the last layout. Never throws and never runs mid-drag.
+    /// </summary>
+    private void ApplyAnchorLayout(bool force)
+    {
+        var def = _viewModel.Definition;
+        var anchor = def.Anchor;
+        if (anchor is null)
+        {
+            // An anchor removed while the widget is open must not leave it hidden or scaled.
+            if (_anchorLayout is not null || _anchorHidden || Math.Abs(_layoutScale - 1.0) > 0.0001)
+            {
+                _anchorLayout = null;
+                _anchorKey = null;
+                ApplyLayoutScale(1.0, CurrentScale());
+                SetAnchorHidden(false);
+            }
+            return;
+        }
+        if (_dragging) return;
+
+        try
+        {
+            double dpi = CurrentScale();
+            var area = GetAnchorArea(anchor, dpi);
+            if (area is null) return;
+            var a = area.Value;
+
+            string key = BuildAnchorKey(def, anchor, a, dpi);
+
+            // The manager shows a freshly created window after construction, which would undo a
+            // rule-driven hide; re-hide on the next pass even when nothing else changed.
+            if (_anchorHidden && AppWindow.IsVisible) AppWindow.Hide();
+
+            if (!force && key == _anchorKey) return;
+            _anchorKey = key;
+
+            var layout = WidgetAnchorResolver.Resolve(anchor, a, def.Width, def.Height, def.X, def.Y);
+            _anchorLayout = layout;
+
+            ApplyLayoutScale(layout.Scale, dpi);
+            // Saved free-position coordinates use the construction-time scale in both
+            // ApplyPosition and PositionChanged. Anchor geometry uses the current monitor DPI.
+            // Keep those spaces distinct when a responsive rule has no pinned edge.
+            double positionScale = layout.Edge == WidgetAnchorEdge.None ? _scaleFactor : dpi;
+            AppWindow.Move(new PointInt32((int)Math.Round(layout.X * positionScale), (int)Math.Round(layout.Y * positionScale)));
+            SetAnchorHidden(layout.Hidden);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin \"{Skin}\": anchor layout failed; keeping the current position", def.Name);
+        }
+    }
+
+    private static string BuildAnchorKey(SkinDefinition def, WidgetAnchorDefinition anchor, WidgetRect area, double dpi)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder(128);
+        sb.Append(area.X.ToString("F1", inv)).Append('|').Append(area.Y.ToString("F1", inv)).Append('|')
+          .Append(area.Width.ToString("F1", inv)).Append('|').Append(area.Height.ToString("F1", inv)).Append('|')
+          .Append(dpi.ToString("F3", inv)).Append('|').Append(anchor.Edge).Append('|')
+          .Append(anchor.MarginX.ToString("F2", inv)).Append('|').Append(anchor.MarginY.ToString("F2", inv)).Append('|')
+          .Append(def.Width.ToString("F1", inv)).Append('|').Append(def.Height.ToString("F1", inv)).Append('|')
+          .Append(def.X.ToString("F1", inv)).Append('|').Append(def.Y.ToString("F1", inv));
+        foreach (var rule in anchor.Responsive ?? new List<WidgetResponsiveRule>())
+        {
+            sb.Append('|').Append(rule.MaxWorkAreaWidth.ToString("F0", inv)).Append(':')
+              .Append(rule.MaxWorkAreaHeight.ToString("F0", inv)).Append(':').Append(rule.Edge).Append(':')
+              .Append(rule.MarginX?.ToString("F2", inv)).Append(':').Append(rule.MarginY?.ToString("F2", inv)).Append(':')
+              .Append(rule.Scale?.ToString("F3", inv)).Append(':').Append(rule.Hidden);
+        }
+        return sb.ToString();
+    }
+
+    private void ApplyLayoutScale(double scale, double dpi)
+    {
+        var def = _viewModel.Definition;
+        AppWindow.Resize(new SizeInt32(
+            Math.Max(1, (int)Math.Round(def.Width * scale * dpi)),
+            Math.Max(1, (int)Math.Round(def.Height * scale * dpi))));
+
+        if (Math.Abs(scale - _layoutScale) > 0.0001)
+        {
+            _layoutScale = scale;
+            RootCanvas.RenderTransform = Math.Abs(scale - 1.0) > 0.0001
+                ? new ScaleTransform { ScaleX = scale, ScaleY = scale }
+                : null;
+        }
+    }
+
+    private void SetAnchorHidden(bool hidden)
+    {
+        if (hidden == _anchorHidden) return;
+        _anchorHidden = hidden;
+        if (hidden) AppWindow.Hide();
+        else AppWindow.Show();
+    }
+
+    /// <summary>After a drag, folds the new position back into the anchor's margins so the widget
+    /// stays pinned to the same edge at its new distance. A responsive rule that overrides a
+    /// margin on this axis receives the change instead of the base anchor.</summary>
+    private bool TryStoreDraggedAnchorMargins(double xDips, double yDips)
+    {
+        var anchor = _viewModel.Definition.Anchor;
+        if (anchor is null || _anchorLayout is not { Edge: not WidgetAnchorEdge.None } layout) return false;
+
+        var area = GetAnchorArea(anchor, CurrentScale());
+        if (area is null) return false;
+
+        var def = _viewModel.Definition;
+        var (mx, my) = WidgetAnchorResolver.MarginsFromPosition(
+            layout.Edge, area.Value, def.Width, def.Height, layout.Scale, xDips, yDips);
+
+        if (layout.ActiveRule?.MarginX is not null) layout.ActiveRule.MarginX = mx; else anchor.MarginX = mx;
+        if (layout.ActiveRule?.MarginY is not null) layout.ActiveRule.MarginY = my; else anchor.MarginY = my;
+        return true;
+    }
+
     // ── Drag to move (disabled while locked; naturally inert while click-through is on,
     //     since a click-through window never receives pointer events in the first place) ──
     //     Right-click shows a context menu instead of dragging — see ShowContextMenu below.
@@ -1255,8 +1556,18 @@ public sealed partial class SkinHostWindow : Window
         _dragging = false;
         RootCanvas.ReleasePointerCapture(e.Pointer);
 
+        ClearPressedStates();
+
         // Convert physical-pixel position back to DIPs for storage in SkinDefinition.
         var pos = AppWindow.Position;
+        double dpi = CurrentScale();
+        if (TryStoreDraggedAnchorMargins(pos.X / dpi, pos.Y / dpi))
+        {
+            // Re-resolve so the widget settles on the clamped, edge-pinned position it will have
+            // on the next launch, then persist those coordinates.
+            ApplyAnchorLayout(force: true);
+            pos = AppWindow.Position;
+        }
         PositionChanged?.Invoke(pos.X / _scaleFactor, pos.Y / _scaleFactor);
     }
 

@@ -10,21 +10,15 @@ public sealed partial class MainWindow
 {
     private bool _vibeProvisioningStarted;
 
-    private async Task InitializeVibeProvisioningAsync()
+    internal async Task InitializeVibeProvisioningAsync()
     {
         if (_vibeProvisioningStarted) return;
         _vibeProvisioningStarted = true;
 
         App.ThemeService.ThemeChanged += OnProvisioningThemeChanged;
 
-        for (var attempt = 0; attempt < 120 && App.SkinManager is null; attempt++)
-            await Task.Delay(50);
-
-        if (App.SkinManager is null)
-            return;
-
-        App.SkinManager.EnsureVibeFinderSkinsExist();
-        await Task.Delay(100);
+        // Called by App only after SkinManager.InitializeAsync has finished loading storage.
+        await App.SkinManager.EnsureVibeFinderSkinsExist();
 
         var credentialedWidget = FindCredentialedWidget();
         var playlistWidget = App.SkinManager.Skins.FirstOrDefault(s =>
@@ -62,9 +56,7 @@ public sealed partial class MainWindow
             var target = measure.Target?.TrimStart('|');
             var parts = target?.Split('|', 3);
             return parts is { Length: >= 2 }
-                   && !string.IsNullOrWhiteSpace(parts[0])
-                   && !string.IsNullOrWhiteSpace(parts[1])
-                   && !parts[0].Equals("listener", StringComparison.OrdinalIgnoreCase);
+                   && ThemeManager.Core.Services.VibeFinderCredentials.IsConfigured(parts[0], parts[1]);
         }
         return false;
     }

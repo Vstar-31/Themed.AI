@@ -38,7 +38,7 @@ public static class ThemedWallpaperGenerator
         height = Math.Clamp(height, 720, 4320);
 
         var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            ThemeManager.Core.Services.AppDataPaths.LocalRoot,
             "ThemedAI", "Wallpapers");
         Directory.CreateDirectory(dir);
 

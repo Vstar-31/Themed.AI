@@ -17,7 +17,7 @@ public class SkinModelTests
         Assert.NotEmpty(skin.Id);
         Assert.Equal(220, skin.Width);
         Assert.Equal(120, skin.Height);
-        Assert.Equal(5, skin.SchemaVersion);
+        Assert.Equal(SkinDefinition.CurrentSchemaVersion, skin.SchemaVersion);
     }
 
     [Fact]

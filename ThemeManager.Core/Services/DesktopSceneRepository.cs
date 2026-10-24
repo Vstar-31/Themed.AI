@@ -5,7 +5,7 @@ namespace ThemeManager.Core.Services;
 
 public sealed class DesktopSceneRepository
 {
-    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
+    private static readonly string StorageFolder = Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
     private static readonly string SceneFilePath = Path.Combine(StorageFolder, "scenes.json");
     private static readonly string ActiveSceneFilePath = Path.Combine(StorageFolder, "active-scene.json");
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };

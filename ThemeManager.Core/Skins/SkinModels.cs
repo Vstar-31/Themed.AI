@@ -9,7 +9,7 @@ public enum MeasureType
 
 public enum MeterKind
 {
-    String, Bar, Graph, Icon, Ring, WebEmbed,
+    String, Bar, Graph, Icon, Ring, WebEmbed, Image,
 }
 
 public sealed class MeasureDefinition
@@ -50,8 +50,12 @@ public sealed class MeterDefinition
     public string? ActionUrl { get; set; }
     public string? SecondaryActionUrl { get; set; }
     public string? WebEmbedUrl { get; set; }
+    /// <summary>Local image filename; packages store a relative assets/ reference.</summary>
+    public string? ImagePath { get; set; }
     /// <summary>Optional plugin capability id used by custom meter runtimes.</summary>
     public string? PluginType { get; set; }
+    /// <summary>Hover/pressed/active/threshold visual states with transitions. Empty means a static meter.</summary>
+    public List<MeterStateDefinition> States { get; set; } = new();
 }
 
 
@@ -98,7 +102,8 @@ public sealed class WidgetGroupDefinition
 
 public sealed class SkinDefinition
 {
-    public int SchemaVersion { get; set; } = 5;
+    public const int CurrentSchemaVersion = 6;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
     public string Description { get; set; } = "";
@@ -119,6 +124,8 @@ public sealed class SkinDefinition
     public List<MeterDefinition> Meters { get; set; } = new();
     public List<WidgetGroupDefinition> Groups { get; set; } = new();
     public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Monitor-edge anchoring and responsive rules. Null keeps the saved X/Y.</summary>
+    public WidgetAnchorDefinition? Anchor { get; set; }
 
     /// <summary>
     /// Creates an independent copy suitable for embedding in a desktop-world placement or
@@ -183,14 +190,20 @@ public sealed class SkinDefinition
                     ActionUrl = m.ActionUrl,
                     SecondaryActionUrl = m.SecondaryActionUrl,
                     WebEmbedUrl = m.WebEmbedUrl,
-                    PluginType = m.PluginType
+                    ImagePath = m.ImagePath,
+                    PluginType = m.PluginType,
+                    States = (m.States ?? new List<MeterStateDefinition>())
+                        .Where(st => st is not null)
+                        .Select(st => st.Clone())
+                        .ToList()
                 }).ToList(),
             Groups = (Groups ?? new List<WidgetGroupDefinition>())
                 .Select(g => g.Clone())
                 .ToList(),
             Variables = Variables is null
                 ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase),
+            Anchor = Anchor?.Clone()
         };
     }
 }

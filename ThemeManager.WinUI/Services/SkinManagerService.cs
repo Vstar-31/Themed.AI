@@ -25,6 +25,7 @@ public sealed class SkinManagerService : IDisposable
     private readonly Stopwatch _schedulerClock = Stopwatch.StartNew();
     private readonly WidgetTickScheduler _scheduler = new();
     private bool _widgetsHidden;
+    private bool _initialized;
     private readonly SemaphoreSlim _windowMutationGate = new(1, 1);
     private const int SchedulerQuantumMs = 50;
     private static readonly IReadOnlyDictionary<string, SkinDefinition> CanonicalDefaults =
@@ -96,28 +97,36 @@ public sealed class SkinManagerService : IDisposable
         _timer.Interval = TimeSpan.FromMilliseconds(SchedulerQuantumMs);
         _timer.Tick += (_, _) => TickDueWidgets();
         _timer.Start();
+        _initialized = true;
     }
 
     private void TickDueWidgets()
     {
         var now = _schedulerClock.ElapsedMilliseconds;
-        var dispatcher = _dispatcher;
         var snapshot = _open.ToList();
         var dueIds = _scheduler.GetDue(snapshot.Select(x => x.Value.ViewModel.Definition), now).Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (skinId, entry) in snapshot)
         {
             var viewModel = entry.ViewModel;
             if (viewModel.IsClosed || !dueIds.Contains(skinId)) continue;
-            Task.Run(() =>
-            {
-                if (viewModel.IsClosed) return;
-                try { viewModel.RefreshMeasures(); } catch (Exception ex) { _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to refresh its measures", viewModel.Definition.Id, viewModel.Definition.Name); }
-                dispatcher.TryEnqueue(() =>
-                {
-                    if (viewModel.IsClosed) return;
-                    try { viewModel.UpdateMeters(); } catch (Exception ex) { _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to update its meters", viewModel.Definition.Id, viewModel.Definition.Name); }
-                });
-            });
+            _ = RefreshWidgetAsync(viewModel);
+        }
+    }
+
+    private async Task RefreshWidgetAsync(SkinHostViewModel viewModel)
+    {
+        try
+        {
+            await viewModel.RefreshCoordinator.TryRefreshAsync(
+                viewModel.RefreshMeasures,
+                callback => _dispatcher.TryEnqueue(() => callback()),
+                viewModel.UpdateMeters,
+                () => viewModel.IsClosed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): refresh failed",
+                viewModel.Definition.Id, viewModel.Definition.Name);
         }
     }
 
@@ -152,6 +161,13 @@ public sealed class SkinManagerService : IDisposable
         skin.Opacity = Math.Clamp(opacity, 0.0, 1.0);
         if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyOpacity(skin.Opacity);
         await PersistAsync(false);
+    }
+
+    // A transient visual adjustment must not alter saved skins or scene snapshots.
+    internal void ApplyAtmosphereOpacity(SkinDefinition skin, double multiplier)
+    {
+        if (_open.TryGetValue(skin.Id, out var entry))
+            entry.Window.ApplyOpacity(Math.Clamp(skin.Opacity * multiplier, 0.0, 1.0));
     }
 
     public async Task SetClickThroughAsync(SkinDefinition skin, bool enabled)
@@ -195,6 +211,12 @@ public sealed class SkinManagerService : IDisposable
     public async Task ResetPositionAsync(SkinDefinition skin)
     {
         skin.X = 60; skin.Y = 60;
+        // An anchored widget resets to its default distance from the anchored edge; its position
+        // is derived from the anchor, so X/Y alone would have no visible effect.
+        if (skin.Anchor is { } anchor)
+        {
+            anchor.ResetMargins();
+        }
         if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyPosition(skin.X, skin.Y);
         await PersistAsync(false);
     }
@@ -463,6 +485,22 @@ public sealed class SkinManagerService : IDisposable
         _skins.Add(skin); await PersistAsync(true); return skin;
     }
 
+    public async Task AddImportedSkinAsync(SkinDefinition skin)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            skin.Enabled = false;
+            if (_skins.Any(s => s.Id.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("This widget has already been imported.");
+            await _repo.SaveAllCheckedAsync(_skins.Append(skin));
+            _skins.Add(skin);
+            SkinsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally { _windowMutationGate.Release(); }
+    }
+
     public async Task AddGeneratedSkinAsync(SkinDefinition skin) { _skins.Add(skin); await PersistAsync(true); }
 
     /// <summary>
@@ -507,6 +545,37 @@ public sealed class SkinManagerService : IDisposable
             }
 
             await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
+    }
+
+    public async Task SaveSkinDraftAsync(SkinDefinition skin, bool createNew = false)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        var errors = WidgetDefinitionValidator.Validate(skin).Where(i => i.IsError).ToList();
+        if (errors.Count > 0) throw new ArgumentException(string.Join(" ", errors.Select(i => i.Message)), nameof(skin));
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            var index = _skins.FindIndex(s => s.Id == skin.Id);
+            if (index < 0 && !createNew) throw new InvalidOperationException("This widget no longer exists.");
+            if (index >= 0 && createNew) throw new InvalidOperationException("This widget identity already exists.");
+            // Persist the candidate before replacing the live definition or its window.
+            var snapshot = _skins.ToList();
+            if (index < 0) snapshot.Add(skin); else snapshot[index] = skin;
+            await _repo.SaveAllCheckedAsync(snapshot);
+            if (index < 0) _skins.Add(skin);
+            else
+            {
+                await CloseWindowFor(_skins[index]);
+                _skins[index] = skin;
+            }
+            if (skin.Enabled) OpenWindowFor(skin);
+            SkinsChanged?.Invoke(this, EventArgs.Empty);
             await SyncActiveScenePlacementAsync(skin);
         }
         finally
@@ -588,7 +657,7 @@ public sealed class SkinManagerService : IDisposable
             _open.Count);
 
         if (_widgetsHidden) window.AppWindow.Hide();
-        viewModel.RefreshMeasures(); viewModel.UpdateMeters();
+        _ = RefreshWidgetAsync(viewModel);
     }
 
     private Task YieldToDispatcherAsync()
@@ -638,8 +707,8 @@ public sealed class SkinManagerService : IDisposable
 
     private async Task PersistAsync(bool notifyListChanged)
     {
-        try { await _repo.SaveAllAsync(_skins); }
-        catch (IOException ex) { _logger.LogWarning(ex, "Failed to persist skins.json (file locked). It will be saved on the next edit."); SaveFailed?.Invoke(this, "Widget changes couldn't be saved (file was locked) — they'll be saved with the next edit."); }
+        try { await _repo.SaveAllCheckedAsync(_skins); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _logger.LogWarning(ex, "Failed to persist skins.json. It will be saved on the next edit."); SaveFailed?.Invoke(this, "Widget changes could not be saved to disk. Check storage and file access; changes will be retried on the next edit."); }
         if (notifyListChanged) SkinsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -668,10 +737,11 @@ public sealed class SkinManagerService : IDisposable
     private static bool IsVibeFinderSkin(SkinDefinition skin) =>
         skin.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase);
 
-    public void EnsureVibeFinderSkinsExist()
+    public Task EnsureVibeFinderSkinsExist()
     {
+        if (!_initialized) throw new InvalidOperationException("Saved widgets must finish loading before provisioning defaults.");
         bool changed = false;
-        const string vibeTarget = "listener|hunter2|$theme";
+        const string vibeTarget = "||$theme";
         foreach (var vibe in new[] { "VibeFinder Primary", "VibeFinder Minimal", "VibeFinder Playlist" })
         {
             var skin = _skins.FirstOrDefault(s => s.Name.Equals(vibe, StringComparison.Ordinal));
@@ -715,6 +785,6 @@ public sealed class SkinManagerService : IDisposable
                 changed = true;
             }
         }
-        if (changed) _ = PersistAsync(true);
+        return changed ? PersistAsync(true) : Task.CompletedTask;
     }
 }

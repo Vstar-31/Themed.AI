@@ -13,7 +13,9 @@ public sealed class SkinHostViewModel : ViewModelBase
     // Compatibility shim for older widget-host call sites that treated the host as a wrapper.
     public SkinHostViewModel ViewModel => this;
     public ObservableCollection<MeterViewModelBase> Meters { get; } = new();
-    public bool IsClosed { get; set; }
+    private volatile bool _isClosed;
+    public bool IsClosed { get => _isClosed; set => _isClosed = value; }
+    public WidgetRefreshCoordinator RefreshCoordinator { get; } = new();
     public System.Collections.Generic.IEnumerable<IMeasure> Measures => _measuresByName.Values;
 
     private readonly Dictionary<string, IMeasure> _measuresByName = new();
@@ -46,6 +48,7 @@ public sealed class SkinHostViewModel : ViewModelBase
                 MeterKind.Graph => new GraphMeterViewModel(meterDef),
                 MeterKind.Icon => new IconMeterViewModel(meterDef),
                 MeterKind.Ring => new RingMeterViewModel(meterDef),
+                MeterKind.Image => new ImageMeterViewModel(meterDef),
                 MeterKind.WebEmbed => new WebEmbedMeterViewModel(meterDef),
                 _ => new StringMeterViewModel(meterDef),
             };
@@ -120,6 +123,18 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Raised on the UI thread after every meter update, so the host window can re-evaluate
+    /// threshold/active states and anchor layout against fresh values.</summary>
+    public event Action? MetersUpdated;
+
+    private volatile IReadOnlyDictionary<string, double> _measureSnapshot =
+        new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Latest value of a measure as of the last meter update. Reads a snapshot, never the
+    /// measure gate, so it is safe to call from pointer handlers while a background refresh runs.</summary>
+    public double? GetMeasureValue(string name) =>
+        !string.IsNullOrWhiteSpace(name) && _measureSnapshot.TryGetValue(name, out var value) ? value : null;
+
     public void UpdateMeters()
     {
         lock (_measureGate)
@@ -134,6 +149,24 @@ public sealed class SkinHostViewModel : ViewModelBase
                         Definition.Name, meter.LogLabel, meter.GetType().Name);
                 }
             }
+
+            var snapshot = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (name, measure) in _measuresByName)
+            {
+                try { snapshot[name] = measure.Value; }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Skin \"{Skin}\": measure \"{Measure}\" threw while reading Value",
+                        Definition.Name, name);
+                }
+            }
+            _measureSnapshot = snapshot;
+        }
+
+        try { MetersUpdated?.Invoke(); }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Skin \"{Skin}\": a MetersUpdated handler threw", Definition.Name);
         }
     }
 

@@ -35,11 +35,8 @@ public sealed partial class StudioPage
             UpdateSetActiveButtonState();
             UpdateAutoSwitchUi();
 
-            // Studio navigation itself must not change the desktop. Only rehydrate the
-            // currently active world's native aesthetic when the user explicitly enabled
-            // the Studio aesthetic toggle.
-            if (App.SceneService.ActiveScene is { } active && ShouldAutoApplyWorld(active))
-                _ = RehydrateActiveWorldAsync();
+            // Opening Studio is a preview. Only an explicit selection/apply action changes the desktop.
+
         }
         finally
         {
@@ -47,29 +44,6 @@ public sealed partial class StudioPage
             SyncStudioState();
         }
     }
-    private async Task RehydrateActiveWorldAsync()
-    {
-        if (App.SceneService.ActiveScene is not { } active || !ShouldAutoApplyWorld(active)) return;
-
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            if (App.SceneService.ActiveScene is { } current)
-            {
-                try
-                {
-                    if (ShouldAutoApplyWorld(current))
-                        await ApplyWorldPaletteAsync(current);
-
-                    if (DispatcherQueue.HasThreadAccess) Refresh();
-                    else DispatcherQueue.TryEnqueue(Refresh);
-                }
-                catch { }
-                return;
-            }
-            await Task.Delay(50);
-        }
-    }
-
     private async void StudioPage_ActiveStateUnloaded(object sender, RoutedEventArgs e)
     {
         try

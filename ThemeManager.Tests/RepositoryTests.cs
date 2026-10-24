@@ -30,7 +30,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task ThemeRepository_LoadAll_SeedsDefaultOnFirstRun()
     {
-        var repo = new ThemeRepository();
+        var repo = new ThemeRepository(_tempDir);
         var themes = await repo.LoadAllAsync();
 
         Assert.NotNull(themes);
@@ -44,7 +44,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task ThemeRepository_SaveAndLoad_RoundTrips()
     {
-        var repo = new ThemeRepository();
+        var repo = new ThemeRepository(_tempDir);
         var themes = await repo.LoadAllAsync();
 
         var custom = new CozyTheme
@@ -67,7 +67,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task ThemeRepository_Export_CreatesValidJson()
     {
-        var repo = new ThemeRepository();
+        var repo = new ThemeRepository(_tempDir);
         var theme = CozyDefaults.CreateDefault();
         var exportPath = Path.Combine(_tempDir, "exported.json");
 
@@ -81,7 +81,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task ThemeRepository_Import_GetsNewId()
     {
-        var repo = new ThemeRepository();
+        var repo = new ThemeRepository(_tempDir);
         var theme = CozyDefaults.CreateDefault();
         var exportPath = Path.Combine(_tempDir, "import_test.json");
 
@@ -96,7 +96,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task ThemeRepository_ImportInvalidFile_ReturnsNull()
     {
-        var repo = new ThemeRepository();
+        var repo = new ThemeRepository(_tempDir);
         var badPath = Path.Combine(_tempDir, "bad.json");
         await File.WriteAllTextAsync(badPath, "this is not json!!!");
 
@@ -107,7 +107,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task ThemeRepository_ImportNonexistentFile_ReturnsNull()
     {
-        var repo = new ThemeRepository();
+        var repo = new ThemeRepository(_tempDir);
         var result = await repo.ImportThemeAsync(Path.Combine(_tempDir, "doesnotexist.json"));
         Assert.Null(result);
     }
@@ -117,7 +117,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task SkinRepository_LoadAll_SeedsDefaultsOnFirstRun()
     {
-        var repo = new SkinRepository();
+        var repo = new SkinRepository(_tempDir);
         var skins = await repo.LoadAllAsync();
 
         Assert.NotNull(skins);
@@ -129,7 +129,7 @@ public class RepositoryTests : IDisposable
     [Fact]
     public async Task SkinRepository_SaveAndLoad_RoundTrips()
     {
-        var repo = new SkinRepository();
+        var repo = new SkinRepository(_tempDir);
         var skins = await repo.LoadAllAsync();
 
         string uniqueName = "My Custom Widget " + Guid.NewGuid();
@@ -149,5 +149,39 @@ public class RepositoryTests : IDisposable
         var found = reloaded.Find(s => s.Name == uniqueName);
         Assert.NotNull(found);
         Assert.Equal(0.75, found!.Opacity);
+    }
+
+    [Fact]
+    public async Task ThemeRepository_StorageFoldersAreIsolated()
+    {
+        var firstFolder = Path.Combine(_tempDir, "first");
+        var secondFolder = Path.Combine(_tempDir, "second");
+        var custom = new CozyTheme { Name = "Isolated Theme" };
+        await new ThemeRepository(firstFolder).SaveAllAsync(new[] { custom });
+
+        var first = await new ThemeRepository(firstFolder).LoadAllAsync();
+        var second = await new ThemeRepository(secondFolder).LoadAllAsync();
+
+        Assert.Contains(first, theme => theme.Id == custom.Id);
+        Assert.DoesNotContain(second, theme => theme.Id == custom.Id);
+        Assert.True(File.Exists(Path.Combine(firstFolder, "themes.json")));
+        Assert.True(File.Exists(Path.Combine(secondFolder, "themes.json")));
+    }
+
+    [Fact]
+    public async Task SkinRepository_StorageFoldersAreIsolated()
+    {
+        var firstFolder = Path.Combine(_tempDir, "first");
+        var secondFolder = Path.Combine(_tempDir, "second");
+        var custom = new SkinDefinition { Name = "Isolated Widget" };
+        await new SkinRepository(firstFolder).SaveAllCheckedAsync(new[] { custom });
+
+        var first = await new SkinRepository(firstFolder).LoadAllAsync();
+        var second = await new SkinRepository(secondFolder).LoadAllAsync();
+
+        Assert.Contains(first, skin => skin.Id == custom.Id);
+        Assert.DoesNotContain(second, skin => skin.Id == custom.Id);
+        Assert.True(File.Exists(Path.Combine(firstFolder, "skins.json")));
+        Assert.True(File.Exists(Path.Combine(secondFolder, "skins.json")));
     }
 }

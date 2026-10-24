@@ -21,7 +21,8 @@ public static class MeasureFactory
         Func<string, double?>? measureResolver = null,
         WidgetPluginRegistry? pluginRegistry = null)
     {
-        logger?.LogDebug("MeasureFactory: creating {Type} measure \"{Name}\" (target: {Target})", definition.Type, definition.Name, string.IsNullOrEmpty(definition.Target) ? "(none)" : definition.Target);
+        // Targets can contain passwords or API keys; never put their values in diagnostics.
+        logger?.LogDebug("MeasureFactory: creating {Type} measure \"{Name}\" (target configured: {HasTarget})", definition.Type, definition.Name, !string.IsNullOrEmpty(definition.Target));
 
         IMeasure measure;
         if (!string.IsNullOrWhiteSpace(definition.PluginType) &&

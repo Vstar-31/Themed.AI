@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Services;
 using ThemeManager.WinUI.Services;
 
 namespace ThemeManager.WinUI.ViewModels;
@@ -102,6 +103,20 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
     {
         await _manager.DeleteSkinAsync(skin);
         StatusMessage = $"\"{skin.Name}\" deleted.";
+    }
+
+    public async Task ImportPackageAsync(string path)
+    {
+        var skin = await new SkinPackageService().ImportAsync(path);
+        await _manager.AddImportedSkinAsync(skin);
+        SelectedSkin = skin;
+        StatusMessage = $"Imported \"{skin.Name}\". It is off; edit it or turn it on when ready.";
+    }
+
+    public async Task ExportPackageAsync(SkinDefinition skin, string path)
+    {
+        await new SkinPackageService().ExportAsync(skin, path);
+        StatusMessage = $"Exported \"{skin.Name}\" with its images. Connection settings were omitted.";
     }
 
     public void Dispose()

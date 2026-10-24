@@ -56,9 +56,7 @@ public sealed partial class StudioPage : Page
     public StudioPage()
     {
         InitializeComponent();
-        App.SceneService.ScenesChanged += OnScenesChanged;
-        App.SceneService.ActiveSceneChanged += OnActiveSceneChanged;
-        App.ThemeService.ThemeChanged += ThemeService_ThemeChanged;
+        // Service subscriptions are paired with unsubscription in the Loaded/Unloaded handlers.
     }
 
     private void ThemeService_ThemeChanged(object? sender, CozyTheme e) =>
@@ -90,6 +88,8 @@ public sealed partial class StudioPage : Page
                 IsActive = activeId is not null && activeId.Equals(s.Id, StringComparison.OrdinalIgnoreCase)
             })
             .ToList();
+
+        WorldCountText.Text = App.SceneService.Scenes.Count.ToString();
 
         var scene = _selected is not null
             ? App.SceneService.Scenes.FirstOrDefault(x => x.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase))
@@ -124,30 +124,7 @@ public sealed partial class StudioPage : Page
         SceneDetails.Children.Add(new TextBlock { Text = $"{label}  ·  {value}", FontSize = 13, Opacity = 0.72 });
     }
 
-    private static bool LoadAutoApplyAestheticPreference()
-    {
-        try
-        {
-            return Windows.Storage.ApplicationData.Current.LocalSettings.Values.TryGetValue(
-                "Studio.AutoApplyAesthetic", out var value) && value is bool enabled && enabled;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static void SaveAutoApplyAestheticPreference(bool enabled)
-    {
-        try
-        {
-            Windows.Storage.ApplicationData.Current.LocalSettings.Values["Studio.AutoApplyAesthetic"] = enabled;
-        }
-        catch
-        {
-            // Preference failure must never affect Studio navigation or world switching.
-        }
-    }
+    private static bool LoadAutoApplyAestheticPreference() => App.Settings.StudioAutoApplyAesthetic;
 
     private void SyncStudioState()
     {
@@ -170,18 +147,24 @@ public sealed partial class StudioPage : Page
         if (_studioInitializing) return;
 
         _autoApplyAesthetic = AutoApplyAestheticToggle.IsOn;
-        SaveAutoApplyAestheticPreference(_autoApplyAesthetic);
+        App.Settings.StudioAutoApplyAesthetic = _autoApplyAesthetic;
+        try { await App.Settings.SaveAsync(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ApplyStatus.Text = "This selection setting could not be saved. It remains active until the app closes.";
+            return;
+        }
 
         ApplyStatus.Text = _autoApplyAesthetic
             ? "Aesthetic apply is ON — selecting a world applies its theme, wallpaper and layout."
             : "Aesthetic apply is OFF — Studio is preview-only until you press Apply to desktop.";
 
-        if (_autoApplyAesthetic && _selected is not null && !_sceneApplyBusy)
+        if (_selected is not null && ShouldAutoApplyWorld(_selected) && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
     }
 
     private bool ShouldAutoApplyWorld(DesktopScene scene)
-        => scene.Behavior.ApplyAestheticOnSelection ?? _autoApplyAesthetic;
+        => _autoApplyAesthetic && scene.Behavior.ApplyAestheticOnSelection != false;
 
     private void SyncWorldControls()
     {
@@ -190,7 +173,7 @@ public sealed partial class StudioPage : Page
         _worldControlsUpdating = true;
         try
         {
-            SelectedWorldAestheticToggle.IsOn = _selected.Behavior.ApplyAestheticOnSelection ?? _autoApplyAesthetic;
+            SelectedWorldAestheticToggle.IsOn = _selected.Behavior.ApplyAestheticOnSelection != false;
 
             WorldVibePrimaryToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Primary");
             WorldVibeMinimalToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Minimal");
@@ -242,10 +225,10 @@ public sealed partial class StudioPage : Page
         await App.SceneService.UpsertAsync(_selected);
 
         ApplyStatus.Text = SelectedWorldAestheticToggle.IsOn
-            ? $"{_selected.Name}: automatic aesthetic apply enabled."
+            ? $"{_selected.Name}: auto-apply allowed when Apply aesthetic on selection is ON."
             : $"{_selected.Name}: automatic aesthetic apply disabled.";
 
-        if (SelectedWorldAestheticToggle.IsOn && !_sceneApplyBusy)
+        if (ShouldAutoApplyWorld(_selected) && !_sceneApplyBusy)
             await ApplySelectedWorldAsync();
     }
 

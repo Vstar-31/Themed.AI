@@ -9,13 +9,16 @@ namespace ThemeManager.Core.Skins;
 /// </summary>
 public static class SafeExpressionEvaluator
 {
+    private const int MaxExpressionLength = 4096;
+    private const int MaxNestingDepth = 64;
+
     public static bool TryEvaluate(
         string? expression,
         Func<string, double?> resolveIdentifier,
         out double value)
     {
         value = 0;
-        if (string.IsNullOrWhiteSpace(expression)) return false;
+        if (expression is null || expression.Length > MaxExpressionLength || string.IsNullOrWhiteSpace(expression)) return false;
 
         try
         {
@@ -43,6 +46,7 @@ public static class SafeExpressionEvaluator
         private readonly string _text;
         private readonly Func<string, double?> _resolve;
         private int _index;
+        private int _depth;
 
         public Parser(string text, Func<string, double?> resolve)
         {
@@ -81,10 +85,21 @@ public static class SafeExpressionEvaluator
 
         private double ParseUnary()
         {
-            SkipWhitespace();
-            if (TryConsume('+')) return ParseUnary();
-            if (TryConsume('-')) return -ParseUnary();
-            return ParsePrimary();
+            if (_depth >= MaxNestingDepth)
+                throw new FormatException("Expression nesting exceeds the supported limit.");
+
+            _depth++;
+            try
+            {
+                SkipWhitespace();
+                if (TryConsume('+')) return ParseUnary();
+                if (TryConsume('-')) return -ParseUnary();
+                return ParsePrimary();
+            }
+            finally
+            {
+                _depth--;
+            }
         }
 
         private double ParsePrimary()
