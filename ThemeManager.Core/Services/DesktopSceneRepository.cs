@@ -5,10 +5,17 @@ namespace ThemeManager.Core.Services;
 
 public sealed class DesktopSceneRepository
 {
-    private static readonly string StorageFolder = Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
-    private static readonly string SceneFilePath = Path.Combine(StorageFolder, "scenes.json");
-    private static readonly string ActiveSceneFilePath = Path.Combine(StorageFolder, "active-scene.json");
+    private readonly string StorageFolder;
+    private readonly string SceneFilePath;
+    private readonly string ActiveSceneFilePath;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
+
+    public DesktopSceneRepository(string? storageFolder = null)
+    {
+        StorageFolder = storageFolder ?? Path.Combine(AppDataPaths.LocalRoot, "ThemedAI");
+        SceneFilePath = Path.Combine(StorageFolder, "scenes.json");
+        ActiveSceneFilePath = Path.Combine(StorageFolder, "active-scene.json");
+    }
 
     public async Task<List<DesktopScene>> LoadAllAsync(CancellationToken cancellationToken = default)
     {
