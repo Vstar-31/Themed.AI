@@ -30,10 +30,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Setup pinned SDK and .NET 8 runtime
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
           dotnet-version: '8.0.x'
@@ -44,7 +44,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-test-results-${{ matrix.configuration }}
           path: artifacts/test-results/${{ matrix.configuration }}
@@ -52,7 +52,7 @@ jobs:
 
       - name: Upload unpackaged Windows app
         if: matrix.configuration == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ThemedAI-windows-x64-${{ github.sha }}
           path: artifacts/windows-x64
