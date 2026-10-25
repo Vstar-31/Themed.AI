@@ -166,3 +166,67 @@ Evidence remains outside the repository in `test-evidence/2026-10-23-worlds`:
 `after-restart-fixed.json`, personal hash comparisons, profile logs,
 `publish-final.log` and `test-results/world-fixes.trx`. The test process was closed
 after verification; no personal widget data was modified.
+
+## Additional acceptance and apply-race fix, 25 October
+
+The unchanged 56e2a5d build (same tree as merged parent 24f94a0) completed 20
+alternating auto-applied QA Amber/QA Blue switches over 140 seconds. Every apply
+resolved two placements with zero missing definitions; the maximum logged host
+count was two. Final layout, visibility and opacity 0.72 were intact. This was
+consecutive switching at human/tool pace, not sub-second concurrent-input stress.
+
+Native image import passed with a user-assisted Windows picker. Image assets
+reported a successful import, displayed the checkerboard preview, and Add image
+meter plus Save persisted the image. Reopening rendered it again. The imported
+asset hash matched the source, and personal skins/themes/scenes hashes were
+unchanged. Evidence: external `test-evidence/2026-10-24-focused`.
+
+The next isolated profile gave QA Blue the Midnight Glass palette. Selecting it
+changed the app to dark colors, set both Windows AppsUseLightTheme and
+SystemUsesLightTheme to 0, and applied accent #6EA8FF (DWM AccentColor FFFFA86E,
+ColorizationColor C46EA8FF). Returning to QA Amber restored both mode values to 1
+and accent #7B563F (FF3F567B/C47B563F). This covers the app-to-Windows light/dark
+and accent path, not exhaustive OS settings synchronization or wallpaper behavior.
+
+Source review of overlapping applies found that ApplySelectedWorldAsync reread
+_selected after awaits. A later selection could therefore supply a different
+world's theme/layout or activation. The method now retains its starting target,
+disables the world selector until completion, and restores it in finally.
+Selection callbacks also ignore stale completions after an outgoing-layout save.
+
+A temporary standalone harness compiled the actual apply method extracted from
+source, with explicit dependency doubles and controlled awaits. The original
+method failed when selection changed while loading themes. The corrected method
+passed selection changes during repository and Windows-theme awaits, rejection
+of an overlapping apply, and recovery of the selector/error message after an
+injected failure. This is logic validation with doubles, not a native overlap
+stress reproduction, and it is not part of the 748-test suite.
+
+The corrected Release publish succeeded and all 748 Release tests passed with
+zero failures/skips. In the corrected GUI, ScenesList was observed disabled while
+Applying QA Blue and enabled again when Blue became active. Switching back to
+Amber also completed and restored the selector. No claim of sub-second input
+stress is made. Personal data hashes and the initial Windows mode/accent values
+were unchanged at the end; the isolated process was closed.
+
+Evidence: external `test-evidence/2026-10-25-appearance`, including dark/light
+registry results, final-widget JSON, personal hash comparisons, publish log,
+apply-harness before/after logs and test-results/apply-guard.trx. Authenticated
+playback/network recovery, live multi-monitor/DPI changes and broader Windows
+appearance integration remain unverified.
+
+## Playback GUI follow-up — 2026-10-25
+
+Build: c590e8e (2026-10-25-apply-guard), with separate THEMEDAI_LOCAL_DATA_ROOT and WEBVIEW2_USER_DATA_FOLDER under the playback evidence directory. User completed sign-in manually.
+
+Verified through the desktop GUI:
+- Signed-in page showed SIGNAL ACTIVE and enabled analysis.
+- Five-track request completed; analysis controls disabled during processing and re-enabled after results.
+- Play All started the embedded YouTube player. Duration and advancing elapsed time were visible; desktop widget received track metadata and progress. Audible output was not independently verified.
+- Next selected Heywete after Notre Dame de Paris - Ouverture.
+- Studio navigation and return retained playlist, signed-in session, current track and advancing elapsed time (0:39 then 0:54 on return).
+- Previous restarted the current track near zero.
+
+Open failure: while elapsed time advanced, the central transport control still displayed a play icon and the accessibility label Play full track. Both an indexed click and a direct coordinate click failed to stop elapsed-time advancement. Pause/resume is NOT accepted. Reproduce with Play All on a generated five-track playlist in the hosted https://vfaithemed.netlify.app/app embed. The hosted player frontend source is not present in this desktop repository; no speculative desktop workaround was added.
+
+The test process was stopped after inspection. Personal scenes.json, skins.json and themes.json hashes matched their pre-test snapshot. Network interruption recovery, audio output and multi-monitor/DPI remain unverified. Prior CI remains the validation for unchanged application code; this follow-up changes documentation only.
