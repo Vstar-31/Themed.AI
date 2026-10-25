@@ -214,3 +214,19 @@ registry results, final-widget JSON, personal hash comparisons, publish log,
 apply-harness before/after logs and test-results/apply-guard.trx. Authenticated
 playback/network recovery, live multi-monitor/DPI changes and broader Windows
 appearance integration remain unverified.
+
+## Playback GUI follow-up — 2026-10-25
+
+Build: c590e8e (2026-10-25-apply-guard), with separate THEMEDAI_LOCAL_DATA_ROOT and WEBVIEW2_USER_DATA_FOLDER under the playback evidence directory. User completed sign-in manually.
+
+Verified through the desktop GUI:
+- Signed-in page showed SIGNAL ACTIVE and enabled analysis.
+- Five-track request completed; analysis controls disabled during processing and re-enabled after results.
+- Play All started the embedded YouTube player. Duration and advancing elapsed time were visible; desktop widget received track metadata and progress. Audible output was not independently verified.
+- Next selected Heywete after Notre Dame de Paris - Ouverture.
+- Studio navigation and return retained playlist, signed-in session, current track and advancing elapsed time (0:39 then 0:54 on return).
+- Previous restarted the current track near zero.
+
+Open failure: while elapsed time advanced, the central transport control still displayed a play icon and the accessibility label Play full track. Both an indexed click and a direct coordinate click failed to stop elapsed-time advancement. Pause/resume is NOT accepted. Reproduce with Play All on a generated five-track playlist in the hosted https://vfaithemed.netlify.app/app embed. The hosted player frontend source is not present in this desktop repository; no speculative desktop workaround was added.
+
+The test process was stopped after inspection. Personal scenes.json, skins.json and themes.json hashes matched their pre-test snapshot. Network interruption recovery, audio output and multi-monitor/DPI remain unverified. Prior CI remains the validation for unchanged application code; this follow-up changes documentation only.
