@@ -49,19 +49,41 @@ public sealed class DesktopSceneService
     {
         ArgumentNullException.ThrowIfNull(scene);
         await InitializeAsync(cancellationToken);
-        scene.LastModified = DateTime.UtcNow;
-        var index = _scenes.FindIndex(s => s.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase));
-        if (index >= 0) _scenes[index] = scene; else _scenes.Add(scene);
-        await PersistAsync(cancellationToken);
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            // Stage membership changes privately; a failed save must not publish an
+            // unsaved world or replace the last successfully stored inventory.
+            var pending = new List<DesktopScene>(_scenes);
+            var index = pending.FindIndex(s => s.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0) pending[index] = scene; else pending.Add(scene);
+            var previousModified = scene.LastModified;
+            scene.LastModified = DateTime.UtcNow;
+            try { await _repository.SaveAllAsync(pending, cancellationToken); }
+            catch
+            {
+                scene.LastModified = previousModified;
+                throw;
+            }
+            _scenes = pending;
+        }
+        finally { _writeGate.Release(); }
         ScenesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
         await InitializeAsync(cancellationToken);
-        _scenes.RemoveAll(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-        if (ActiveScene?.Id.Equals(id, StringComparison.OrdinalIgnoreCase) == true) SetActiveScene(null);
-        await PersistAsync(cancellationToken);
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var pending = _scenes.Where(s => !s.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).ToList();
+            await _repository.SaveAllAsync(pending, cancellationToken);
+            _scenes = pending;
+            // A failed delete must also retain the active identity and its saved ID.
+            if (ActiveScene?.Id.Equals(id, StringComparison.OrdinalIgnoreCase) == true) SetActiveScene(null);
+        }
+        finally { _writeGate.Release(); }
         ScenesChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -77,12 +99,5 @@ public sealed class DesktopSceneService
     {
         try { await _repository.SaveActiveSceneIdAsync(scene?.Id); }
         catch { /* active-state persistence must never block world switching */ }
-    }
-
-    private async Task PersistAsync(CancellationToken cancellationToken)
-    {
-        await _writeGate.WaitAsync(cancellationToken);
-        try { await _repository.SaveAllAsync(_scenes, cancellationToken); }
-        finally { _writeGate.Release(); }
     }
 }
