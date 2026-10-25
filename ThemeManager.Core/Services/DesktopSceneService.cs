@@ -87,6 +87,28 @@ public sealed class DesktopSceneService
         ScenesChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Waits for inventory writes already queued and persists the latest active identity.
+    /// Unlike background selection saves, failures propagate so shutdown can be cancelled.
+    /// Callers should stop accepting new user edits before awaiting this method.
+    /// </summary>
+    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken);
+        await _writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            string? savedId;
+            do
+            {
+                savedId = ActiveScene?.Id;
+                await _repository.SaveActiveSceneIdAsync(savedId, cancellationToken);
+            }
+            while (!string.Equals(savedId, ActiveScene?.Id, StringComparison.Ordinal));
+        }
+        finally { _writeGate.Release(); }
+    }
+
     public void SetActiveScene(DesktopScene? scene)
     {
         if (ReferenceEquals(ActiveScene, scene)) return;
