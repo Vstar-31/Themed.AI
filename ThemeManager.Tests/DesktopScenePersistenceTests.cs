@@ -80,6 +80,50 @@ public sealed class DesktopScenePersistenceTests : IDisposable
         Assert.Equal(1, notifications);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OverlappingActiveWritesPersistLastRequest(bool clearLast)
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        // A large value keeps serialization asynchronous and exposes overlapping
+        // access to the shared temporary file without sleeps or timing assertions.
+        var writes = new List<Task>();
+        for (var i = 0; i < 20; i++)
+            writes.Add(repository.SaveActiveSceneIdAsync(i + new string('x', 65536)));
+        writes.Add(repository.SaveActiveSceneIdAsync(null));
+        var expected = clearLast ? null : "last-world";
+        writes.Add(repository.SaveActiveSceneIdAsync(expected));
+        await Task.WhenAll(writes);
+        Assert.Equal(expected, await repository.LoadActiveSceneIdAsync());
+    }
+
+    [Fact]
+    public async Task CancelledActiveClearRetainsSavedIdentity()
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        await repository.SaveActiveSceneIdAsync("keep");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            repository.SaveActiveSceneIdAsync(null, cancellation.Token));
+        Assert.Equal("keep", await repository.LoadActiveSceneIdAsync());
+    }
+
+    [Fact]
+    public async Task ActiveWriteFailureDoesNotBlockLaterWrite()
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        await repository.SaveActiveSceneIdAsync("keep");
+        var temp = Path.Combine(_folder, "active-scene.json.tmp");
+        Directory.CreateDirectory(temp);
+        var error = await Record.ExceptionAsync(() => repository.SaveActiveSceneIdAsync("failed"));
+        Assert.True(error is IOException or UnauthorizedAccessException);
+        Assert.Equal("keep", await repository.LoadActiveSceneIdAsync());
+        Directory.Delete(temp);
+        await repository.SaveActiveSceneIdAsync("retry").WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("retry", await repository.LoadActiveSceneIdAsync());
+    }
     public void Dispose()
     {
         if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
