@@ -16,6 +16,7 @@ public sealed partial class StudioPage : Page
     private string? _lastWallpaperPath;
     private bool _wallpaperBusy;
     private bool _sceneApplyBusy;
+    private int _sceneSelectionVersion;
     private bool _studioInitializing;
     private bool _autoApplyAesthetic;
     private bool _worldControlsUpdating;
@@ -578,13 +579,16 @@ public sealed partial class StudioPage : Page
 
     private async void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ScenesList.SelectedItem is not WorldListItem item) return;
+        if (_sceneApplyBusy || ScenesList.SelectedItem is not WorldListItem item) return;
+        var selectionVersion = ++_sceneSelectionVersion;
 
         // Save the outgoing world's current positions before optionally moving into the selected world.
         var outgoing = App.SceneService.ActiveScene;
         if (outgoing is not null && !outgoing.Id.Equals(item.Scene.Id, StringComparison.OrdinalIgnoreCase))
             await SaveCurrentSceneLayoutAsync(outgoing);
 
+        // Ignore a selection whose save finished after a newer selection or apply.
+        if (_sceneApplyBusy || selectionVersion != _sceneSelectionVersion) return;
         Select(item.Scene, false);
 
         UpdateAutoSwitchUi();
@@ -857,18 +861,21 @@ public sealed partial class StudioPage : Page
     private async Task ApplySelectedWorldAsync()
     {
         if (_selected is null || _sceneApplyBusy) return;
+        // Keep one target across awaits; the live selection may change during callbacks.
+        var target = _selected;
         _sceneApplyBusy = true;
+        ScenesList.IsEnabled = false;
 
         try
         {
-            ApplyStatus.Text = $"Applying {_selected.Name}…";
+            ApplyStatus.Text = $"Applying {target.Name}…";
 
             var previous = App.SceneService.ActiveScene;
-            if (previous is not null && !previous.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase))
+            if (previous is not null && !previous.Id.Equals(target.Id, StringComparison.OrdinalIgnoreCase))
                 await SaveCurrentSceneLayoutAsync(previous);
 
             var themes = await App.ThemeRepository.LoadAllAsync();
-            var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
+            var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(target.ThemeId, StringComparison.OrdinalIgnoreCase));
 
             if (targetTheme is not null)
             {
@@ -877,12 +884,12 @@ public sealed partial class StudioPage : Page
                 await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
             }
 
-            if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
+            if (!string.IsNullOrWhiteSpace(target.WallpaperPath) && File.Exists(target.WallpaperPath))
             {
-                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(target.WallpaperPath);
                 WallpaperStatusText.Text = applied
-                    ? $"Applied ✓  {Path.GetFileName(_selected.WallpaperPath)} · bound to {_selected.Name}"
-                    : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(_selected.WallpaperPath)}";
+                    ? $"Applied ✓  {Path.GetFileName(target.WallpaperPath)} · bound to {target.Name}"
+                    : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(target.WallpaperPath)}";
             }
             else if (targetTheme is not null && targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
             {
@@ -894,14 +901,14 @@ public sealed partial class StudioPage : Page
 
             if (App.SkinManager is not null)
             {
-                var result = await App.SkinManager.ApplySceneAsync(_selected.Widgets);
+                var result = await App.SkinManager.ApplySceneAsync(target.Widgets);
 
                 // Backfill snapshots for older worlds whose widget ids still resolve locally. This
                 // turns a successful legacy apply into a self-contained world without changing its
                 // saved placement geometry.
                 var currentWidgets = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
                 var snapshotsChanged = false;
-                foreach (var placement in _selected.Widgets)
+                foreach (var placement in target.Widgets)
                 {
                     if (placement.Definition is null &&
                         currentWidgets.TryGetValue(placement.WidgetId, out var resolvedWidget))
@@ -912,10 +919,10 @@ public sealed partial class StudioPage : Page
                 }
 
                 if (snapshotsChanged)
-                    await App.SceneService.UpsertAsync(_selected);
+                    await App.SceneService.UpsertAsync(target);
 
                 ApplyStatus.Text = result.Missing > 0
-                    ? $"Applied {result.Applied}/{_selected.Widgets.Count} widgets · {result.Missing} unavailable"
+                    ? $"Applied {result.Applied}/{target.Widgets.Count} widgets · {result.Missing} unavailable"
                     : $"Applied {result.Applied} widgets to desktop ✓";
             }
             else
@@ -923,8 +930,8 @@ public sealed partial class StudioPage : Page
                 ApplyStatus.Text = "Applied world theme and wallpaper ✓";
             }
 
-            App.SceneService.SetActiveScene(_selected);
-            ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} saved widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
+            App.SceneService.SetActiveScene(target);
+            ActiveSceneMeta.Text = $"Applied · {target.Widgets.Count} saved widget placements · VibeFinder adaptation {(target.Behavior.ReactToVibeFinder ? "on" : "off")}";
         }
         catch (Exception ex)
         {
@@ -933,6 +940,7 @@ public sealed partial class StudioPage : Page
         finally
         {
             _sceneApplyBusy = false;
+            ScenesList.IsEnabled = true;
         }
     }
 }
