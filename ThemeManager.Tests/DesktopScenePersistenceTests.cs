@@ -124,6 +124,54 @@ public sealed class DesktopScenePersistenceTests : IDisposable
         await repository.SaveActiveSceneIdAsync("retry").WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal("retry", await repository.LoadActiveSceneIdAsync());
     }
+    [Fact]
+    public async Task FlushWaitsForQueuedInventoryAndLatestSelection()
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        var service = new DesktopSceneService(repository);
+        await service.InitializeAsync();
+        var world = new DesktopScene { Id = "latest", Description = new string('x', 65536) };
+        var save = service.UpsertAsync(world);
+        service.SetActiveScene(new DesktopScene { Id = new string('a', 65536) });
+        service.SetActiveScene(world);
+        await service.FlushAsync();
+        Assert.True(save.IsCompletedSuccessfully);
+        var restarted = new DesktopSceneService(new DesktopSceneRepository(_folder));
+        await restarted.InitializeAsync();
+        Assert.Equal("latest", restarted.ActiveScene?.Id);
+        Assert.Equal(world.Description, Assert.Single(restarted.Scenes).Description);
+    }
+
+    [Fact]
+    public async Task FlushSurfacesActiveWriteFailureAndCanBeRetried()
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        var service = new DesktopSceneService(repository);
+        await service.UpsertAsync(new DesktopScene { Id = "retry" });
+        var temp = Path.Combine(_folder, "active-scene.json.tmp");
+        Directory.CreateDirectory(temp);
+        service.SetActiveScene(Assert.Single(service.Scenes));
+        var error = await Record.ExceptionAsync(() => service.FlushAsync());
+        Assert.True(error is IOException or UnauthorizedAccessException);
+        Directory.Delete(temp);
+        await service.FlushAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("retry", await repository.LoadActiveSceneIdAsync());
+    }
+
+    [Fact]
+    public async Task CancelledFlushPreservesStateAndDoesNotBlockRetry()
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        var service = new DesktopSceneService(repository);
+        await service.UpsertAsync(new DesktopScene { Id = "saved" });
+        service.SetActiveScene(Assert.Single(service.Scenes));
+        await service.FlushAsync();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.FlushAsync(cancellation.Token));
+        Assert.Equal("saved", await repository.LoadActiveSceneIdAsync());
+        await service.FlushAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    }
     public void Dispose()
     {
         if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);

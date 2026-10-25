@@ -66,6 +66,7 @@ public partial class App : Application
     /// minimize it to the tray.
     /// </summary>
     private static bool _isExiting;
+    private static bool _exitPending;
 
     /// <summary>
     /// Exposed so any page can retrieve the HWND for file pickers without
@@ -199,19 +200,16 @@ public partial class App : Application
         Tray = new TrayIcon(LoggerFactory.CreateLogger<TrayIcon>());
         Tray.OpenRequested += () =>
         {
+            if (_exitPending || _isExiting) return;
             MainWindow.AppWindow.Show();
             MainWindow.Activate();
         };
-        Tray.ExitRequested += () =>
-        {
-            _isExiting = true;
-            MainWindow.Close();
-        };
+        Tray.ExitRequested += async () => await ExitAfterSavingAsync(logger);
         Tray.GlobalHotkeyActivated += () =>
         {
             MainWindow.DispatcherQueue.TryEnqueue(() =>
             {
-                SkinManager.ToggleAllWidgetsVisibility();
+                if (!_exitPending && !_isExiting) SkinManager.ToggleAllWidgetsVisibility();
             });
         };
         Tray.Show();
@@ -246,6 +244,46 @@ public partial class App : Application
             Log.CloseAndFlush();
         };
         MainWindow.CompleteStartup();
+    }
+
+    private static async Task ExitAfterSavingAsync(ILogger logger)
+    {
+        if (_exitPending || _isExiting) return;
+        _exitPending = true;
+        try
+        {
+            MainWindow.AppWindow.Hide();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await SceneService.FlushAsync(timeout.Token);
+            _isExiting = true;
+            MainWindow.Close();
+        }
+        catch (Exception ex)
+        {
+            _isExiting = false;
+            logger.LogError(ex, "Exit cancelled because world state could not be saved");
+            MainWindow.AppWindow.Show();
+            MainWindow.Activate();
+            try
+            {
+                var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+                {
+                    Title = "Couldn't save your world",
+                    Content = "The app is still open because your latest world selection couldn't be saved. Check available disk space and folder access, then choose Exit again.",
+                    CloseButtonText = "Keep open",
+                    XamlRoot = (MainWindow.Content as FrameworkElement)?.XamlRoot
+                };
+                await dialog.ShowAsync();
+            }
+            catch (Exception dialogError)
+            {
+                logger.LogWarning(dialogError, "Could not display the exit-save error dialog");
+            }
+        }
+        finally
+        {
+            _exitPending = false;
+        }
     }
 
     // ── Live theming ──────────────────────────────────────────────────────────
