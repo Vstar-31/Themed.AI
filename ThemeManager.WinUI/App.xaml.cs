@@ -228,6 +228,8 @@ public partial class App : Application
         // final cleanup so widgets and the tray icon don't outlive the main process.
         MainWindow.Closed += (_, _) =>
         {
+            // Stop scene subscriptions and atmosphere timers before widget teardown.
+            WorldRuntime?.Dispose();
             SkinManager.Dispose();
             Tray.Dispose();
             Automation.Dispose();
@@ -257,6 +259,9 @@ public partial class App : Application
             await SceneService.FlushAsync(timeout.Token);
             _isExiting = true;
             MainWindow.Close();
+            // Hidden atmosphere windows can outlive the main window. End the XAML
+            // application explicitly, after persistence and Closed cleanup complete.
+            Current.Exit();
         }
         catch (Exception ex)
         {
