@@ -23,6 +23,7 @@
                     <Button Content="Add widget" Style="{StaticResource PrimaryButtonStyle}">
                         <Button.Flyout><MenuFlyout>
                             <MenuFlyoutItem Text="Remix a starter…" Click="BrowseTemplates_Click"/>
+                            <MenuFlyoutItem Text="Recovery drafts…" Click="RecoveryDrafts_Click" />
                             <MenuFlyoutItem Text="New blank widget" Click="NewWidgetButton_Click" />
                             <MenuFlyoutItem Text="Generate with AI" Click="GenerateWidgetButton_Click" />
                             <MenuFlyoutItem Text="Import widget…" Click="ImportWidgetButton_Click" />

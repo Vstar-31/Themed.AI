@@ -4,7 +4,7 @@ using ThemeManager.Core.Skins;
 
 namespace ThemeManager.WinUI.ViewModels;
 
-public sealed record SkinEditorDraft(SkinDefinition Definition);
+public sealed record SkinEditorDraft(SkinDefinition Definition, Guid? RecoveryId = null);
 
 public sealed partial class SkinEditorViewModel
 {
