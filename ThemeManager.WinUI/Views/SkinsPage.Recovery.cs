@@ -22,12 +22,20 @@ public sealed partial class SkinsPage
                 ViewModel.StatusMessage = unreadable > 0 ? "Recovery files could not be read. They have been kept on disk." : "No recovery drafts. Unsaved editor work is checkpointed automatically.";
                 return;
             }
-            var list = new ListView { ItemsSource = drafts, SelectedIndex = 0, MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single };
+            var list = new ListView { SelectionMode = ListViewSelectionMode.Single, ItemsSource = drafts, MaxHeight = 320 };
             var panel = new StackPanel { Spacing = 12 };
             panel.Children.Add(new TextBlock { Text = "Recover opens an unsaved copy. Nothing runs or replaces a saved widget until you choose Save.", TextWrapping = TextWrapping.Wrap });
             if (unreadable > 0) panel.Children.Add(new TextBlock { Text = $"{unreadable} unreadable checkpoint(s) kept on disk.", TextWrapping = TextWrapping.Wrap });
             panel.Children.Add(list);
             var dialog = new ContentDialog { Title = "Recovery drafts", Content = panel, PrimaryButtonText = "Recover copy", SecondaryButtonText = "Discard selected", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close, XamlRoot = XamlRoot };
+            dialog.IsPrimaryButtonEnabled = false;
+            dialog.IsSecondaryButtonEnabled = false;
+            list.SelectionChanged += (_, _) =>
+            {
+                dialog.IsPrimaryButtonEnabled = list.SelectedItem is WidgetRecoveryDraft;
+                dialog.IsSecondaryButtonEnabled = dialog.IsPrimaryButtonEnabled;
+            };
+            list.Loaded += (_, _) => list.SelectedIndex = 0;
             var result = await dialog.ShowAsync();
             if (list.SelectedItem is not WidgetRecoveryDraft selected) return;
             if (result == ContentDialogResult.Primary)
