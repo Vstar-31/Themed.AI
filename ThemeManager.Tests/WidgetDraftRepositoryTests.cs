@@ -15,6 +15,39 @@ public sealed class WidgetDraftRepositoryTests : IDisposable
         Assert.Empty((await Repository.ListAsync()).Drafts);
     }
 
+    [Fact] public async Task FailedDeleteKeepsCheckpointAndAllowsRetry()
+    {
+        var id = Guid.NewGuid(); await Repository.SaveAsync(id, Draft("Keep me"));
+        var path = Path.Combine(_folder, id.ToString("N") + ".json");
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            await Assert.ThrowsAnyAsync<UnauthorizedAccessException>(() => Repository.DeleteAsync(id));
+        }
+        finally { File.SetAttributes(path, FileAttributes.Normal); }
+        Assert.Equal("Keep me", Assert.Single((await Repository.ListAsync()).Drafts).Definition.Name);
+        await Repository.DeleteAsync(id);
+        Assert.Empty((await Repository.ListAsync()).Drafts);
+    }
+
+    [Theory]
+    [InlineData("{\"Meters\":[null]}")]
+    [InlineData("{\"Measures\":[null]}")]
+    [InlineData("{\"Groups\":[null]}")]
+    [InlineData("{\"Tags\":[null]}")]
+    [InlineData("{\"Meters\":[{\"Id\":null}]}")]
+    public async Task MalformedCollectionsAreRetainedWithoutHidingHealthyDrafts(string definition)
+    {
+        await Repository.SaveAsync(Guid.NewGuid(), Draft("Healthy"));
+        var id = Guid.NewGuid();
+        var path = Path.Combine(_folder, id.ToString("N") + ".json");
+        var json = "{\"Id\":\"" + id + "\",\"UpdatedAt\":\"2026-10-28T00:00:00Z\",\"Definition\":" + definition + "}";
+        await File.WriteAllTextAsync(path, json);
+        var (drafts, unreadable) = await Repository.ListAsync();
+        Assert.Equal("Healthy", Assert.Single(drafts).Definition.Name);
+        Assert.Equal(1, unreadable);
+        Assert.Equal(json, await File.ReadAllTextAsync(path));
+    }
     [Fact] public async Task SurvivesRepositoryRestartWithoutMutatingSource()
     {
         var id = Guid.NewGuid(); var source = Draft();

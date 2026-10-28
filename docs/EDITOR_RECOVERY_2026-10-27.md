@@ -34,3 +34,9 @@ A separate profile under test-evidence/2026-10-27-snap contained one disabled fi
 Opening this saved fixture on a fresh profile exposed an unrelated cleanup defect: File.Delete raised DirectoryNotFoundException before any Drafts directory existed, displaying a false checkpoint failure. DeleteAsync now treats that specific exception as no checkpoint to delete; other IO/access failures remain visible. Added a regression for deletion before the first checkpoint: 784 tests pass.
 
 The Back button displayed the discard confirmation. The user approved discarding the isolated fixture edits. On 2026-10-28 the Computer Use runtime failed before window access (failed to write kernel assets: path not found), including after a kernel reset. The checkpoint remains on disk; final GUI discard/cleanup and fresh-profile verification of the corrected build remain unverified. No discard pass is claimed.
+
+## Review and failure-path regressions — 2026-10-28
+
+Debug and Release CI passed at e7ba43f in PR run 40676044606 and push run 40676036079, with zero annotations. Reviewed checkpoint locking, discard ordering, save cleanup, picker selection, and copy semantics. Added six regression cases: a read-only checkpoint makes deletion fail visibly while preserving the draft, subsequent deletion succeeds after restoring access, and five malformed collection/identity inputs remain intact without hiding a healthy checkpoint. All 790 Release tests pass. The test build reported NU1900 because NuGet vulnerability data was unavailable; this run does not establish current dependency-audit status.
+
+Computer Use was retried, reset, and retried again; it still failed to write kernel assets before accessing any window. No UI input was sent. GUI discard cleanup and fresh-profile verification remain pending, so PR #10 stays draft. These repository tests do not substitute for desktop acceptance.
