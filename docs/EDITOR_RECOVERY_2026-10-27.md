@@ -40,3 +40,14 @@ The Back button displayed the discard confirmation. The user approved discarding
 Debug and Release CI passed at e7ba43f in PR run 40676044606 and push run 40676036079, with zero annotations. Reviewed checkpoint locking, discard ordering, save cleanup, picker selection, and copy semantics. Added six regression cases: a read-only checkpoint makes deletion fail visibly while preserving the draft, subsequent deletion succeeds after restoring access, and five malformed collection/identity inputs remain intact without hiding a healthy checkpoint. All 790 Release tests pass. The test build reported NU1900 because NuGet vulnerability data was unavailable; this run does not establish current dependency-audit status.
 
 Computer Use was retried, reset, and retried again; it still failed to write kernel assets before accessing any window. No UI input was sent. GUI discard cleanup and fresh-profile verification remain pending, so PR #10 stays draft. These repository tests do not substitute for desktop acceptance.
+
+## Final focused GUI checks passed — 2026-10-28
+
+Computer Use recovered. Launched builds/2026-10-27-cleanup-fixed with THEMEDAI_LOCAL_DATA_ROOT and WEBVIEW2_USER_DATA_FOLDER under test-evidence/2026-10-28-final-gui. This binary contains the production cleanup fix; subsequent commit 934aa3e changes tests and documentation only. The sandbox-launched process had no accessible window and was stopped by exact PID/path; interactive PID 20776 was used for acceptance.
+
+- Opened the disabled Snap GUI fixture on a fresh profile. After the checkpoint timer ran, the editor displayed Saved and All edits saved to the widget. Independently confirmed the Drafts directory did not exist. No false recovery failure appeared.
+- Changed only the fixture name and committed the field with Tab. The editor showed Unsaved edits and then Recovery checkpoint saved locally.
+- Chose Back and the authorized Discard changes action. The app returned to Widgets with Snap GUI fixture still Off.
+- Independent disk verification found zero checkpoint JSON files. The saved fixture retained its original name, Enabled=false, and meter coordinates (17,14) and (93,48).
+
+These complete the focused discard and fresh-profile checks previously blocked by the runtime. No broader playback or desktop acceptance result is implied. All test writes used the isolated profile; personal storage was not selected. No new personal-file hash comparison was taken this pass.
