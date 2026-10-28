@@ -8,6 +8,13 @@ public sealed class WidgetDraftRepositoryTests : IDisposable
     private static SkinDefinition Draft(string name = "Unfinished") => new() { Name = name, Meters = new() { new() { Id = "text", StaticText = "Keep this", X = 17 } } };
     public void Dispose() { if (Directory.Exists(_folder)) Directory.Delete(_folder, true); }
 
+    [Fact] public async Task DeleteBeforeFirstCheckpointIsAnIdempotentNoOp()
+    {
+        await Repository.DeleteAsync(Guid.NewGuid());
+        Assert.False(Directory.Exists(_folder));
+        Assert.Empty((await Repository.ListAsync()).Drafts);
+    }
+
     [Fact] public async Task SurvivesRepositoryRestartWithoutMutatingSource()
     {
         var id = Guid.NewGuid(); var source = Draft();

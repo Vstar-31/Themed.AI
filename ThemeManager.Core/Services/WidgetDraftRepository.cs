@@ -39,6 +39,7 @@ public sealed class WidgetDraftRepository
     {
         await Gate.WaitAsync();
         try { File.Delete(FilePath(id)); }
+        catch (DirectoryNotFoundException) { /* No checkpoint directory means nothing to remove. */ }
         finally { Gate.Release(); }
     }
 

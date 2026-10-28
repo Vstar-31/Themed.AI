@@ -26,3 +26,11 @@ Verified through Computer Use and independent disk reads:
 - All four personal skins/themes/scenes/active-scene file hashes matched their before-test baselines.
 
 Stopped the completed isolated test process as cleanup; this is not another graceful-exit test. Still pending: GUI discard confirmation/cleanup, snapping selection with undo/redo, and broader malformed/multiple checkpoint UX. Existing logic tests cover snapping and repository persistence failures.
+
+## Snapping GUI and fresh-profile cleanup — 2026-10-27
+
+A separate profile under test-evidence/2026-10-27-snap contained one disabled fixture with meters at (17,14) and (93,48). GUI selection of both rows followed by Align > Snap selection to grid produced one undo entry. The checkpoint recorded (20,10) and (90,50). Undo returned to the saved draft with 0 undo / 1 redo; Redo restored the snap and 1 undo / 0 redo. The original saved fixture was not overwritten.
+
+Opening this saved fixture on a fresh profile exposed an unrelated cleanup defect: File.Delete raised DirectoryNotFoundException before any Drafts directory existed, displaying a false checkpoint failure. DeleteAsync now treats that specific exception as no checkpoint to delete; other IO/access failures remain visible. Added a regression for deletion before the first checkpoint: 784 tests pass.
+
+The Back button displayed the discard confirmation. The user approved discarding the isolated fixture edits. On 2026-10-28 the Computer Use runtime failed before window access (failed to write kernel assets: path not found), including after a kernel reset. The checkpoint remains on disk; final GUI discard/cleanup and fresh-profile verification of the corrected build remain unverified. No discard pass is claimed.
