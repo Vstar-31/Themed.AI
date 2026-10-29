@@ -389,7 +389,7 @@ public sealed partial class SkinEditorViewModel : ViewModelBase
     public bool Dirty
     {
         get => _dirty;
-        set => SetProperty(ref _dirty, value);
+        set { if (SetProperty(ref _dirty, value)) OnPropertyChanged(nameof(SaveState)); }
     }
 
     private bool _snapToGrid = true;
@@ -700,6 +700,7 @@ public sealed partial class SkinEditorViewModel : ViewModelBase
 
     public async Task<bool> SaveAsync()
     {
+        if (IsSaving) return false;
         var nameAtSave = Name;
         var candidate = _working.Clone();
         candidate.Name = nameAtSave.Trim();
@@ -713,6 +714,7 @@ public sealed partial class SkinEditorViewModel : ViewModelBase
         candidate.Enabled = true;
         try
         {
+            IsSaving = true;
             await _manager.SaveSkinDraftAsync(candidate, _newDraft);
             _working.Enabled = true;
             _newDraft = false;
@@ -741,6 +743,7 @@ public sealed partial class SkinEditorViewModel : ViewModelBase
             StatusMessage = "Couldn't save this widget. Check available storage and file access, then try Save again. Your draft is still here.";
             return false;
         }
+        finally { IsSaving = false; }
     }
 
     public async Task DeleteAsync()

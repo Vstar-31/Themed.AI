@@ -309,6 +309,7 @@
                                         <MenuFlyoutItem Text="Vertical centers" Tag="CenterY" Click="Align_Click"/>
                                         <MenuFlyoutItem Text="Bottom edges" Tag="Bottom" Click="Align_Click"/>
                                         <MenuFlyoutSeparator/>
+                                        <MenuFlyoutItem Text="Snap selection to grid" Click="SnapSelection_Click"/>
                                         <MenuFlyoutItem Text="Distribute horizontally" Tag="DistributeX" Click="Align_Click"/>
                                         <MenuFlyoutItem Text="Distribute vertically" Tag="DistributeY" Click="Align_Click"/>
                                     </MenuFlyout></Button.Flyout>
@@ -655,6 +656,9 @@
                 Padding="32,10,32,10">
             <StackPanel Spacing="4">
                 <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Style="{StaticResource CaptionStyle}" />
+                <TextBlock Text="{x:Bind ViewModel.SaveState, Mode=OneWay}" Style="{StaticResource CaptionStyle}" AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock Text="{x:Bind ViewModel.RecoveryStatus, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
+                <Button Content="Retry checkpoint" Click="RetryCheckpoint_Click" />
                 <Button Content="Keep edits as new widget" Click="RecoverDraft_Click"
                         Visibility="{x:Bind ViewModel.CanRecoverAsCopy, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 <TextBlock Text="{x:Bind ViewModel.BehaviorValidation, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}" AutomationProperties.LiveSetting="Polite"/>

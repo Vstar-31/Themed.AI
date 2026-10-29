@@ -49,8 +49,8 @@ public sealed partial class SkinEditorPage : Page
             SelectLayerNode(ViewModel.SelectedMeter is { } meter ? "meter:" + meter.Definition.Id :
                 ViewModel.SelectedGroup is { } group ? "group:" + group.Definition.Id : null);
         };
-        Loaded += (_, _) => { _behaviorPreviewVisible = true; RefreshBehaviorPreview(); };
-        Unloaded += (_, _) => StopBehaviorPreview();
+        Loaded += (_, _) => { _behaviorPreviewVisible = true; RefreshBehaviorPreview(); StartCheckpoints(); };
+        Unloaded += async (_, _) => { StopBehaviorPreview(); _checkpointTimer?.Stop(); FinishDrag(); await CheckpointAsync(); };
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -60,6 +60,7 @@ public sealed partial class SkinEditorPage : Page
         if (skin is not null)
         {
             ViewModel.LoadSkin(skin, e.Parameter is SkinEditorDraft);
+            _checkpointId = (e.Parameter as SkinEditorDraft)?.RecoveryId ?? Guid.NewGuid();
             RebuildPreview();
             RefreshMeasureComboItems();
             SyncMeasureComboSelection();
@@ -84,6 +85,8 @@ public sealed partial class SkinEditorPage : Page
 
     private async void BackButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_saving || _exportingDraft || _assetPickerOpen) return;
+        FinishDrag();
         if (ViewModel.Dirty)
         {
             var dialog = new ContentDialog
@@ -97,6 +100,7 @@ public sealed partial class SkinEditorPage : Page
             };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         }
+        if (!await DiscardCheckpointAsync()) return;
         if (Frame.CanGoBack) Frame.GoBack();
     }
 
@@ -108,7 +112,11 @@ public sealed partial class SkinEditorPage : Page
         _saving = true;
         try
         {
-            if (await ViewModel.SaveAsync() && !ViewModel.Dirty && Frame.CanGoBack) Frame.GoBack();
+            if (await ViewModel.SaveAsync())
+            {
+                if (!await CheckpointAsync()) return;
+                if (!ViewModel.Dirty && Frame.CanGoBack) Frame.GoBack();
+            }
         }
         finally { _saving = false; }
     }
@@ -128,6 +136,7 @@ public sealed partial class SkinEditorPage : Page
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
             await ViewModel.DeleteAsync();
+            if (!await DiscardCheckpointAsync()) return;
             Frame.GoBack();
         }
     }
