@@ -33,7 +33,7 @@ public sealed class DesktopSceneService
                 ? _scenes.FirstOrDefault(s => s.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
                 : null;
 
-            ActiveScene = restored ?? _scenes.FirstOrDefault();
+            ActiveScene = restored ?? _scenes.FirstOrDefault(s => !s.RequiresExplicitActivation);
             _initialized = true;
 
             ScenesChanged?.Invoke(this, EventArgs.Empty);

@@ -676,6 +676,8 @@ public sealed partial class StudioPage : Page
             Tags = _selected.Tags.ToList(),
             ThemeId = _selected.ThemeId,
             WallpaperPath = _selected.WallpaperPath,
+            ThemeSnapshot = _selected.ThemeSnapshot?.Duplicate(),
+            RequiresExplicitActivation = _selected.RequiresExplicitActivation,
             WallpaperOpacity = _selected.WallpaperOpacity,
             WallpaperFit = _selected.WallpaperFit,
             Widgets = _selected.Widgets.Select(ClonePlacement).ToList(),
@@ -875,7 +877,7 @@ public sealed partial class StudioPage : Page
                 await SaveCurrentSceneLayoutAsync(previous);
 
             var themes = await App.ThemeRepository.LoadAllAsync();
-            var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(target.ThemeId, StringComparison.OrdinalIgnoreCase));
+            var targetTheme = target.ThemeSnapshot ?? themes.FirstOrDefault(t => t.Id.Equals(target.ThemeId, StringComparison.OrdinalIgnoreCase));
 
             if (targetTheme is not null)
             {

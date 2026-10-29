@@ -230,7 +230,7 @@ public sealed class DesktopWorldRuntime : IDisposable
         }
 
         if (desiredTag is null || active.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase))) return;
-        var candidate = _scenes.Scenes.FirstOrDefault(s => s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
+        var candidate = _scenes.Scenes.FirstOrDefault(s => !s.RequiresExplicitActivation && s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
         if (candidate is not null) _scenes.SetActiveScene(candidate);
     }
 
