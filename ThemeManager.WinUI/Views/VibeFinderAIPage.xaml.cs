@@ -1,5 +1,9 @@
+using ThemeManager.Core.Services;
+using ThemeManager.Core.Models;
+using ThemeManager.Core.Skins;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Extensions.Logging;
 using ThemeManager.WinUI.Services;
@@ -15,7 +19,11 @@ public sealed partial class VibeFinderAIPage : Page
     private bool _isInitializing = true;
     private bool _embedReady;
     private bool _embedHasToken;
+    private bool _initialAnalysisTriggered;
+    private bool _initialAnalysisDeferredForNativePreview;
+    private bool _isPageVisible;
     private System.EventHandler<ThemeManager.Core.Models.CozyTheme>? _themeChangedHandler;
+    private System.EventHandler<DesktopScene?>? _activeSceneChangedHandler;
     private const string ActiveThemeSentinel = "$theme";
     private const int AutoFillTrackLimit = 50;
     private bool _dialogOpen;
@@ -23,11 +31,29 @@ public sealed partial class VibeFinderAIPage : Page
     public VibeFinderAIPage()
     {
         this.InitializeComponent();
+
+        // Keep the WebView2/React session alive while users move between workspaces. A fresh
+        // page instance remounts VibeFinder, re-runs analysis, changes tracks and resets playback.
+        NavigationCacheMode = NavigationCacheMode.Required;
+        ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.PreviewEnded += OnNativePreviewEnded;
+        ThemeManager.Integration.Skins.VibeFinderWebState.StateChanged += OnPlaybackAuthorityStateChanged;
+
         VibeFinderWebView.CoreWebView2Initialized += (s, e) =>
         {
+            if (e.Exception is not null || VibeFinderWebView.CoreWebView2 is null)
+            {
+                _logger.LogWarning(e.Exception, "VibeFinder browser initialization failed");
+                StatusText.Text = "The browser could not start. Install or repair the Microsoft Edge WebView2 Runtime.";
+                StatusText.Visibility = Visibility.Visible;
+                return;
+            }
+            ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
-                var json = args.TryGetWebMessageAsString();
+                if (!VibeFinderSite.IsTrusted(args.Source)) return;
+                string json;
+                try { json = args.TryGetWebMessageAsString(); }
+                catch (ArgumentException) { return; }
                 if (string.IsNullOrEmpty(json))
                 {
                     _logger.LogDebug("VibeFinderAIPage: WebMessageReceived fired with an empty/non-string payload — ignored");
@@ -43,43 +69,73 @@ public sealed partial class VibeFinderAIPage : Page
                 {
                     _embedReady = true;
                     _embedHasToken = hasToken;
+                    ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(hasToken);
                     StatusText.Text = hasToken
                         ? "Connected to VibeFinder AI ✓"
-                        : "VibeFinder AI loaded — signing in…";
+                        : VibeFinderCredentials.IsConfigured(UsernameBox.Text, PasswordBox.Password)
+                            ? "VibeFinder AI loaded — signing in…"
+                            : "Enter your VibeFinder account details to connect.";
                     StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
                         hasToken ? Microsoft.UI.Colors.Green : Microsoft.UI.Colors.Gray);
                     StatusText.Visibility = Visibility.Visible;
-                    _logger.LogInformation("VibeFinderAIPage: embed mounted (VIBEFINDER_APP_READY, hasToken={HasToken}) — {Action}", hasToken, hasToken ? "pushing prompt and triggering a run" : "pushing prompt only, waiting on auto-login");
-                    PushVibePromptAndTrackLimit(triggerRun: hasToken);
+                    _logger.LogInformation(
+                        "VibeFinderAIPage: embed ready (hasToken={HasToken}, initialRunAlreadyTriggered={InitialRunAlreadyTriggered}, initialRunDeferred={InitialRunDeferred})",
+                        hasToken, _initialAnalysisTriggered, _initialAnalysisDeferredForNativePreview);
+
+                    // Do not replace a native preview midway through its 30-second clip just
+                    // because the user opened this tab. Once it finishes, initialize the visible SPA.
+                    // The pending flag makes repeated APP_READY notifications safe.
+                    if (hasToken && !_initialAnalysisTriggered)
+                    {
+                        if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
+                        {
+                            _initialAnalysisDeferredForNativePreview = true;
+                            PushVibePromptAndTrackLimit(triggerRun: false);
+                            _logger.LogInformation("VibeFinderAIPage: initial analysis deferred while a native preview source is loaded");
+                        }
+                        else if (!_initialAnalysisDeferredForNativePreview)
+                        {
+                            PushVibePromptAndTrackLimit(triggerRun: true);
+                        }
+                        else
+                        {
+                            PushVibePromptAndTrackLimit(triggerRun: false);
+                        }
+                    }
+                    else
+                    {
+                        PushVibePromptAndTrackLimit(triggerRun: false);
+                    }
                     return;
                 }
-                ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json);
+                if (TryGetMessageType(json) == "VIBEFINDER_RESULTS")
+                {
+                    // Results from a user-initiated web analysis supersede any deferred first-run
+                    // analysis; don't run a second analysis when the old native preview ends.
+                    _initialAnalysisDeferredForNativePreview = false;
+                    _initialAnalysisTriggered = true;
+                }
+
+                ThemeManager.Integration.Skins.VibeFinderWebState.HandleMessage(json, fromVisibleEmbed: true);
             };
-            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = (cmd) =>
+            BindVisibleEmbedBridge();
+            ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
+            VibeFinderWebView.CoreWebView2.NavigationStarting += (_, args) =>
             {
-                try
-                {
-                    VibeFinderWebView.CoreWebView2.PostWebMessageAsJson(cmd);
-                    _logger.LogTrace("VibeFinderAIPage: posted command to embed: {Command}", cmd);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "VibeFinderAIPage: failed to post command to embed: {Command}", cmd);
-                }
+                args.Cancel = !VibeFinderSite.IsTrusted(args.Uri);
+                if (!args.Cancel)
+                    ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
             };
+            VibeFinderWebView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
         };
 
-        _skinManager.EnsureVibeFinderSkinsExist();
-        var skins = _skinManager.Skins;
-        var primary = skins.FirstOrDefault(s => s.Name == "VibeFinder Primary");
-        if (primary != null) TogglePrimary.IsOn = primary.Enabled;
-        var minimal = skins.FirstOrDefault(s => s.Name == "VibeFinder Minimal");
-        if (minimal != null) ToggleMinimal.IsOn = minimal.Enabled;
-        var playlist = skins.FirstOrDefault(s => s.Name == "VibeFinder Playlist");
-        if (playlist != null) TogglePlaylist.IsOn = playlist.Enabled;
+        VibeFinderWebView.Source = new Uri(VibeFinderSite.AppUrl);
 
-        var vibeSkin = skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
+        _ = _skinManager.EnsureVibeFinderSkinsExist();
+        SyncWidgetTogglesFromActiveWorld();
+
+        var vibeSkin = _skinManager.Skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
         if (vibeSkin != null)
         {
             var measure = vibeSkin.Measures.FirstOrDefault(m =>
@@ -89,10 +145,13 @@ public sealed partial class VibeFinderAIPage : Page
             if (measure != null && !string.IsNullOrWhiteSpace(measure.Target))
             {
                 var targetStr = measure.Target;
-                if (targetStr.StartsWith("|")) targetStr = targetStr.Substring(1);
+                if (targetStr.StartsWith("|") && !targetStr.StartsWith("||")) targetStr = targetStr.Substring(1);
                 var parts = targetStr.Split('|', 3);
-                if (parts.Length >= 1) UsernameBox.Text = parts[0];
-                if (parts.Length >= 2) PasswordBox.Password = parts[1];
+                if (parts.Length >= 2 && VibeFinderCredentials.IsConfigured(parts[0], parts[1]))
+                {
+                    UsernameBox.Text = parts[0];
+                    PasswordBox.Password = parts[1];
+                }
                 if (parts.Length >= 3) PromptBox.Text = parts[2];
             }
         }
@@ -100,11 +159,32 @@ public sealed partial class VibeFinderAIPage : Page
         _isInitializing = false;
         _themeChangedHandler = (_, _) =>
         {
-            if (string.Equals(PromptBox.Text?.Trim(), ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase))
+            // $theme should react only while the user is actually in this workspace. A background
+            // tab must not silently replace the active track.
+            if (_isPageVisible &&
+                string.Equals(PromptBox.Text?.Trim(), ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase))
                 PushVibePromptAndTrackLimit();
         };
         App.ThemeService.ThemeChanged += _themeChangedHandler;
+        _activeSceneChangedHandler = (_, _) => DispatcherQueue.TryEnqueue(SyncWidgetTogglesFromActiveWorld);
+        App.SceneService.ActiveSceneChanged += _activeSceneChangedHandler;
     }
+
+    private bool? _wideLayout;
+
+    private void MediaLayout_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool wide = e.NewSize.Width >= 960;
+        if (_wideLayout == wide) return;
+        _wideLayout = wide;
+        MediaSplit.DisplayMode = wide ? SplitViewDisplayMode.Inline : SplitViewDisplayMode.Overlay;
+        MediaSplit.IsPaneOpen = wide;
+        ConnectionButton.Visibility = wide ? Visibility.Collapsed : Visibility.Visible;
+        CloseConnectionButton.Visibility = wide ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ToggleConnection_Click(object sender, RoutedEventArgs e) =>
+        MediaSplit.IsPaneOpen = !MediaSplit.IsPaneOpen;
 
     private async void CoreWebView2_NavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
@@ -114,7 +194,8 @@ public sealed partial class VibeFinderAIPage : Page
             return;
         }
         var uri = sender.Source;
-        if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
+        if (!VibeFinderSite.IsTrusted(uri)) return;
+        BindVisibleEmbedBridge();
         _logger.LogDebug("VibeFinderAIPage: navigation completed for {Uri}", uri);
         string user = UsernameBox.Text?.Trim() ?? "";
         string pass = PasswordBox.Password ?? "";
@@ -126,7 +207,7 @@ public sealed partial class VibeFinderAIPage : Page
         {
             _logger.LogDebug(ex, "VibeFinderAIPage: SkipTutorialScript injection failed — WebView2 may have been torn down");
         }
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
+        if (!VibeFinderCredentials.IsConfigured(user, pass))
         {
             _logger.LogDebug("VibeFinderAIPage: no saved credentials — skipping auto-login injection");
             return;
@@ -142,26 +223,141 @@ public sealed partial class VibeFinderAIPage : Page
         }
     }
 
-    private void WidgetToggle_Toggled(object sender, RoutedEventArgs e)
+    private void BindVisibleEmbedBridge()
+    {
+        if (VibeFinderWebView.CoreWebView2 is null)
+        {
+            _logger.LogTrace("VibeFinderAIPage: visible embed bridge bind skipped — CoreWebView2 is not initialized");
+            return;
+        }
+
+        ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand = commandJson =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    var core = VibeFinderWebView.CoreWebView2;
+                    if (core is null || !VibeFinderSite.IsTrusted(core.Source))
+                    {
+                        _logger.LogDebug("VibeFinderAIPage: command dropped because CoreWebView2 is unavailable");
+                        return;
+                    }
+
+                    core.PostWebMessageAsJson(commandJson);
+                    _logger.LogTrace("VibeFinderAIPage: posted command to embed: {Command}", commandJson);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinderAIPage: failed to post command to embed: {Command}", commandJson);
+                }
+            });
+        };
+
+        _logger.LogDebug("VibeFinderAIPage: visible embed bridge bound");
+    }
+
+    private void SyncWidgetTogglesFromActiveWorld()
+    {
+        _isInitializing = true;
+        try
+        {
+            var activeScene = App.SceneService?.ActiveScene;
+            var primary = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals("VibeFinder Primary", StringComparison.OrdinalIgnoreCase));
+            var minimal = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals("VibeFinder Minimal", StringComparison.OrdinalIgnoreCase));
+            var playlist = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals("VibeFinder Playlist", StringComparison.OrdinalIgnoreCase));
+
+            TogglePrimary.IsOn = GetEffectiveWidgetEnabled(activeScene, primary);
+            ToggleMinimal.IsOn = GetEffectiveWidgetEnabled(activeScene, minimal);
+            TogglePlaylist.IsOn = GetEffectiveWidgetEnabled(activeScene, playlist);
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+    }
+
+    private static bool GetEffectiveWidgetEnabled(DesktopScene? scene, SkinDefinition? skin)
+    {
+        if (skin is null) return false;
+        var placement = scene?.Widgets.FirstOrDefault(p =>
+            p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+        return scene is null
+            ? skin.Enabled
+            : placement?.Visible == true;
+    }
+
+    private static void EnsureScenePlacement(DesktopScene scene, SkinDefinition skin)
+    {
+        if (scene.Widgets.Any(p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        scene.Widgets.Add(new SceneWidgetPlacement
+        {
+            WidgetId = skin.Id,
+            X = skin.X,
+            Y = skin.Y,
+            Scale = 1.0,
+            Rotation = 0,
+            Opacity = Math.Clamp(skin.Opacity, 0, 1),
+            ZIndex = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(p => p.ZIndex) + 1,
+            Visible = false,
+            Monitor = "Primary",
+            Definition = skin.Clone()
+        });
+    }
+
+    private async void WidgetToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_isInitializing) return;
-        if (sender is ToggleSwitch toggle && toggle.Tag is string skinName)
+        if (sender is not ToggleSwitch toggle || toggle.Tag is not string skinName) return;
+
+        var skin = _skinManager.Skins.FirstOrDefault(s => s.Name.Equals(skinName, StringComparison.OrdinalIgnoreCase));
+        if (skin is null) return;
+
+        try
         {
-            var skin = _skinManager.Skins.FirstOrDefault(s => s.Name == skinName);
-            if (skin != null && skin.Enabled != toggle.IsOn)
-                _ = _skinManager.SetEnabledAsync(skin, toggle.IsOn);
+            toggle.IsEnabled = false;
+
+            var sceneService = App.SceneService;
+            var activeScene = sceneService?.ActiveScene;
+            if (activeScene is not null && sceneService is not null)
+            {
+                EnsureScenePlacement(activeScene, skin);
+                var placement = activeScene.Widgets.First(p =>
+                    p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+                placement.Visible = toggle.IsOn;
+                placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
+                placement.Definition = skin.Clone(skin.Id);
+                await sceneService.UpsertAsync(activeScene);
+            }
+
+            await _skinManager.SetEnabledAsync(skin, toggle.IsOn);
+            SyncWidgetTogglesFromActiveWorld();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "VibeFinderAIPage: widget toggle failed for {SkinName}", skinName);
+            SyncWidgetTogglesFromActiveWorld();
+            StatusText.Text = $"Could not change {skinName}: {ex.Message}";
+            StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red);
+            StatusText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            toggle.IsEnabled = true;
         }
     }
 
     private async void SaveCredentials_Click(object sender, RoutedEventArgs e)
     {
-        string user = UsernameBox.Text;
+        string user = UsernameBox.Text.Trim();
         string pass = PasswordBox.Password;
         string prompt = PromptBox.Text;
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass) || string.IsNullOrWhiteSpace(prompt))
+        if (!VibeFinderCredentials.IsConfigured(user, pass) || string.IsNullOrWhiteSpace(prompt))
         {
             _logger.LogDebug("VibeFinderAIPage: Save & Apply blocked — one or more fields empty");
-            StatusText.Text = "Please fill all fields.";
+            StatusText.Text = "Enter your own username, password, and a vibe prompt.";
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red);
             StatusText.Visibility = Visibility.Visible;
             return;
@@ -208,7 +404,7 @@ public sealed partial class VibeFinderAIPage : Page
         foreach (var skin in vibeSkins)
         {
             _logger.LogDebug("VibeFinderAIPage: persisting VibeFinder skin {SkinName} sequentially", skin.Name);
-            await _skinManager.SaveSkinAsync(skin);
+            await _skinManager.PersistSkinDataAsync(skin);
         }
         _logger.LogInformation("VibeFinderAIPage: VibeFinder credentials persisted for {SkinCount} skin(s) without concurrent rebuilds", vibeSkins.Count);
     }
@@ -217,7 +413,8 @@ public sealed partial class VibeFinderAIPage : Page
     {
         try
         {
-            if (VibeFinderWebView.CoreWebView2 is null)
+            if (VibeFinderWebView.CoreWebView2 is null
+                || !VibeFinderSite.IsTrusted(VibeFinderWebView.CoreWebView2.Source))
             {
                 _logger.LogDebug("VibeFinderAIPage: TryInjectLoginAsync skipped — CoreWebView2 not yet initialized");
                 return;
@@ -237,21 +434,34 @@ public sealed partial class VibeFinderAIPage : Page
         {
             _embedReady = true;
             _embedHasToken = true;
+            ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(true);
             StatusText.Text = "Connected to VibeFinder AI ✓";
             StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
             StatusText.Visibility = Visibility.Visible;
             _logger.LogInformation("VibeFinderAIPage: embed login succeeded");
+            if (!_initialAnalysisTriggered && !_initialAnalysisDeferredForNativePreview)
+            {
+                if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
+                {
+                    _initialAnalysisDeferredForNativePreview = true;
+                    PushVibePromptAndTrackLimit(triggerRun: false);
+                    _logger.LogInformation("VibeFinderAIPage: initial analysis deferred after login while native preview source remains loaded");
+                }
+                else
+                {
+                    PushVibePromptAndTrackLimit(triggerRun: true);
+                }
+            }
             return;
         }
 
-        // The embedded React app is authoritative. A background/duplicate login request can fail
-        // while the already-mounted embed still has a valid token and is playing normally.
         if (_embedReady && _embedHasToken)
         {
             _logger.LogDebug("VibeFinderAIPage: ignoring login failure ({Reason}) because embed is already ready with a token", reason ?? "unspecified");
             return;
         }
 
+        ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
         _logger.LogWarning("VibeFinderAIPage: embed login failed, reason={Reason}", reason ?? "(unspecified)");
         if (reason == "network")
         {
@@ -295,6 +505,36 @@ public sealed partial class VibeFinderAIPage : Page
         }
     }
 
+    private void OnPlaybackAuthorityStateChanged(object? sender, EventArgs e)
+    {
+        if (!ThemeManager.Integration.Skins.VibeFinderWebState.IsPlayerActive ||
+            !ThemeManager.Integration.Skins.VibeFinderWebState.IsPlaying)
+            return;
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            // Once the browser is genuinely playing, the native preview has handed off. An old
+            // deferred run must not fire later and replace the song the user just started.
+            _initialAnalysisDeferredForNativePreview = false;
+            _initialAnalysisTriggered = true;
+        });
+    }
+
+    private static string? TryGetMessageType(string messageJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(messageJson);
+            return document.RootElement.TryGetProperty("type", out var type)
+                ? type.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static bool TryParseAppReady(string messageJson, out bool hasToken)
     {
         hasToken = false;
@@ -314,16 +554,30 @@ public sealed partial class VibeFinderAIPage : Page
     {
         if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is null) return;
         string rawPrompt = PromptBox.Text?.Trim() ?? "";
-        string vibeText = string.Equals(rawPrompt, ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase)
+        string rawText = rawPrompt.Trim();
+        string vibeText = string.Equals(rawText, ActiveThemeSentinel, System.StringComparison.OrdinalIgnoreCase)
             ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
-            : rawPrompt;
+            : rawText;
         if (string.IsNullOrWhiteSpace(vibeText)) return;
         try
         {
-            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = vibeText }));
+            // Keep the visible VibeFinder prompt faithful to the saved setting. "$theme" is
+            // a user-facing sentinel; only the analysis payload should contain its resolved
+            // theme description.
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit }));
             if (triggerRun)
+            {
+                if (!_embedReady || !_embedHasToken)
+                {
+                    _logger.LogDebug("VibeFinderAIPage: analysis request deferred until the authenticated SPA is ready");
+                    return;
+                }
+
                 ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit }));
+                _initialAnalysisTriggered = true;
+                _initialAnalysisDeferredForNativePreview = false;
+            }
         }
         catch (Exception ex)
         {
@@ -331,16 +585,25 @@ public sealed partial class VibeFinderAIPage : Page
         }
     }
 
+    private void OnNativePreviewEnded()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_initialAnalysisDeferredForNativePreview || _initialAnalysisTriggered ||
+                !_embedReady || !_embedHasToken)
+                return;
+
+            _logger.LogInformation("VibeFinderAIPage: native preview ended; starting deferred initial analysis");
+            PushVibePromptAndTrackLimit(triggerRun: true);
+        });
+    }
+
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
-        if (_themeChangedHandler is not null)
-            App.ThemeService.ThemeChanged -= _themeChangedHandler;
-
-        // The hidden prewarm WebView is the persistent bridge for desktop widgets. Do not tear it
-        // down just because this settings page went away.
-        if (App.MainWindow?.IsVibeFinderPrewarmActive == true)
-            App.MainWindow.RebindVibeFinderPrewarmBridge();
-        else
-            ThemeManager.Integration.Skins.VibeFinderWebState.Detach();
+        _isPageVisible = false;
+        // This page is NavigationCacheMode.Required. Unloaded means the user changed tabs, not
+        // that the WebView session is dead. Keep its playback bridge and state authority attached
+        // so widget controls continue addressing the same player and the tab resumes without reload.
+        _logger.LogTrace("VibeFinderAIPage: page hidden; retaining cached WebView session and playback authority");
     }
 }

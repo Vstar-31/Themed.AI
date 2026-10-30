@@ -43,9 +43,9 @@ public sealed class DiskMeasure : IMeasure
             double freePercent = 100.0 * drive.AvailableFreeSpace / total;
             double usedPercent = 100.0 - freePercent;
             
-            // Value always represents used space so that progress bars fill up as the disk gets full
-            // and threshold alerts (e.g. >90%) trigger correctly when the disk is almost full.
-            Value = usedPercent;
+            // Numeric formats and text formats must describe the same requested metric.
+            // DiskUsed remains available for fullness bars and high-usage alerts.
+            Value = _reportFreeSpace ? freePercent : usedPercent;
             
             // Text contains the string for the requested metric
             Text = _reportFreeSpace ? $"{freePercent:F0}%" : $"{usedPercent:F0}%";

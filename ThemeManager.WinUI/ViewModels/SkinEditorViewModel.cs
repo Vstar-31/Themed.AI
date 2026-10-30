@@ -5,10 +5,7 @@ using ThemeManager.WinUI.Services;
 namespace ThemeManager.WinUI.ViewModels;
 
 /// <summary>
-/// Wraps a single <see cref="MeasureDefinition"/> for editing. Like <c>ThemeEditorViewModel</c>'s
-/// token properties, each setter writes straight through to the underlying definition — there's
-/// no separate "draft" object, the definition IS the draft (it already lives in
-/// <see cref="SkinManagerService"/>'s list from the moment the widget was created).
+/// Wraps one measure in the editor draft and notifies the preview of changes.
 /// </summary>
 public sealed class MeasureEditorItem : ViewModelBase
 {
@@ -33,6 +30,7 @@ public sealed class MeasureEditorItem : ViewModelBase
             OnPropertyChanged(nameof(NeedsTarget));
             OnPropertyChanged(nameof(TargetPlaceholder));
             OnPropertyChanged(nameof(IsWebJson));
+            OnPropertyChanged(nameof(IsFormula));
             _onChanged();
         }
     }
@@ -42,6 +40,7 @@ public sealed class MeasureEditorItem : ViewModelBase
     /// value (a drive path) or too personal to ship a preset for (weather city, VibeFinderAI
     /// credentials).</summary>
     public bool IsWebJson => Type == MeasureType.WebJson;
+    public bool IsFormula => Type == MeasureType.Formula;
 
     /// <summary>The quick-fill options for the presets ComboBox, shown only when <see cref="IsWebJson"/>.</summary>
     public static IReadOnlyList<WebJsonPreset> WebJsonPresetOptions => WebJsonPresets.All;
@@ -51,6 +50,13 @@ public sealed class MeasureEditorItem : ViewModelBase
     {
         get => _target;
         set { if (SetProperty(ref _target, value)) { Definition.Target = value; _onChanged(); } }
+    }
+
+    private string _expression;
+    public string Expression
+    {
+        get => _expression;
+        set { if (SetProperty(ref _expression, value)) { Definition.Expression = value; _onChanged(); } }
     }
 
     /// <summary>Disk measures need a drive path and Weather measures need a city+API key — every
@@ -77,7 +83,51 @@ public sealed class MeasureEditorItem : ViewModelBase
         _name = definition.Name;
         _type = definition.Type;
         _target = definition.Target ?? "";
+        _expression = definition.Expression ?? "";
     }
+}
+
+
+public sealed class GroupEditorItem : ViewModelBase
+{
+    public WidgetGroupDefinition Definition { get; }
+    private readonly Action _onChanged;
+    private string _name;
+    private double _x, _y, _width, _height, _scaleX, _scaleY, _rotation, _opacity;
+    private bool _clip;
+    private int _meterCount;
+
+    public string Name { get => _name; set { if (SetProperty(ref _name, value)) { Definition.Name = value; _onChanged(); } } }
+    public double X { get => _x; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
+    public double Y { get => _y; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
+    public double Width { get => _width; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
+    public double Height { get => _height; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
+    public double ScaleX { get => _scaleX; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0.01, 100); if (SetProperty(ref _scaleX, v)) { Definition.ScaleX = v; _onChanged(); } } }
+    public double ScaleY { get => _scaleY; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0.01, 100); if (SetProperty(ref _scaleY, v)) { Definition.ScaleY = v; _onChanged(); } } }
+    public double Rotation { get => _rotation; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _rotation, value)) { Definition.Rotation = value; _onChanged(); } } }
+    public double Opacity { get => _opacity; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0, 1); if (SetProperty(ref _opacity, v)) { Definition.Opacity = v; _onChanged(); } } }
+    public bool Clip { get => _clip; set { if (SetProperty(ref _clip, value)) { Definition.Clip = value; _onChanged(); } } }
+
+    public int MeterCount { get => _meterCount; private set => SetProperty(ref _meterCount, value); }
+
+    public GroupEditorItem(WidgetGroupDefinition definition, Action onChanged)
+    {
+        Definition = definition;
+        _onChanged = onChanged;
+        _name = definition.Name;
+        _x = definition.X;
+        _y = definition.Y;
+        _width = definition.Width;
+        _height = definition.Height;
+        _scaleX = definition.ScaleX;
+        _scaleY = definition.ScaleY;
+        _rotation = definition.Rotation;
+        _opacity = definition.Opacity;
+        _clip = definition.Clip;
+        MeterCount = definition.MeterIds?.Count ?? 0;
+    }
+
+    internal void RefreshCount(int count) => MeterCount = count;
 }
 
 /// <summary>Same wrapping approach as <see cref="MeasureEditorItem"/>, applied to a <see cref="MeterDefinition"/>.</summary>
@@ -99,14 +149,15 @@ public sealed class MeterEditorItem : ViewModelBase
     public bool IsGraph => Kind == MeterKind.Graph;
     public bool IsIcon => Kind == MeterKind.Icon;
     public bool IsRing => Kind == MeterKind.Ring;
+    public bool IsImage => Kind == MeterKind.Image;
     public bool IsWebEmbed => Kind == MeterKind.WebEmbed;
 
-    /// <summary>Every kind except WebEmbed binds to a live measure (or falls back to static
+    /// <summary>Every kind except WebEmbed and Image binds to a live measure (or falls back to static
     /// text) and can launch a click action — a WebEmbed meter has no measure to read and no
     /// synthetic click action of its own; the embedded page handles its own clicks once it's on
     /// screen. Gates the shared "Measure" combo, "Static text" field, and "Click actions" section
     /// in the property panel, which would otherwise show controls that do nothing for this kind.</summary>
-    public bool UsesMeasureAndClickFields => !IsWebEmbed;
+    public bool UsesMeasureAndClickFields => !IsWebEmbed && !IsImage;
 
     /// <summary>Icon and Ring meters share Bar/Graph's "value that reads as full" field — it's
     /// what their threshold-percent check divides against — but not Graph's history-length field.</summary>
@@ -114,7 +165,7 @@ public sealed class MeterEditorItem : ViewModelBase
 
     /// <summary>Icon meters use <see cref="IconGlyph"/> instead of a static-text label, so the
     /// generic "Static text" field only makes sense for the other kinds.</summary>
-    public bool ShowStaticTextField => IsStaticText && !IsIcon;
+    public bool ShowStaticTextField => IsStaticText && !IsIcon && !IsImage;
 
     private double _x, _y, _width, _height, _fontSize, _barMax, _thresholdPercent;
     private int _historyLength;
@@ -122,25 +173,26 @@ public sealed class MeterEditorItem : ViewModelBase
     private string? _actionUrl, _secondaryActionUrl;
     private bool _bold, _thresholdAppliesToText, _centerText;
 
-    public double X { get => _x; set { if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
-    public double Y { get => _y; set { if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
-    public double Width { get => _width; set { var v = Math.Max(0, value); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
-    public double Height { get => _height; set { var v = Math.Max(0, value); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
-    public double FontSize { get => _fontSize; set { if (SetProperty(ref _fontSize, value)) { Definition.FontSize = value; _onChanged(); } } }
-    public double BarMax { get => _barMax; set { if (SetProperty(ref _barMax, value)) { Definition.BarMax = value; _onChanged(); } } }
-    public int HistoryLength { get => _historyLength; set { if (SetProperty(ref _historyLength, value)) { Definition.HistoryLength = value; _onChanged(); } } }
+    public double X { get => _x; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _x, value)) { Definition.X = value; _onChanged(); } } }
+    public double Y { get => _y; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } if (SetProperty(ref _y, value)) { Definition.Y = value; _onChanged(); } } }
+    public double Width { get => _width; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _width, v)) { Definition.Width = v; _onChanged(); } } }
+    public double Height { get => _height; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _height, v)) { Definition.Height = v; _onChanged(); } } }
+    public double FontSize { get => _fontSize; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } value = Math.Clamp(value, 1, 512); if (SetProperty(ref _fontSize, value)) { Definition.FontSize = value; _onChanged(); } } }
+    public double BarMax { get => _barMax; set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } value = Math.Max(0.001, value); if (SetProperty(ref _barMax, value)) { Definition.BarMax = value; _onChanged(); } } }
+    public int HistoryLength { get => _historyLength; set { value = Math.Clamp(value, 1, 10000); if (SetProperty(ref _historyLength, value)) { Definition.HistoryLength = value; _onChanged(); } } }
     public bool Bold { get => _bold; set { if (SetProperty(ref _bold, value)) { Definition.Bold = value; _onChanged(); } } }
     public bool CenterText { get => _centerText; set { if (SetProperty(ref _centerText, value)) { Definition.CenterText = value; _onChanged(); } } }
     public string StaticText { get => _staticText; set { if (SetProperty(ref _staticText, value)) { Definition.StaticText = value; _onChanged(); } } }
     public string Format { get => _format; set { if (SetProperty(ref _format, value)) { Definition.Format = value; _onChanged(); } } }
     public string IconGlyph { get => _iconGlyph; set { if (SetProperty(ref _iconGlyph, value)) { Definition.IconGlyph = value; _onChanged(); } } }
+    public string ImagePath { get => Definition.ImagePath ?? ""; set { if (Definition.ImagePath != value) { Definition.ImagePath = value; OnPropertyChanged(); _onChanged(); } } }
     public string WebEmbedUrl { get => _webEmbedUrl; set { if (SetProperty(ref _webEmbedUrl, value)) { Definition.WebEmbedUrl = value; _onChanged(); } } }
 
     // ── Threshold alert ────────────────────────────────────────────────────
     public double ThresholdPercent
     {
         get => _thresholdPercent;
-        set { var v = Math.Clamp(value, 0, 100); if (SetProperty(ref _thresholdPercent, v)) { Definition.ThresholdPercent = v; OnPropertyChanged(nameof(HasThreshold)); _onChanged(); } }
+        set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 0, 100); if (SetProperty(ref _thresholdPercent, v)) { Definition.ThresholdPercent = v; OnPropertyChanged(nameof(HasThreshold)); _onChanged(); } }
     }
     public string ThresholdColorHex
     {
@@ -210,6 +262,26 @@ public sealed class MeterEditorItem : ViewModelBase
         Y = Math.Max(0, y);
     }
 
+    internal void ApplyBakedGeometry(double x, double y, double width, double height, double rotation)
+    {
+        var newX = Math.Max(0, x);
+        var newY = Math.Max(0, y);
+        var newWidth = Math.Max(1, width);
+        var newHeight = Math.Max(1, height);
+
+        SetProperty(ref _x, newX);
+        SetProperty(ref _y, newY);
+        SetProperty(ref _width, newWidth);
+        SetProperty(ref _height, newHeight);
+
+        Definition.X = newX;
+        Definition.Y = newY;
+        Definition.Width = newWidth;
+        Definition.Height = newHeight;
+        Definition.Rotation = rotation;
+        _onChanged();
+    }
+
     internal void ApplyPreview(string text, double fraction)
     {
         PreviewText = text;
@@ -260,6 +332,7 @@ internal static class MeterPreview
             MeasureType.VibeTrackTitle => (0.0, "Golden Hour"),
             MeasureType.VibeTrackArtist => (0.0, "JVKE"),
             MeasureType.VibeMood => (0.0, "cozy"),
+            MeasureType.Formula => (42.0, "42"),
             _ => (42.0, "42%"), // Cpu, Memory, DiskFree, DiskUsed
         };
 
@@ -280,44 +353,43 @@ internal static class MeterPreview
 }
 
 /// <summary>
-/// Backs <see cref="Views.SkinEditorPage"/>. Edits a <see cref="SkinDefinition"/> in place —
-/// the same "mutate the real object, Save just persists + refreshes the live window" approach
-/// <c>ThemeEditorViewModel</c> uses for themes.
+/// Backs the widget editor with an independent draft. Live widgets change only after Save succeeds.
 /// </summary>
-public sealed class SkinEditorViewModel : ViewModelBase
+public sealed partial class SkinEditorViewModel : ViewModelBase
 {
     private readonly SkinManagerService _manager;
     private SkinDefinition _working = null!;
 
     public ObservableCollection<MeasureEditorItem> Measures { get; } = new();
     public ObservableCollection<MeterEditorItem> Meters { get; } = new();
+    public ObservableCollection<GroupEditorItem> Groups { get; } = new();
 
     private string _name = "";
     public string Name
     {
         get => _name;
-        set { if (SetProperty(ref _name, value)) { _working.Name = value; Dirty = true; } }
+        set { if (SetProperty(ref _name, value)) { _working.Name = value; MarkDirty(); } }
     }
 
     private double _width = 200;
     public double Width
     {
         get => _width;
-        set { var v = Math.Max(0, value); if (SetProperty(ref _width, v)) { _working.Width = v; Dirty = true; } }
+        set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _width, v)) { _working.Width = v; MarkDirty(); } }
     }
 
     private double _height = 100;
     public double Height
     {
         get => _height;
-        set { var v = Math.Max(0, value); if (SetProperty(ref _height, v)) { _working.Height = v; Dirty = true; } }
+        set { if (!double.IsFinite(value)) { OnPropertyChanged(); return; } var v = Math.Clamp(value, 1, 8192); if (SetProperty(ref _height, v)) { _working.Height = v; MarkDirty(); } }
     }
 
     private bool _dirty;
     public bool Dirty
     {
         get => _dirty;
-        set => SetProperty(ref _dirty, value);
+        set { if (SetProperty(ref _dirty, value)) OnPropertyChanged(nameof(SaveState)); }
     }
 
     private bool _snapToGrid = true;
@@ -338,20 +410,30 @@ public sealed class SkinEditorViewModel : ViewModelBase
     public MeterEditorItem? SelectedMeter
     {
         get => _selectedMeter;
-        set { if (SetProperty(ref _selectedMeter, value)) OnPropertyChanged(nameof(HasSelectedMeter)); }
+        set { if (SetProperty(ref _selectedMeter, value)) { LoadSelectedStates(); OnPropertyChanged(nameof(HasSelectedMeter)); } }
     }
 
     /// <summary>Drives the property panel's Visibility — x:Bind can't null-check inline, so this
     /// gives the XAML a plain bool to convert instead.</summary>
     public bool HasSelectedMeter => SelectedMeter is not null;
 
+    private GroupEditorItem? _selectedGroup;
+    public GroupEditorItem? SelectedGroup
+    {
+        get => _selectedGroup;
+        set { if (SetProperty(ref _selectedGroup, value)) OnPropertyChanged(nameof(HasSelectedGroup)); }
+    }
+
+    public bool HasSelectedGroup => SelectedGroup is not null;
+
     /// <summary>Every measure type, for the "Type" ComboBox in the Measures list.</summary>
     public static Array AllMeasureTypes { get; } = Enum.GetValues<MeasureType>();
 
     public SkinEditorViewModel(SkinManagerService manager) => _manager = manager;
 
-    public void LoadSkin(SkinDefinition skin)
+    private void ApplyDraft(SkinDefinition skin)
     {
+        skin = skin.Clone();
         _working = skin;
         _name = skin.Name;
         _width = skin.Width;
@@ -365,16 +447,29 @@ public sealed class SkinEditorViewModel : ViewModelBase
         foreach (var m in skin.Meters)
             Meters.Add(new MeterEditorItem(m, MarkDirty));
 
+        Groups.Clear();
+        foreach (var group in skin.Groups ?? new List<WidgetGroupDefinition>())
+            Groups.Add(new GroupEditorItem(group, MarkDirty));
+
         SelectedMeter = Meters.FirstOrDefault();
+        SelectedGroup = Groups.FirstOrDefault();
+        LoadBehaviors();
         RecomputeAllPreviews();
         Dirty = false;
+        StatusMessage = "Changes are a preview until you save.";
         OnPropertyChanged(string.Empty);
     }
 
     private void MarkDirty()
     {
-        Dirty = true;
+        if (IsRestoringDraft) return;
+        RecordHistory();
+        Dirty = _newDraft || _editDepth > 0 || Snapshot() != _savedSnapshot;
+        StatusMessage = "Unsaved changes — preview only.";
         RecomputeAllPreviews();
+        OnPropertyChanged(nameof(BehaviorValidation));
+        OnPropertyChanged(nameof(AvailableMeasureNames));
+        BehaviorPreviewChanged?.Invoke();
     }
 
     private void RecomputeAllPreviews()
@@ -421,7 +516,7 @@ public sealed class SkinEditorViewModel : ViewModelBase
             X = 16,
             Y = 16,
             Width = kind switch { MeterKind.String => 140, MeterKind.Icon => 28, MeterKind.Ring => 60, MeterKind.WebEmbed => 260, _ => 160 },
-            Height = kind switch { MeterKind.Bar => 10, MeterKind.Graph => 60, MeterKind.Icon => 28, MeterKind.Ring => 60, MeterKind.WebEmbed => 200, _ => 22 },
+            Height = kind switch { MeterKind.Bar => 10, MeterKind.Graph => 60, MeterKind.Icon => 28, MeterKind.Ring => 60, MeterKind.Image => 120, MeterKind.WebEmbed => 200, _ => 22 },
         };
         _working.Meters.Add(def);
 
@@ -433,6 +528,19 @@ public sealed class SkinEditorViewModel : ViewModelBase
 
     public void RemoveMeter(MeterEditorItem item)
     {
+        using var edit = BeginEdit();
+        foreach (var group in Groups.ToList())
+        {
+            group.Definition.MeterIds.RemoveAll(id => id.Equals(item.Definition.Id, StringComparison.OrdinalIgnoreCase));
+            group.RefreshCount(group.Definition.MeterIds.Count);
+            if (group.Definition.MeterIds.Count == 0)
+            {
+                _working.Groups.Remove(group.Definition);
+                Groups.Remove(group);
+                if (SelectedGroup == group) SelectedGroup = Groups.FirstOrDefault();
+            }
+        }
+
         _working.Meters.Remove(item.Definition);
         Meters.Remove(item);
         if (SelectedMeter == item)
@@ -440,21 +548,207 @@ public sealed class SkinEditorViewModel : ViewModelBase
         MarkDirty();
     }
 
+
+    // ── Composition groups ─────────────────────────────────────────────────────
+
+    public void GroupMeters(IEnumerable<MeterEditorItem> selectedMeters)
+    {
+        using var edit = BeginEdit();
+        var selected = selectedMeters.Distinct().ToList();
+        if (selected.Count == 0)
+        {
+            StatusMessage = "Select at least one meter to create a group.";
+            return;
+        }
+
+        var selectedIds = selected.Select(m => m.Definition.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in Groups)
+        {
+            var moving = Meters.Where(m => selectedIds.Contains(m.Definition.Id)).ToList();
+            foreach (var meter in moving.Where(m => group.Definition.MeterIds.Contains(m.Definition.Id, StringComparer.OrdinalIgnoreCase)))
+                BakeGroupTransform(meter, group.Definition);
+
+            group.Definition.MeterIds.RemoveAll(id => selectedIds.Contains(id));
+            group.RefreshCount(group.Definition.MeterIds.Count);
+        }
+
+        foreach (var empty in Groups.Where(g => g.Definition.MeterIds.Count == 0).ToList())
+        {
+            _working.Groups.Remove(empty.Definition);
+            Groups.Remove(empty);
+        }
+
+        double minX = selected.Min(m => m.X);
+        double minY = selected.Min(m => m.Y);
+        double maxX = selected.Max(m => m.X + m.Width);
+        double maxY = selected.Max(m => m.Y + m.Height);
+
+        var definition = new WidgetGroupDefinition
+        {
+            Name = NextGroupName(),
+            X = minX,
+            Y = minY,
+            Width = Math.Max(1, maxX - minX),
+            Height = Math.Max(1, maxY - minY),
+            MeterIds = selectedIds.ToList(),
+        };
+
+        foreach (var meter in selected)
+            meter.MoveTo(meter.X - minX, meter.Y - minY);
+
+        _working.Groups.Add(definition);
+        var item = new GroupEditorItem(definition, MarkDirty);
+        Groups.Add(item);
+        SelectedGroup = item;
+        MarkDirty();
+    }
+
+    public void UngroupMeters(IEnumerable<MeterEditorItem> selectedMeters)
+    {
+        using var edit = BeginEdit();
+        var selectedIds = selectedMeters.Select(m => m.Definition.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (selectedIds.Count == 0 && SelectedGroup is { } selectedGroup)
+            selectedIds = selectedGroup.Definition.MeterIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (selectedIds.Count == 0)
+        {
+            StatusMessage = "Select meters or a group to ungroup.";
+            return;
+        }
+
+        foreach (var group in Groups.ToList())
+        {
+            var moving = group.Definition.MeterIds
+                .Where(selectedIds.Contains)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (moving.Count == 0) continue;
+
+            foreach (var meter in Meters.Where(m => moving.Contains(m.Definition.Id)))
+                BakeGroupTransform(meter, group.Definition);
+
+            group.Definition.MeterIds.RemoveAll(selectedIds.Contains);
+            group.RefreshCount(group.Definition.MeterIds.Count);
+
+            if (group.Definition.MeterIds.Count == 0)
+            {
+                _working.Groups.Remove(group.Definition);
+                Groups.Remove(group);
+                if (SelectedGroup == group) SelectedGroup = Groups.FirstOrDefault();
+            }
+        }
+
+        MarkDirty();
+    }
+
+
+    private static void BakeGroupTransform(MeterEditorItem meter, WidgetGroupDefinition group)
+    {
+        double halfWidth = meter.Width * Math.Abs(group.ScaleX) / 2.0;
+        double halfHeight = meter.Height * Math.Abs(group.ScaleY) / 2.0;
+        double localCenterX = meter.X + meter.Width / 2.0;
+        double localCenterY = meter.Y + meter.Height / 2.0;
+        double groupCenterX = group.Width / 2.0;
+        double groupCenterY = group.Height / 2.0;
+
+        double scaledX = groupCenterX + (localCenterX - groupCenterX) * group.ScaleX;
+        double scaledY = groupCenterY + (localCenterY - groupCenterY) * group.ScaleY;
+
+        double radians = group.Rotation * Math.PI / 180.0;
+        double cos = Math.Cos(radians);
+        double sin = Math.Sin(radians);
+        double dx = scaledX - groupCenterX;
+        double dy = scaledY - groupCenterY;
+        double rotatedX = groupCenterX + dx * cos - dy * sin;
+        double rotatedY = groupCenterY + dx * sin + dy * cos;
+
+        double boundsHalfWidth = Math.Abs(cos) * halfWidth + Math.Abs(sin) * halfHeight;
+        double boundsHalfHeight = Math.Abs(sin) * halfWidth + Math.Abs(cos) * halfHeight;
+
+        meter.ApplyBakedGeometry(
+            group.X + rotatedX - boundsHalfWidth,
+            group.Y + rotatedY - boundsHalfHeight,
+            boundsHalfWidth * 2.0,
+            boundsHalfHeight * 2.0,
+            meter.Definition.Rotation + group.Rotation);
+    }
+
+    private string NextGroupName()
+    {
+        int i = 1;
+        while (Groups.Any(g => g.Name.Equals($"Group {i}", StringComparison.OrdinalIgnoreCase)))
+            i++;
+        return $"Group {i}";
+    }
+
+    public void RemoveGroup(GroupEditorItem item)
+    {
+        using var edit = BeginEdit();
+        foreach (var meter in Meters.Where(m => item.Definition.MeterIds.Contains(m.Definition.Id, StringComparer.OrdinalIgnoreCase)))
+            BakeGroupTransform(meter, item.Definition);
+
+        _working.Groups.Remove(item.Definition);
+        Groups.Remove(item);
+        if (SelectedGroup == item) SelectedGroup = Groups.FirstOrDefault();
+        MarkDirty();
+    }
+
     // ── Save / Delete ─────────────────────────────────────────────────────────
 
-    public async Task SaveAsync()
+    public async Task<bool> SaveAsync()
     {
-        // Auto-enable on save so the widget immediately appears on the desktop —
-        // a freshly-generated or newly-edited widget shouldn't require a separate
-        // trip to the Widgets page just to flip the Enabled toggle.
-        _working.Enabled = true;
-        await _manager.SaveSkinAsync(_working);
-        Dirty = false;
-        StatusMessage = $"\"{_working.Name}\" saved and enabled.";
+        if (IsSaving) return false;
+        var nameAtSave = Name;
+        var candidate = _working.Clone();
+        candidate.Name = nameAtSave.Trim();
+        var errors = WidgetDefinitionValidator.Validate(candidate).Where(i => i.IsError).ToList();
+        if (errors.Count > 0)
+        {
+            StatusMessage = string.Join(" ", errors.Take(3).Select(i => i.Message));
+            return false;
+        }
+
+        candidate.Enabled = true;
+        try
+        {
+            IsSaving = true;
+            await _manager.SaveSkinDraftAsync(candidate, _newDraft);
+            _working.Enabled = true;
+            _newDraft = false;
+            CanRecoverAsCopy = false;
+            OnPropertyChanged(nameof(CanDelete));
+            if (_name == nameAtSave)
+            {
+                _name = candidate.Name;
+                _working.Name = candidate.Name;
+                OnPropertyChanged(nameof(Name));
+            }
+            RecordHistory();
+            _savedSnapshot = System.Text.Json.JsonSerializer.Serialize(candidate, HistoryJson);
+            Dirty = Snapshot() != _savedSnapshot;
+            StatusMessage = Dirty ? "Saved the earlier draft. Your newer edits still need saving." : $"\"{candidate.Name}\" saved and enabled.";
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            CanRecoverAsCopy = true;
+            StatusMessage = "This widget changed or was removed. Your edits are still here. Keep them as a new widget, then Save again.";
+            return false;
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = "Couldn't save this widget. Check available storage and file access, then try Save again. Your draft is still here.";
+            return false;
+        }
+        finally { IsSaving = false; }
     }
 
     public async Task DeleteAsync()
     {
+        if (_newDraft) return;
         await _manager.DeleteSkinAsync(_working);
         StatusMessage = $"\"{_working.Name}\" deleted.";
     }

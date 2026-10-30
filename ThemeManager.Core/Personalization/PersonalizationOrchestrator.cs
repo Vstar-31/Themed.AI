@@ -1,5 +1,7 @@
 using ThemeManager.Core.Models;
+using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Core.Personalization;
 
@@ -43,8 +45,37 @@ public class PersonalizationOrchestrator
         // 2. Rank Candidates based on profile and context
         var ranked = _rankingEngine.RankThemes(candidates, _profileManager.GetProfile(), context);
 
-        // 3. Return top result
-        return ranked.First();
+        // 3. Final quality gate at the public generation boundary. Candidate generators also
+        // validate their outputs, but the orchestrator is the last shared path for every UI entry
+        // point; keep the gate here so future candidate sources cannot accidentally ship a broken
+        // palette. Refresh analysis swatches after any repair so the preview never disagrees.
+        var selected = ranked.First();
+        bool? preferredPolarity = context.Constraints.MustBeDarkTheme
+            ? true
+            : context.Constraints.MustBeLightTheme
+                ? false
+                : null;
+        var quality = PaletteQualityValidator.ValidateAndRepair(selected.Theme, preferredPolarity);
+        if (selected.Analysis is { } analysis)
+        {
+            var (hue, saturation, _) = ColorMath.HexToHsl(selected.Theme.AccentPrimary);
+            selected.Analysis = analysis with
+            {
+                GeneratedName = selected.Theme.Name,
+                ComputedHue = hue,
+                ComputedSaturation = saturation,
+                ComputedLightness = ColorMath.HexToHsl(selected.Theme.BackgroundBase).L,
+                IsDark = ColorMath.LuminanceFromHex(selected.Theme.BackgroundBase) < 0.18f,
+                Swatches = [selected.Theme.BackgroundBase, selected.Theme.BackgroundAlt, selected.Theme.Surface,
+                    selected.Theme.AccentPrimary, selected.Theme.AccentStrong]
+            };
+        }
+
+        if (!quality.PassesAA)
+            throw new InvalidOperationException(
+                $"The selected generated palette did not pass its final accessibility gate ({quality.PassingPairs}/{quality.TotalPairs} pairs).");
+
+        return selected;
     }
 
     public WidgetCandidate GenerateBestWidget(GenerationContext context, double? screenWidth = null, double? screenHeight = null)

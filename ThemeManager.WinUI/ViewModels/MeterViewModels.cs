@@ -1,4 +1,5 @@
 using ThemeManager.Core.Skins;
+using ThemeManager.Integration.Skins;
 
 namespace ThemeManager.WinUI.ViewModels;
 
@@ -329,9 +330,23 @@ public sealed class IconMeterViewModel : MeterViewModelBase
             ActionUrl = Definition.ActionUrl ?? measure.ActionUrl;
             SecondaryActionUrl = Definition.SecondaryActionUrl ?? measure.SecondaryActionUrl;
             ImageUrl = measure.ImageUrl;
-            
-            if (measure.Text == "PLAYING") Glyph = "\uE769"; // Pause icon
-            else if (measure.Text == "PAUSED") Glyph = "\uE768"; // Play icon
+
+            // VibeFinder's web bridge is the authoritative playback state. The measure text can
+            // arrive on a different refresh tick, so don't let a stale "PLAYING" value keep the
+            // Pause glyph visible after playback has actually stopped.
+            if (string.Equals(_measureName, "VibeState", StringComparison.OrdinalIgnoreCase))
+            {
+                var playing = VibeFinderPreviewPlayer.HasSource
+                    ? VibeFinderPreviewPlayer.IsPlaying
+                    : VibeFinderWebState.IsPlayerActive
+                        ? VibeFinderWebState.IsPlaying
+                        : VibeFinderPreviewPlayer.IsPlaying;
+                Glyph = playing ? "\uE769" : "\uE768"; // Pause : Play
+            }
+            else if (measure.Text == "PLAYING")
+                Glyph = "\uE769"; // Pause icon
+            else if (measure.Text == "PAUSED")
+                Glyph = "\uE768"; // Play icon
 
             if (HasThreshold)
                 IsThresholdCrossed = (measure.Value / _barMax * 100) >= ThresholdPercent;
@@ -364,5 +379,12 @@ public sealed class WebEmbedMeterViewModel : MeterViewModelBase
     // ImageUrl all stay at MeterViewModelBase's null defaults, which is correct here — real clicks
     // inside the rendered page go to the WebView2 itself once it's on screen, not through this
     // app's own synthetic click-URL dispatch in SkinHostWindow.
+    public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName) { }
+}
+
+/// <summary>Static artwork is loaded once by the shared renderer, with no polling or network access.</summary>
+public sealed class ImageMeterViewModel : MeterViewModelBase
+{
+    public ImageMeterViewModel(MeterDefinition definition) : base(definition) { }
     public override void Tick(IReadOnlyDictionary<string, IMeasure> measuresByName) { }
 }

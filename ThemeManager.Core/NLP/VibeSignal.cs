@@ -13,6 +13,14 @@ public sealed class VibeSignal
     public float Warmth            { get; set; }
     public float SentimentValence  { get; set; }
 
+    /// <summary>The strongest concrete color/environment/material hue anchor in a multi-color prompt.</summary>
+    public bool HasPrimaryPaletteHue { get; set; }
+    public float PrimaryPaletteHue { get; set; }
+
+    /// <summary>A second clearly distinct hue anchor, used for a secondary accent rather than hue averaging.</summary>
+    public bool HasSecondaryPaletteHue { get; set; }
+    public float SecondaryPaletteHue { get; set; }
+
     /// <summary>Every matched surface-form keyword (unigrams + bigram display forms).</summary>
     public List<string> MatchedKeywords { get; set; } = new();
 

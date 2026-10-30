@@ -5,10 +5,18 @@ namespace ThemeManager.Core.Services;
 
 public sealed class DesktopSceneRepository
 {
-    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
-    private static readonly string SceneFilePath = Path.Combine(StorageFolder, "scenes.json");
-    private static readonly string ActiveSceneFilePath = Path.Combine(StorageFolder, "active-scene.json");
+    private readonly string StorageFolder;
+    private readonly string SceneFilePath;
+    private readonly string ActiveSceneFilePath;
+    private readonly SemaphoreSlim _activeStateGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
+
+    public DesktopSceneRepository(string? storageFolder = null)
+    {
+        StorageFolder = storageFolder ?? Path.Combine(AppDataPaths.LocalRoot, "ThemedAI");
+        SceneFilePath = Path.Combine(StorageFolder, "scenes.json");
+        ActiveSceneFilePath = Path.Combine(StorageFolder, "active-scene.json");
+    }
 
     public async Task<List<DesktopScene>> LoadAllAsync(CancellationToken cancellationToken = default)
     {
@@ -29,24 +37,38 @@ public sealed class DesktopSceneRepository
 
     public async Task<string?> LoadActiveSceneIdAsync(CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(StorageFolder);
-        if (!File.Exists(ActiveSceneFilePath)) return null;
-        await using var stream = File.OpenRead(ActiveSceneFilePath);
-        return await JsonSerializer.DeserializeAsync<string>(stream, JsonOptions, cancellationToken);
+        await _activeStateGate.WaitAsync(cancellationToken);
+        try
+        {
+            Directory.CreateDirectory(StorageFolder);
+            if (!File.Exists(ActiveSceneFilePath)) return null;
+            await using var stream = File.OpenRead(ActiveSceneFilePath);
+            return await JsonSerializer.DeserializeAsync<string>(stream, JsonOptions, cancellationToken);
+        }
+        finally { _activeStateGate.Release(); }
     }
 
     public async Task SaveActiveSceneIdAsync(string? sceneId, CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(StorageFolder);
-        if (sceneId is null)
+        // Rapid selections must not overlap the shared temporary file or allow an
+        // earlier save to recreate an identity after a later clear.
+        await _activeStateGate.WaitAsync(cancellationToken);
+        try
         {
-            if (File.Exists(ActiveSceneFilePath)) File.Delete(ActiveSceneFilePath);
-            return;
-        }
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(StorageFolder);
+            if (sceneId is null)
+            {
+                if (File.Exists(ActiveSceneFilePath)) File.Delete(ActiveSceneFilePath);
+                return;
+            }
 
-        var temp = ActiveSceneFilePath + ".tmp";
-        await using (var stream = File.Create(temp))
-            await JsonSerializer.SerializeAsync(stream, sceneId, JsonOptions, cancellationToken);
-        File.Move(temp, ActiveSceneFilePath, true);
+            var temp = ActiveSceneFilePath + ".tmp";
+            await using (var stream = File.Create(temp))
+                await JsonSerializer.SerializeAsync(stream, sceneId, JsonOptions, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temp, ActiveSceneFilePath, true);
+        }
+        finally { _activeStateGate.Release(); }
     }
 }

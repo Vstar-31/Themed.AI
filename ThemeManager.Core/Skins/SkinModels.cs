@@ -4,12 +4,12 @@ public enum MeasureType
 {
     Cpu, CpuCore, Memory, DiskFree, DiskUsed, Time, Date, Uptime, NetworkDown, NetworkUp, Battery,
     MediaTitle, MediaArtist, MediaState, WeatherTemp, WeatherDesc, WeatherCity, WebJson,
-    VibeTrackTitle, VibeTrackArtist, VibeMood, VibeTrackProgress, VibePlaybackState
+    VibeTrackTitle, VibeTrackArtist, VibeMood, VibeTrackProgress, VibePlaybackState, Formula
 }
 
 public enum MeterKind
 {
-    String, Bar, Graph, Icon, Ring, WebEmbed,
+    String, Bar, Graph, Icon, Ring, WebEmbed, Image,
 }
 
 public sealed class MeasureDefinition
@@ -18,6 +18,10 @@ public sealed class MeasureDefinition
     public string Name { get; set; } = "";
     public MeasureType Type { get; set; }
     public string? Target { get; set; }
+    /// <summary>Safe arithmetic expression used when <see cref="Type"/> is Formula.</summary>
+    public string? Expression { get; set; }
+    /// <summary>Optional plugin capability id used when <see cref="Type"/> is supplied by an extension.</summary>
+    public string? PluginType { get; set; }
 }
 
 public sealed class MeterDefinition
@@ -46,11 +50,60 @@ public sealed class MeterDefinition
     public string? ActionUrl { get; set; }
     public string? SecondaryActionUrl { get; set; }
     public string? WebEmbedUrl { get; set; }
+    /// <summary>Local image filename; packages store a relative assets/ reference.</summary>
+    public string? ImagePath { get; set; }
+    /// <summary>Optional plugin capability id used by custom meter runtimes.</summary>
+    public string? PluginType { get; set; }
+    /// <summary>Hover/pressed/active/threshold visual states with transitions. Empty means a static meter.</summary>
+    public List<MeterStateDefinition> States { get; set; } = new();
+}
+
+
+/// <summary>
+/// A named composition container inside a widget. Meters remain independently addressable, while
+/// the group supplies a shared transform, opacity and optional clipping rectangle. Meter coordinates
+/// inside a group are local to the group's X/Y origin.
+/// </summary>
+public sealed class WidgetGroupDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = "Group";
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double Width { get; set; } = 200;
+    public double Height { get; set; } = 100;
+    public double ScaleX { get; set; } = 1.0;
+    public double ScaleY { get; set; } = 1.0;
+    public double Rotation { get; set; }
+    public double Opacity { get; set; } = 1.0;
+    public bool Clip { get; set; }
+    public List<string> MeterIds { get; set; } = new();
+    public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public WidgetGroupDefinition Clone(string? newId = null) => new()
+    {
+        Id = newId ?? Id,
+        Name = Name,
+        X = X,
+        Y = Y,
+        Width = Width,
+        Height = Height,
+        ScaleX = ScaleX,
+        ScaleY = ScaleY,
+        Rotation = Rotation,
+        Opacity = Opacity,
+        Clip = Clip,
+        MeterIds = MeterIds?.ToList() ?? new List<string>(),
+        Variables = Variables is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase)
+    };
 }
 
 public sealed class SkinDefinition
 {
-    public int SchemaVersion { get; set; } = 4;
+    public const int CurrentSchemaVersion = 6;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "New Widget";
     public string Description { get; set; } = "";
@@ -69,5 +122,88 @@ public sealed class SkinDefinition
     public int UpdateIntervalMs { get; set; } = 1000;
     public List<MeasureDefinition> Measures { get; set; } = new();
     public List<MeterDefinition> Meters { get; set; } = new();
+    public List<WidgetGroupDefinition> Groups { get; set; } = new();
     public Dictionary<string, string> Variables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Monitor-edge anchoring and responsive rules. Null keeps the saved X/Y.</summary>
+    public WidgetAnchorDefinition? Anchor { get; set; }
+
+    /// <summary>
+    /// Creates an independent copy suitable for embedding in a desktop-world placement or
+    /// materializing a missing widget from that placement. Nested measures, meters and variables
+    /// are copied so applying/editing the restored widget cannot mutate the saved world snapshot.
+    /// </summary>
+    public SkinDefinition Clone(string? newId = null)
+    {
+        return new SkinDefinition
+        {
+            SchemaVersion = SchemaVersion,
+            Id = newId ?? Id,
+            Name = Name,
+            Description = Description,
+            Author = Author,
+            Tags = Tags?.ToList() ?? new List<string>(),
+            Enabled = Enabled,
+            X = X,
+            Y = Y,
+            Width = Width,
+            Height = Height,
+            Opacity = Opacity,
+            ClickThrough = ClickThrough,
+            AlwaysOnTop = AlwaysOnTop,
+            Locked = Locked,
+            DesktopLayer = DesktopLayer,
+            UpdateIntervalMs = UpdateIntervalMs,
+            Measures = (Measures ?? new List<MeasureDefinition>())
+                .Select(m => new MeasureDefinition
+                {
+                    Id = m.Id,
+                    Name = m.Name,
+                    Type = m.Type,
+                    Target = m.Target,
+                    Expression = m.Expression,
+                    PluginType = m.PluginType
+                }).ToList(),
+            Meters = (Meters ?? new List<MeterDefinition>())
+                .Select(m => new MeterDefinition
+                {
+                    Id = m.Id,
+                    Kind = m.Kind,
+                    X = m.X,
+                    Y = m.Y,
+                    Width = m.Width,
+                    Height = m.Height,
+                    ZIndex = m.ZIndex,
+                    Rotation = m.Rotation,
+                    Opacity = m.Opacity,
+                    MeasureName = m.MeasureName,
+                    StaticText = m.StaticText,
+                    Format = m.Format,
+                    FontSize = m.FontSize,
+                    Bold = m.Bold,
+                    CenterText = m.CenterText,
+                    BarMax = m.BarMax,
+                    HistoryLength = m.HistoryLength,
+                    IconGlyph = m.IconGlyph,
+                    ThresholdPercent = m.ThresholdPercent,
+                    ThresholdColorHex = m.ThresholdColorHex,
+                    ThresholdAppliesToText = m.ThresholdAppliesToText,
+                    ActionUrl = m.ActionUrl,
+                    SecondaryActionUrl = m.SecondaryActionUrl,
+                    WebEmbedUrl = m.WebEmbedUrl,
+                    ImagePath = m.ImagePath,
+                    PluginType = m.PluginType,
+                    States = (m.States ?? new List<MeterStateDefinition>())
+                        .Where(st => st is not null)
+                        .Select(st => st.Clone())
+                        .ToList()
+                }).ToList(),
+            Groups = (Groups ?? new List<WidgetGroupDefinition>())
+                .Select(g => g.Clone())
+                .ToList(),
+            Variables = Variables is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(Variables, StringComparer.OrdinalIgnoreCase),
+            Anchor = Anchor?.Clone()
+        };
+    }
 }
