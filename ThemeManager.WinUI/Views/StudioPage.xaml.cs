@@ -110,7 +110,12 @@ public sealed partial class StudioPage : Page
         var vibe = VibeSnapshotHub.Current;
         var track = string.IsNullOrWhiteSpace(vibe.TrackTitle) ? "No track" : $"{vibe.TrackTitle} · {vibe.Artist}";
         ActiveSceneMeta.Text = $"{scene.Description} · {scene.Widgets.Count} widgets · {scene.Effects.Count} effects · {vibe.Mood} · {track}";
-        ApplyStatus.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive · Ready to apply" : "Static world · Ready to apply";
+        // Active-scene notifications refresh this view during apply. Keep the operation's
+        // result (including missing-widget warnings) instead of replacing it with a preview hint.
+        if (!_sceneApplyBusy)
+            ApplyStatus.Text = App.SceneService.ActiveScene?.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase) == true
+                ? "This world is active. Browsing is safe; applying is explicit."
+                : "Preview only — the desktop will not change until you apply this world.";
         SceneDetails.Children.Clear();
         AddDetail("Mood", scene.Tags.FirstOrDefault() ?? "aesthetic");
         AddDetail("Widgets", scene.Widgets.Count.ToString());
