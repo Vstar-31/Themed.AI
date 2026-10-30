@@ -11,6 +11,8 @@ public sealed class DesktopScene
     public string Description { get; set; } = "";
     public string Author { get; set; } = "Themed.AI";
     public List<string> Tags { get; set; } = new();
+    public bool RequiresExplicitActivation { get; set; }
+    public CozyTheme? ThemeSnapshot { get; set; }
     public string ThemeId { get; set; } = "";
     public string? WallpaperPath { get; set; }
     public double WallpaperOpacity { get; set; } = 1.0;

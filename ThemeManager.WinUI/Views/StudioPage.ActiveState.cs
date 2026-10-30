@@ -103,6 +103,14 @@ public sealed partial class StudioPage
 
     private async Task ApplyWorldPaletteAsync(DesktopScene scene)
     {
+        if (scene.ThemeSnapshot is { } importedPalette)
+        {
+            PaletteQualityValidator.ValidateAndRepair(importedPalette);
+            App.ThemeService.SetActiveTheme(importedPalette);
+            await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(importedPalette.BackgroundBase));
+            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(importedPalette.AccentPrimary));
+            return;
+        }
         var tag = scene.Tags.FirstOrDefault(t =>
             t.Equals("nocturnal", StringComparison.OrdinalIgnoreCase) ||
             t.Equals("cozy", StringComparison.OrdinalIgnoreCase) ||

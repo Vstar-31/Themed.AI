@@ -62,6 +62,9 @@ public sealed partial class DesktopWorldPage : Page
             var activate = new Button { Content = active ? "Active" : "Activate", Tag = scene, IsEnabled = !active };
             activate.Click += Activate_Click;
             actions.Children.Add(activate);
+            var export = new Button { Content = "Export", Tag = scene };
+            export.Click += ExportWorld_Click;
+            actions.Children.Add(export);
             if (!scene.Id.StartsWith("builtin-", StringComparison.OrdinalIgnoreCase))
             {
                 var delete = new Button { Content = "Delete", Tag = scene };
