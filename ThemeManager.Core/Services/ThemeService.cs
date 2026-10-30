@@ -17,6 +17,7 @@ namespace ThemeManager.Core.Services;
 public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
 {
     private readonly ThemeRepository _repo;
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     private List<CozyTheme> _themes = new();
     public IReadOnlyList<CozyTheme> Themes => _themes;
@@ -85,55 +86,83 @@ public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
         theme.Id = Guid.NewGuid().ToString();
         theme.Name = name;
         theme.IsBuiltIn = false;
-        _themes.Add(theme);
-        await PersistAsync();
-        ThemeListChanged?.Invoke(this, EventArgs.Empty);
+        await AddThemeAsync(theme);
         return theme;
     }
 
     public async Task<CozyTheme> DuplicateThemeAsync(CozyTheme source)
     {
         var clone = source.Duplicate();
-        _themes.Add(clone);
-        await PersistAsync();
-        ThemeListChanged?.Invoke(this, EventArgs.Empty);
+        await AddThemeAsync(clone);
         return clone;
+    }
+
+    private async Task AddThemeAsync(CozyTheme theme)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            // Stage membership privately; publish it only after the atomic file save succeeds.
+            var pending = new List<CozyTheme>(_themes) { theme };
+            await _repo.SaveAllAsync(pending);
+            _themes = pending;
+        }
+        finally { _writeGate.Release(); }
+        ThemeListChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task SaveThemeAsync(CozyTheme theme)
     {
-        theme.BackgroundBase = CozyTheme.NormalizeHex(theme.BackgroundBase);
-        theme.BackgroundAlt  = CozyTheme.NormalizeHex(theme.BackgroundAlt);
-        theme.Surface        = CozyTheme.NormalizeHex(theme.Surface);
-        theme.AccentPrimary  = CozyTheme.NormalizeHex(theme.AccentPrimary);
-        theme.AccentStrong   = CozyTheme.NormalizeHex(theme.AccentStrong);
-        theme.TextPrimary    = CozyTheme.NormalizeHex(theme.TextPrimary);
-        theme.TextMuted      = CozyTheme.NormalizeHex(theme.TextMuted);
-        theme.BorderSubtle   = CozyTheme.NormalizeHex(theme.BorderSubtle);
-        theme.LastModified = DateTimeOffset.UtcNow;
-
-        if (!_themes.Contains(theme))
-            _themes.Add(theme);
-
-        await PersistAsync();
-        ThemeListChanged?.Invoke(this, EventArgs.Empty);
-
-        if (theme.Id == _activeTheme.Id)
+        await _writeGate.WaitAsync();
+        try
         {
-            ThemeChanged?.Invoke(this, theme);
-            ThemeChangeHub.Publish(theme);
+            theme.BackgroundBase = CozyTheme.NormalizeHex(theme.BackgroundBase);
+            theme.BackgroundAlt  = CozyTheme.NormalizeHex(theme.BackgroundAlt);
+            theme.Surface        = CozyTheme.NormalizeHex(theme.Surface);
+            theme.AccentPrimary  = CozyTheme.NormalizeHex(theme.AccentPrimary);
+            theme.AccentStrong   = CozyTheme.NormalizeHex(theme.AccentStrong);
+            theme.TextPrimary    = CozyTheme.NormalizeHex(theme.TextPrimary);
+            theme.TextMuted      = CozyTheme.NormalizeHex(theme.TextMuted);
+            theme.BorderSubtle   = CozyTheme.NormalizeHex(theme.BorderSubtle);
+            var previousModified = theme.LastModified;
+            theme.LastModified = DateTimeOffset.UtcNow;
+
+            var pending = new List<CozyTheme>(_themes);
+            var index = pending.FindIndex(t => t.Id == theme.Id);
+            if (index >= 0) pending[index] = theme; else pending.Add(theme);
+            try { await _repo.SaveAllAsync(pending); }
+            catch
+            {
+                theme.LastModified = previousModified;
+                throw;
+            }
+            _themes = pending;
+
+            if (theme.Id == _activeTheme.Id)
+            {
+                if (ReferenceEquals(theme, _activeTheme)) NotifyThemeTokenChanged();
+                else SetActiveTheme(theme);
+            }
         }
+        finally { _writeGate.Release(); }
+        ThemeListChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task DeleteThemeAsync(CozyTheme theme)
     {
-        if (theme.IsBuiltIn) return;
-        _themes.Remove(theme);
-
-        if (_activeTheme.Id == theme.Id)
-            SetActiveTheme(_themes.First());
-
-        await PersistAsync();
+        await _writeGate.WaitAsync();
+        try
+        {
+            var stored = _themes.FirstOrDefault(t => t.Id == theme.Id);
+            if (stored is null || stored.IsBuiltIn) return;
+            var pending = _themes.Where(t => t.Id != stored.Id).ToList();
+            await _repo.SaveAllAsync(pending);
+            _themes = pending;
+            // A failed delete must neither remove the theme nor broadcast a fallback palette.
+            if (_activeTheme.Id == stored.Id)
+                SetActiveTheme(pending.FirstOrDefault() ?? CozyDefaults.CreateDefault());
+        }
+        finally { _writeGate.Release(); }
         ThemeListChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -144,13 +173,9 @@ public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
     {
         var theme = await _repo.ImportThemeAsync(filePath);
         if (theme is null) return null;
-        _themes.Add(theme);
-        await PersistAsync();
-        ThemeListChanged?.Invoke(this, EventArgs.Empty);
+        await AddThemeAsync(theme);
         return theme;
     }
-
-    private Task PersistAsync() => _repo.SaveAllAsync(_themes);
 
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

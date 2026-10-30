@@ -51,11 +51,21 @@ public sealed class ThemeRepository
         {
             var list = themes.ToList();
             var tempPath = $"{ThemesFilePath}.{Guid.NewGuid():N}.tmp";
-            try { await WriteAndMoveAsync(list, tempPath); }
-            catch (IOException)
+            try
             {
-                await Task.Delay(200);
-                await WriteAndMoveAsync(list, tempPath);
+                try { await WriteAndMoveAsync(list, tempPath); }
+                catch (IOException)
+                {
+                    await Task.Delay(200);
+                    await WriteAndMoveAsync(list, tempPath);
+                }
+            }
+            finally
+            {
+                // Clean only this attempt's temporary file; never replace the original on failure.
+                try { File.Delete(tempPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
             }
         }
         finally { _saveLock.Release(); }
