@@ -8,6 +8,12 @@ namespace ThemeManager.WinUI.Views;
 
 public sealed partial class SkinEditorPage
 {
+    private void ChangeMeterStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem { Tag: string tag } &&
+            Enum.TryParse<ThemeManager.Core.Skins.MeterKind>(tag, out var kind))
+            ViewModel.ChangeMeterStyle(kind);
+    }
     private readonly Dictionary<MeterEditorItem, MeterStateController> _previewStates = new();
     private readonly System.Diagnostics.Stopwatch _previewClock = System.Diagnostics.Stopwatch.StartNew();
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _previewStateTimer;
@@ -92,20 +98,26 @@ public sealed partial class SkinEditorPage
 
     private void DrawAnchorPreview()
     {
-        if (AnchorPreviewCanvas is null) return;
+        DrawAnchorPreview(AnchorPreviewCanvas, AnchorPreviewDescription);
+        DrawAnchorPreview(RightAnchorPreviewCanvas, RightAnchorPreviewDescription);
+    }
+
+    private void DrawAnchorPreview(Canvas canvas, TextBlock description)
+    {
+        if (canvas is null) return;
         var layout = ViewModel.ResolveAnchorPreview();
         double factor = Math.Min(240 / ViewModel.PreviewAreaWidth, 135 / ViewModel.PreviewAreaHeight);
         double areaWidth = ViewModel.PreviewAreaWidth * factor, areaHeight = ViewModel.PreviewAreaHeight * factor;
         double left = (240 - areaWidth) / 2, top = (135 - areaHeight) / 2;
-        AnchorPreviewCanvas.Children.Clear();
-        AnchorPreviewCanvas.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 240, 135) };
+        canvas.Children.Clear();
+        canvas.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 240, 135) };
         var area = new Rectangle
         {
             Width = areaWidth, Height = areaHeight,
             Stroke = (Brush)Application.Current.Resources["BorderSubtleBrush"], StrokeThickness = 1
         };
         Canvas.SetLeft(area, left); Canvas.SetTop(area, top);
-        AnchorPreviewCanvas.Children.Add(area);
+        canvas.Children.Add(area);
         var widget = new Rectangle
         {
             Width = Math.Max(2, ViewModel.Width * layout.Scale * factor),
@@ -116,8 +128,8 @@ public sealed partial class SkinEditorPage
         };
         Canvas.SetLeft(widget, left + layout.X * factor);
         Canvas.SetTop(widget, top + layout.Y * factor);
-        AnchorPreviewCanvas.Children.Add(widget);
-        AnchorPreviewDescription.Text = layout.Hidden
+        canvas.Children.Add(widget);
+        description.Text = layout.Hidden
             ? "Hidden at this sample size. Increase the sample area to check other rules."
             : $"{layout.Edge}: ({layout.X:0}, {layout.Y:0}) DIP · {layout.Scale:0.##}× scale · {(layout.ActiveRule is null ? "base placement" : "responsive rule")}.";
     }

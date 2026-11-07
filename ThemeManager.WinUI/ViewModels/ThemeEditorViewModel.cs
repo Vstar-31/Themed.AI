@@ -312,9 +312,11 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     /// <summary>
     /// Standard single-token mutation. Pushes undo snapshot before applying.
     /// </summary>
-    private void ApplyToken(Action<CozyTheme> mutate)
+    public void EndColorEdit() => _history.EndContinuousEdit();
+
+    private void ApplyToken(Action<CozyTheme> mutate, [System.Runtime.CompilerServices.CallerMemberName] string property = "")
     {
-        _history.Push(_working);
+        _history.PushContinuous(_working, property, Environment.TickCount64);
         mutate(_working);
         Dirty = true;
         RefreshContrast();
@@ -328,7 +330,7 @@ public sealed class ThemeEditorViewModel : ViewModelBase
     /// </summary>
     private void ApplyTokenWithHarmony(string newAccentHex)
     {
-        _history.Push(_working);
+        _history.PushContinuous(_working, nameof(AccentPrimary), Environment.TickCount64);
 
         bool preferDark = ColorMath.LuminanceFromHex(_working.BackgroundBase) < 0.30f;
         var palette = PaletteHarmonizer.FromAccentHex(newAccentHex, preferDark);

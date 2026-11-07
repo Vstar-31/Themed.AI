@@ -28,6 +28,25 @@ public class EditorTests
     }
     private static string[] RootOrder(SkinEditorViewModel vm) => vm.GetRootLayers().Select(l => l.Key).ToArray();
 
+    [Fact] public void ChangingStylePreservesBindingAndGroupAndIsOneUndoStep()
+    {
+        var vm = Editor(Grouped());
+        vm.SelectedMeter = vm.Meters[0];
+        vm.ChangeMeterStyle(MeterKind.Ring);
+        Assert.Equal(MeterKind.Ring, vm.SelectedMeter!.Kind);
+        Assert.Equal("Load", vm.SelectedMeter.Definition.MeasureName);
+        Assert.Equal("a", vm.SelectedMeter.Definition.Id);
+        Assert.Contains("a", vm.Groups[0].Definition.MeterIds);
+        Assert.Single(vm.SelectedMeter.Definition.States);
+        Assert.True(vm.SelectedMeter.Width >= 40);
+        vm.Undo();
+        Assert.Equal(MeterKind.String, vm.SelectedMeter!.Kind);
+        Assert.Equal(30, vm.SelectedMeter.Width);
+        Assert.False(vm.CanUndo);
+        vm.Redo();
+        Assert.Equal(MeterKind.Ring, vm.SelectedMeter!.Kind);
+    }
+
     [Fact] public void LoadingIsAnIndependentCleanDraft()
     {
         var skin = Fixture(); var vm = Editor(skin);

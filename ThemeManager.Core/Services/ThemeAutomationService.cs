@@ -34,6 +34,8 @@ public sealed class ThemeAutomationService : IDisposable
     /// <summary>Which rule most recently fired, so repeated polls inside the same slot/state don't
     /// keep re-triggering a crossfade to a theme that's already active.</summary>
     private ScheduleSlot _lastFiredSlot = ScheduleSlot.None;
+    private string? _lastThemeId;
+    private readonly SemaphoreSlim _checkGate = new(1, 1);
 
     /// <summary>
     /// Fired on a thread-pool thread (from the internal timer), not the UI thread — subscribers
@@ -63,7 +65,7 @@ public sealed class ThemeAutomationService : IDisposable
     {
         try
         {
-            CheckAsync().GetAwaiter().GetResult();
+            CheckNowAsync().GetAwaiter().GetResult();
         }
         catch
         {
@@ -73,12 +75,20 @@ public sealed class ThemeAutomationService : IDisposable
         }
     }
 
+    public async Task CheckNowAsync()
+    {
+        await _checkGate.WaitAsync();
+        try { await CheckAsync(); }
+        finally { _checkGate.Release(); }
+    }
+
     private async Task CheckAsync()
     {
         var schedule = _getSchedule();
         if (schedule is null || !schedule.Enabled)
         {
             _lastFiredSlot = ScheduleSlot.None;
+            _lastThemeId = null;
             return;
         }
 
@@ -90,8 +100,7 @@ public sealed class ThemeAutomationService : IDisposable
             bool active = await _systemIntegrator.IsBatterySaverActiveAsync();
             if (active)
             {
-                if (_lastFiredSlot != ScheduleSlot.BatterySaver)
-                    Fire(ScheduleSlot.BatterySaver, schedule.BatterySaverThemeId);
+                Fire(ScheduleSlot.BatterySaver, schedule.BatterySaverThemeId);
                 return;
             }
 
@@ -115,9 +124,7 @@ public sealed class ThemeAutomationService : IDisposable
             if (condition is not null)
             {
                 var (slot, themeId) = ScheduleResolver.ResolveWeatherSlot(schedule, condition.Value);
-                if (slot != _lastFiredSlot)
-                    Fire(slot, themeId);
-                return; // weather-reactive, light/dark following, and the time-of-day schedule are mutually exclusive
+                if (Fire(slot, themeId)) return;
             }
 
             // Condition unknown — this city/key combination has never returned a successful
@@ -137,8 +144,7 @@ public sealed class ThemeAutomationService : IDisposable
             var info = await _systemIntegrator.GetCurrentSystemThemeAsync();
             var slot = info.IsLightMode ? ScheduleSlot.Light : ScheduleSlot.Dark;
 
-            if (slot != _lastFiredSlot)
-                Fire(slot, info.IsLightMode ? schedule.LightThemeId : schedule.DarkThemeId);
+            Fire(slot, info.IsLightMode ? schedule.LightThemeId : schedule.DarkThemeId);
 
             return; // light/dark following and the time-of-day schedule are mutually exclusive
         }
@@ -146,18 +152,20 @@ public sealed class ThemeAutomationService : IDisposable
         // ── Time-of-day schedule ──
         int nowMinutes = (int)DateTime.Now.TimeOfDay.TotalMinutes;
         var (slotNow, timeThemeId) = ScheduleResolver.ResolveTimeSlot(schedule, nowMinutes);
-        if (slotNow != _lastFiredSlot)
-            Fire(slotNow, timeThemeId);
+        Fire(slotNow, timeThemeId);
     }
 
-    private void Fire(ScheduleSlot slot, string? themeId)
+    private bool Fire(ScheduleSlot slot, string? themeId)
     {
-        _lastFiredSlot = slot;
-        if (string.IsNullOrEmpty(themeId)) return; // slot has no theme assigned — nothing to apply
+        if (string.IsNullOrEmpty(themeId)) return false;
 
         var theme = _themeService.Themes.FirstOrDefault(t => t.Id == themeId);
-        if (theme is not null)
-            AutomationTriggered?.Invoke(theme);
+        if (theme is null) return false;
+        if (_lastFiredSlot == slot && _lastThemeId == themeId) return true;
+        AutomationTriggered?.Invoke(theme);
+        _lastFiredSlot = slot;
+        _lastThemeId = themeId;
+        return true;
     }
 
     public void Dispose() => _timer.Dispose();

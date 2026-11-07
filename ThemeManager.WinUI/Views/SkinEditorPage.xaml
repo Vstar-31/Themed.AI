@@ -427,6 +427,15 @@
                             Visibility="{x:Bind ViewModel.HasSelectedMeter, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Spacing="12">
                             <TextBlock Text="Selected meter" Style="{StaticResource SectionHeaderStyle}" />
+                            <Button Content="Change style" IsEnabled="{x:Bind ViewModel.CanChangeMeterStyle, Mode=OneWay}">
+                                <Button.Flyout><MenuFlyout>
+                                    <MenuFlyoutItem Text="Text" Tag="String" Click="ChangeMeterStyle_Click"/>
+                                    <MenuFlyoutItem Text="Bar" Tag="Bar" Click="ChangeMeterStyle_Click"/>
+                                    <MenuFlyoutItem Text="Ring" Tag="Ring" Click="ChangeMeterStyle_Click"/>
+                                    <MenuFlyoutItem Text="Graph" Tag="Graph" Click="ChangeMeterStyle_Click"/>
+                                </MenuFlyout></Button.Flyout>
+                            </Button>
+                            <TextBlock Text="Change how this element displays its data. Its data source, position and actions stay the same. You can undo a style change." TextWrapping="Wrap" Style="{StaticResource CaptionStyle}"/>
 
                             <Grid ColumnSpacing="10" RowSpacing="10">
 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -640,6 +649,14 @@
                                 CornerRadius="{StaticResource CornerRadiusLarge}"
                                 Background="{StaticResource CardBackgroundBrush}">
                             <Canvas x:Name="PreviewCanvas" Background="Transparent" />
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" MaxWidth="320">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Desktop placement" Style="{StaticResource SectionHeaderStyle}"/>
+                                <TextBlock Text="Where this widget will appear. Change the monitor and margins in Monitor placement." TextWrapping="Wrap" Style="{StaticResource CaptionStyle}"/>
+                                <Canvas x:Name="RightAnchorPreviewCanvas" Width="240" Height="135" Background="{StaticResource SidebarBackgroundBrush}"/>
+                                <TextBlock x:Name="RightAnchorPreviewDescription" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}"/>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                 </Grid>

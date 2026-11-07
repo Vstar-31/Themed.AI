@@ -101,6 +101,7 @@ public sealed partial class ThemeEditorPage : Page
 
     // Called by ColorTokenRow.ColorChanged — live update happens through the ViewModel binding.
     private void OnColorTokenChanged(object sender, string newHex) { }
+    private void OnColorEditCompleted(object? sender, EventArgs e) => ViewModel.EndColorEdit();
 
     // ── Contrast proxy refresh ────────────────────────────────────────────────
 

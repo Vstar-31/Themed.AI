@@ -183,6 +183,8 @@ public static class VibeFinderPreviewPlayer
 
     public static void Stop()
     {
+        if (_currentUrl is null && !HasSource && !IsPlaying && CurrentTime == 0 && Duration == 0)
+            return;
         _logger.LogDebug("VibeFinderPreviewPlayer: stop ({Url})", _currentUrl);
         try { _player.Pause(); } catch { }
         try { _player.Source = null; } catch { }

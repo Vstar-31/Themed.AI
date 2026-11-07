@@ -29,8 +29,10 @@ public sealed class SkinRepository
             EnsureStorageFolderExists();
             if (!File.Exists(SkinsFilePath)) return await SeedDefaultsAsync();
 
-            await using var stream = File.OpenRead(SkinsFilePath);
-            var skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions) ?? new();
+            List<SkinDefinition> skins;
+            await using (var stream = File.OpenRead(SkinsFilePath))
+                skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions) ?? new();
+            // Close the read handle before migration replaces skins.json on Windows.
             if (Migrate(skins))
             {
                 try
@@ -113,6 +115,27 @@ public sealed class SkinRepository
     private static bool Migrate(List<SkinDefinition> skins)
     {
         bool changed = false;
+        var unique = new Dictionary<string, SkinDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var skin in skins.ToArray())
+        {
+            if (unique.TryGetValue(skin.Id, out var original))
+            {
+                // Older world switches appended an existing definition a second time.
+                // Keep distinct user edits as an inactive recovered copy rather than lose them.
+                var copy = skin.Clone(original.Id);
+                if (JsonSerializer.Serialize(original, JsonOptions) == JsonSerializer.Serialize(copy, JsonOptions))
+                    skins.Remove(skin);
+                else
+                {
+                    skin.Id = Guid.NewGuid().ToString();
+                    skin.Enabled = false;
+                    skin.Name += " (recovered copy)";
+                    unique.Add(skin.Id, skin);
+                }
+                changed = true;
+            }
+            else unique.Add(skin.Id, skin);
+        }
         var defaults = SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
         foreach (var skin in skins)

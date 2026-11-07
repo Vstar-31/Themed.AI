@@ -1,0 +1,62 @@
+Themed.AI privacy policy
+Preview version, updated 8 November 2026
+
+Who is responsible
+
+Themed.AI is published by Vijay Shankar in India. For privacy questions, complaints, correction requests or deletion requests, contact themed.aiapp@gmail.com. Do not include passwords, access tokens or API keys in your message.
+
+What this policy covers
+
+This policy describes the Themed.AI Windows desktop preview and its connection to VibeFinderAI. Online services and third-party content have their own privacy practices. This document does not certify that the preview has completed a security or legal review.
+
+Desktop features
+
+Themes, wallpaper settings, widget definitions, desktop worlds, placement, preferences, imported images and recovery drafts are saved on your computer. These files let the app restore your desktop and recover unfinished edits. Local theme and widget generation processes your description on the device. Music discovery through VibeFinderAI is a separate online feature.
+
+Depending on the widgets you enable, the app reads values such as CPU and memory use, disk and network activity, battery status, time and media playback information. These values are used to display the widgets and drive the desktop effects you choose. Custom plugins and web widgets can have additional access and network behavior.
+
+Local files normally live under your Windows local application-data folder, in ThemedAI. Diagnostic logs are stored separately in ThemeManager.AI/logs. Settings includes an Open Data Folder button. An isolated test build may use a different folder.
+
+VibeFinderAI and music services
+
+Opening the embedded music page connects to vfaithemed.netlify.app. Music features communicate with the VibeFinderAI backend at vibefinderai.onrender.com. Those connections expose the requesting device's IP address and ordinary connection information to the receiving service and its hosting provider.
+
+Signing in sends your account credentials to VibeFinderAI. The desktop preview can save your username and password in local widget settings so widgets can sign in again. Those local settings are not a protected credential vault. The embedded browser also retains session information and web storage. Do not share your app-data folder or raw widget settings.
+
+VibeFinderAI account records can include your username, email address, password hash, connected-provider identifiers and access tokens, music prompts, recommendation history, saved playlists and preferences. The service uses these records to sign you in, return recommendations, load your library and perform actions you request. Music requests can involve external catalog and playback providers, including Last.fm, Spotify, YouTube/Google, Apple, Deezer, SoundCloud and other metadata services used by the deployed backend. A provider connection or export is optional.
+
+Playback, artwork, embedded players and links can contact the relevant provider directly. Those providers may use cookies or other web storage under their own policies. Account and request data can also be processed by the hosting and database services used by VibeFinderAI, including Netlify, Render and Supabase. Processing may occur outside India. This preview does not promise an India-only storage location.
+
+When enabled on the VibeFinderAI server, Google Gemini can receive a music prompt and related recommendation context to improve interpretation or generate a vibe story. Avoid putting confidential or sensitive personal information into music prompts. Server-side usage records and analytics may include requests, results and account activity; local desktop processing does not make these online features private to your device.
+
+Weather and location
+
+The current preview uses OpenWeatherMap for weather. A manually entered city is sent with the configured API key. If you choose automatic location and Windows permits it, the app obtains location coordinates from Windows and sends them to the weather provider. Automatic location is optional. You can use a city instead, turn weather rules off, or revoke location access in Windows settings. Turning off weather-based themes does not disable a weather widget that you separately enabled.
+
+Custom widgets, imports and exports
+
+A web widget, web-data source, link or plugin may contact a destination chosen by its author. That destination can receive connection information and any values included in the request. Review widgets before enabling them and install plugins only from sources you trust.
+
+Exported packages can contain your images, labels, descriptions and custom values. The widget-package exporter removes supported credential-bearing measure targets, but it cannot identify every secret placed in custom text or URLs. Review a package before sharing it. A file you send to another person is outside the publisher's control.
+
+Diagnostics and support
+
+The desktop app writes local diagnostic logs to help explain failures. Logs may include file paths, widget and theme names, account usernames, prompts, media URLs and error details. The desktop logging configuration writes to local files and debugger output; it does not itself upload those files. This does not describe the separate logging or analytics of online services.
+
+If you send a support email, the publisher receives the message, your email address and any attachments. Share only what is needed to explain the problem. Review logs and screenshots before sending them.
+
+Keeping and removing data
+
+Saved desktop files remain until you remove them or an app action replaces them. Recovery drafts can be replaced or removed as you save or discard edits. Uninstalling the app may leave local data behind. After exiting the app, you can back up and remove its data folders using Windows. This also removes the settings and designs stored there.
+
+Online account data does not currently have a published automatic expiry period. Removing local data, signing out or uninstalling does not delete a VibeFinderAI account or provider-held records. Use the available library deletion controls for individual items. For account access, correction or deletion, email themed.aiapp@gmail.com. The publisher may ask for proportionate proof that the account is yours, but will not need your password. Provider-held information and backups may require separate handling; no immediate or universal deletion is promised by this preview.
+
+Your choices and concerns
+
+You can use local theme and widget editing without signing in to VibeFinderAI. To stop optional online activity, disable the relevant widgets and automation rules, close the embedded music page and exit the app when you are finished. Revoking a provider connection may also require that provider's account settings.
+
+Contact the publisher to ask what information is held about you or to raise a privacy concern. Rights and complaint options provided by applicable law remain available. The app is not designed specifically for children; contact the publisher before supplying a child's personal information or if you believe such information has been supplied.
+
+Updates
+
+The date above identifies this version. The policy must be updated when data handling changes, including a future weather-provider replacement. A revised policy does not by itself authorize a new use of previously collected information.

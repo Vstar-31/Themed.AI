@@ -306,14 +306,21 @@
                     <TextBlock TextWrapping="Wrap"
                                FontSize="{StaticResource FontSizeBody}"
                                Foreground="{StaticResource TextPrimaryBrush}">
-                        Themed.AI — a lightweight, modular Windows 11 theme manager.
+                        Themed.AI helps you make Windows feel like your own.
                     </TextBlock>
                     <TextBlock Style="{StaticResource CaptionStyle}"
                                TextWrapping="Wrap">
                         Built with WinUI 3, Windows App SDK, and .NET 8.
-                        Open-source under the MIT license.
-                        No telemetry. No ads. No cloud required.
+                        Local theme and widget editing works without an account.
+                        Music and weather use online services. See the privacy policy for details.
                     </TextBlock>
+                    <TextBlock Text="Published by Vijay Shankar, India" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
+                    <HyperlinkButton Content="themed.aiapp@gmail.com" NavigateUri="mailto:themed.aiapp@gmail.com" />
+                    <StackPanel Spacing="8">
+                        <Button Content="Privacy policy" Tag="PRIVACY" Click="OpenDocumentation_Click" />
+                        <Button Content="Terms of use" Tag="TERMS" Click="OpenDocumentation_Click" />
+                        <Button Content="Help" Tag="HELP" Click="OpenDocumentation_Click" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

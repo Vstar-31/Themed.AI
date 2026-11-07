@@ -37,7 +37,7 @@
                     <StackPanel>
                         <TextBlock Text="DESKTOP STUDIO  ·  WORLDS" FontSize="12" FontWeight="SemiBold" Opacity="0.65" />
                         <TextBlock Text="Build a complete desktop world" FontSize="34" FontWeight="Bold" Margin="0,4,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="Themes are palettes. Worlds bring a palette together with wallpaper, widget layout and desktop behavior — then save the whole setup as one scene." FontSize="14" Opacity="0.72" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="Themes are palettes. Worlds bring a palette together with wallpaper, widget layout and desktop behavior, then save the whole setup as one scene." FontSize="14" Opacity="0.72" Margin="0,6,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>
 
@@ -166,11 +166,11 @@
                                 <StackPanel Grid.ColumnSpan="2" Spacing="10">
                                     <StackPanel Spacing="3">
                                         <ToggleSwitch x:Name="AutoApplyAestheticToggle"
-                                                      Header="Apply aesthetic on selection"
+                                                      Header="Apply worlds when I select them"
                                                       IsOn="False"
                                                       Toggled="AutoApplyAestheticToggle_Toggled"
                                                       VerticalAlignment="Center" />
-                                        <TextBlock Text="OFF keeps Studio in preview mode. ON applies a world's theme, wallpaper and widget layout when you select it."
+                                        <TextBlock Text="Off: selecting a world shows a preview. On: selecting it changes your desktop."
                                                    FontSize="12"
                                                    Margin="4,0,0,0"
                                                    Foreground="{StaticResource TextMutedBrush}"
@@ -178,7 +178,7 @@
                                     </StackPanel>
                                     <StackPanel Spacing="3">
                                         <ToggleSwitch x:Name="AutoSwitchToggle"
-                                                      Header="Vibe auto-switch"
+                                                      Header="Switch worlds to match the music"
                                                       IsOn="False"
                                                       Toggled="AutoSwitchToggle_Toggled"
                                                       VerticalAlignment="Center" />
@@ -191,11 +191,11 @@
                                     </StackPanel>
                                     <StackPanel Spacing="3">
                                         <ToggleSwitch x:Name="SelectedWorldAestheticToggle"
-                                                      Header="Allow auto-apply for this world"
+                                                      Header="Include this world in automatic changes"
                                                       IsOn="False"
                                                       Toggled="SelectedWorldAestheticToggle_Toggled"
                                                       VerticalAlignment="Center" />
-                                        <TextBlock Text="Requires Apply aesthetic on selection to be ON. Turn this off to keep this world preview-only."
+                                        <TextBlock Text="Only applies when automatic world selection is on. You can still use Apply to desktop."
                                                    FontSize="12"
                                                    Margin="4,0,0,0"
                                                    Foreground="{StaticResource TextMutedBrush}"

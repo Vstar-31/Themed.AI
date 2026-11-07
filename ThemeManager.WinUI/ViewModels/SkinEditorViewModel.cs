@@ -410,7 +410,7 @@ public sealed partial class SkinEditorViewModel : ViewModelBase
     public MeterEditorItem? SelectedMeter
     {
         get => _selectedMeter;
-        set { if (SetProperty(ref _selectedMeter, value)) { LoadSelectedStates(); OnPropertyChanged(nameof(HasSelectedMeter)); } }
+        set { if (SetProperty(ref _selectedMeter, value)) { LoadSelectedStates(); OnPropertyChanged(nameof(HasSelectedMeter)); OnPropertyChanged(nameof(CanChangeMeterStyle)); } }
     }
 
     /// <summary>Drives the property panel's Visibility — x:Bind can't null-check inline, so this

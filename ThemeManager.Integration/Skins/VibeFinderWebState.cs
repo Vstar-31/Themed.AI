@@ -237,7 +237,7 @@ public static class VibeFinderWebState
         if (root.TryGetProperty("isPlaying", out var play) && play.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
             IsPlaying = play.GetBoolean();
-            if (IsPlaying)
+            if (IsPlaying && VibeFinderPreviewPlayer.HasSource)
                 VibeFinderPreviewPlayer.Stop();
         }
         if (root.TryGetProperty("title", out var title)) Title = title.GetString() ?? "—";

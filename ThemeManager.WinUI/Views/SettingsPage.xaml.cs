@@ -9,6 +9,38 @@ namespace ThemeManager.WinUI.Views;
 
 public sealed partial class SettingsPage : Page
 {
+    private bool _documentationOpen;
+
+    private async void OpenDocumentation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_documentationOpen || sender is not Button { Tag: string name } ||
+            name is not ("PRIVACY" or "TERMS" or "HELP")) return;
+        _documentationOpen = true;
+        try
+        {
+            var text = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Assets", "Documentation", name + ".txt"));
+            if (XamlRoot is not { } root) return;
+            var dialog = new ContentDialog
+            {
+                Title = name switch { "PRIVACY" => "Privacy policy", "TERMS" => "Terms of use", _ => "Help" },
+                CloseButtonText = "Close",
+                XamlRoot = root,
+                Content = new ScrollViewer
+                {
+                    MaxHeight = 460,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, MaxWidth = 560 }
+                }
+            };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            StatusText.Text = "This document could not be opened. Contact themed.aiapp@gmail.com for a copy.";
+        }
+        finally { _documentationOpen = false; }
+    }
+
     private const string StartupKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private const string StartupAppName = "ThemedAI";
 
@@ -178,13 +210,17 @@ public sealed partial class SettingsPage : Page
     private async void SaveAutomationButton_Click(object sender, RoutedEventArgs e)
     {
         await SaveAllScheduleSettings();
-        StatusText.Text = "Automation settings saved.";
+        StatusText.Text = App.Settings.Schedule.Enabled
+            ? "Automation settings saved and checked. Rules will be checked every 30 seconds."
+            : "Settings saved. Turn on theme automation to run these rules.";
     }
 
     private async void SaveWeatherButton_Click(object sender, RoutedEventArgs e)
     {
         await SaveAllScheduleSettings();
-        StatusText.Text = "Weather settings saved.";
+        StatusText.Text = App.Settings.Schedule.Enabled
+            ? "Weather settings saved and checked."
+            : "Weather settings saved. Turn on theme automation to change themes with the weather.";
     }
 
     /// <summary>Persists all schedule fields (both automation and weather cards) so
@@ -224,6 +260,7 @@ public sealed partial class SettingsPage : Page
         schedule.WeatherFogThemeId = ReadThemeId(WeatherFogThemeCombo);
 
         await App.Settings.SaveAsync();
+        await App.Automation.CheckNowAsync();
     }
 
     // ── Data folder ───────────────────────────────────────────────────────────

@@ -38,7 +38,7 @@ public sealed class WidgetDraftRepository
     public async Task DeleteAsync(Guid id)
     {
         await Gate.WaitAsync();
-        try { File.Delete(FilePath(id)); }
+        try { if (Directory.Exists(_folder)) File.Delete(FilePath(id)); }
         catch (DirectoryNotFoundException) { /* No checkpoint directory means nothing to remove. */ }
         finally { Gate.Release(); }
     }

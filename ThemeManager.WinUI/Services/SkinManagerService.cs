@@ -335,15 +335,19 @@ public sealed class SkinManagerService : IDisposable
                     continue;
                 }
 
-                skin.Enabled = false;
-                _skins.Add(skin);
-                known[skin.Id] = skin;
+                // Rebinding can resolve to a definition already in the library.
+                // Only recovered definitions need adding; never add the live instance twice.
+                if (!known.ContainsKey(skin.Id))
+                {
+                    skin.Enabled = false;
+                    _skins.Add(skin);
+                    known[skin.Id] = skin;
+                }
             }
-            else if (sceneIds.Contains(skin.Id))
+            if (!sceneIds.Add(skin.Id))
             {
-                // Duplicate placements were normalized before this point; never materialize an
-                // automatic second widget instance.
-                missing++;
+                // Different legacy IDs can resolve to the same canonical definition.
+                sceneWasMutated = true;
                 continue;
             }
 
@@ -353,7 +357,6 @@ public sealed class SkinManagerService : IDisposable
                 placement.Definition = skin.Clone(skin.Id);
             }
 
-            sceneIds.Add(skin.Id);
             await ApplyScenePlacementCoreAsync(
                 skin,
                 placement.X,
