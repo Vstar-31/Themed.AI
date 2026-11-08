@@ -31,7 +31,7 @@ When enabled on the VibeFinderAI server, Google Gemini can receive a music promp
 
 Weather and location
 
-The current preview uses OpenWeatherMap for weather. A manually entered city is sent with the configured API key. If you choose automatic location and Windows permits it, the app obtains location coordinates from Windows and sends them to the weather provider. Automatic location is optional. You can use a city instead, turn weather rules off, or revoke location access in Windows settings. Turning off weather-based themes does not disable a weather widget that you separately enabled.
+Key-free weather uses Open-Meteo. Your chosen city is sent to its location search service, and coordinates rounded to two decimal places are sent to its weather service. These providers also receive your IP address. Existing configurations with an OpenWeatherMap API key continue to send the city or coordinates and key to OpenWeatherMap. If you choose automatic location and Windows permits it, the app obtains coordinates from Windows; key-free weather rounds them before sending. Open-Meteo states that its technical logs, which may contain coordinates, are kept for up to 90 days (https://open-meteo.com/en/terms). Automatic location is optional. You can use a city instead, turn weather rules off, or revoke location access in Windows settings. Turning off weather-based themes does not disable a weather widget that you separately enabled.
 
 Custom widgets, imports and exports
 

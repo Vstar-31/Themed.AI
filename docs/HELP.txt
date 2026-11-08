@@ -23,7 +23,9 @@ Turn on theme automation, enable the rule you want and assign a theme to it. Sav
 
 Weather
 
-This build still uses OpenWeatherMap and requires a key. Choose a city, or opt into Windows location access, then configure a theme for each condition you want. Weather widgets have their own data-source settings. A simpler key-free setup is still being developed and is not included in this build.
+Choose a city and country in Settings, or opt into Windows location, then select a theme for each weather condition you want. No account or API key is needed for Open-Meteo. Enable automation as well as weather rules. For a weather widget, enter a city such as London, GB in its data-source target. Existing City|API-key targets keep using OpenWeatherMap. Internet access is required; current readings refresh about every 30 minutes, and readings older than two hours are not used after an outage. If automatic location fails, enter a city instead.
+
+Weather data: Open-Meteo, https://open-meteo.com/ (CC BY 4.0). Location search data: GeoNames, https://www.geonames.org/. The default public API is for this free, non-commercial preview. A commercial release needs suitable provider hosting or a subscription.
 
 VibeFinder
 

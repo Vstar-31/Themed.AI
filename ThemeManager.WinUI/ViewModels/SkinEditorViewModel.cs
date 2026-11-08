@@ -68,7 +68,7 @@ public sealed class MeasureEditorItem : ViewModelBase
     /// <summary>Hint text for the Target field, since what it means depends on the measure type.</summary>
     public string TargetPlaceholder => Type switch
     {
-        MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity => "City|API key, e.g. London,GB|your_openweathermap_key",
+        MeasureType.WeatherTemp or MeasureType.WeatherDesc or MeasureType.WeatherCity => "City and country, e.g. London, GB. No key needed. Legacy: City|OpenWeatherMap key",
         MeasureType.WebJson => "URL|JSON path, e.g. https://api.example.com/data|results[0].price",
         MeasureType.CpuCore => "Core index, e.g. 0 (blank = core 0)",
         MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood

@@ -6,6 +6,41 @@ namespace ThemeManager.Tests;
 public sealed class ThemeAutomationRegressionTests
 {
     [Fact]
+    public async Task WeatherRuleRunsWithoutAnApiKey()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "ThemedAI_weather_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var repository = new ThemeRepository(folder);
+            await repository.SaveAllAsync(new[] { new CozyTheme { Id = "sunny" } });
+            var service = new ThemeService(repository);
+            await service.InitializeAsync();
+            var schedule = new ThemeSchedule { Enabled = true, WeatherReactiveEnabled = true,
+                WeatherCity = "Jaipur", WeatherClearThemeId = "sunny" };
+            var provider = new KeyFreeWeather();
+            using var automation = new ThemeAutomationService(service, new BatterySystem(), () => schedule, provider);
+            var applied = new List<string>();
+            automation.AutomationTriggered += theme => applied.Add(theme.Id);
+            await automation.CheckNowAsync();
+            Assert.Equal(new[] { "sunny" }, applied);
+            Assert.True(provider.Called);
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    private sealed class KeyFreeWeather : IWeatherConditionProvider
+    {
+        public bool Called;
+        public Task<WeatherCondition?> GetCurrentConditionAsync(string city, string apiKey)
+        {
+            Assert.Equal("Jaipur", city);
+            Assert.Empty(apiKey);
+            Called = true;
+            return Task.FromResult<WeatherCondition?>(WeatherCondition.Clear);
+        }
+    }
+
+    [Fact]
     public async Task ChangingThemeDuringBatterySaver_AppliesNewSelectionOnce()
     {
         var folder = Path.Combine(Path.GetTempPath(), "ThemedAI_automation_" + Guid.NewGuid().ToString("N"));

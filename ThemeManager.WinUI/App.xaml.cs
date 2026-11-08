@@ -27,7 +27,7 @@ public partial class App : Application
     public static ISystemThemeIntegrator SystemIntegrator { get; private set; } = null!;
 
     /// <summary>Backs the Phase 7 weather-reactive automation rule — see
-    /// ThemeManager.Integration.OpenWeatherMapConditionProvider and AppSettings.Schedule's
+    /// ThemeManager.Integration.ConfiguredWeatherConditionProvider and AppSettings.Schedule's
     /// Weather* fields.</summary>
     public static IWeatherConditionProvider WeatherProvider { get; private set; } = null!;
 
@@ -134,7 +134,7 @@ public partial class App : Application
         };
 
         SystemIntegrator = new SystemThemeIntegrator(LoggerFactory.CreateLogger<SystemThemeIntegrator>());
-        WeatherProvider = new OpenWeatherMapConditionProvider(LoggerFactory.CreateLogger<OpenWeatherMapConditionProvider>());
+        WeatherProvider = new ConfiguredWeatherConditionProvider(LoggerFactory.CreateLogger<ConfiguredWeatherConditionProvider>());
 
         // Initialise (loads JSON, sets Cozy Café as active) before the window appears.
         await ThemeService.InitializeAsync();

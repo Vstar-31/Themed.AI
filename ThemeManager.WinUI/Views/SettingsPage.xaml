@@ -178,14 +178,14 @@
                 </StackPanel>
             </Border>
 
-            <!-- Weather Settings (OpenWeatherMap) -->
+            <!-- Weather settings: key-free by default, legacy key supported -->
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="16">
                     <TextBlock Text="Weather Settings" Style="{StaticResource SectionHeaderStyle}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap">
-                        Connect your OpenWeatherMap API key and city so Themed.AI can
-                        automatically switch themes based on current weather conditions.
-                        Get a free API key at openweathermap.org.
+                        Choose a city to get weather without an account or API key.
+                        Weather data: Open-Meteo (CC BY 4.0); location names: GeoNames.
+                        Weather is refreshed about every 30 minutes. Internet access is required.
                     </TextBlock>
 
                     <ToggleSwitch x:Name="WeatherReactiveToggle"
@@ -193,7 +193,7 @@
                                   Style="{StaticResource CozyToggleStyle}" />
 
                     <ToggleSwitch x:Name="WeatherDynamicLocationToggle"
-                                  Header="Use dynamic location (Windows Location Services)"
+                                  Header="Use Windows location instead of a city"
                                   Style="{StaticResource CozyToggleStyle}"
                                   Toggled="WeatherDynamicLocationToggle_Toggled" />
 
@@ -203,11 +203,13 @@
                             <TextBox x:Name="WeatherCityBox" PlaceholderText="e.g. Jaipur,IN" />
                         </StackPanel>
                         <StackPanel Spacing="4" Width="180">
-                            <TextBlock Text="OpenWeatherMap API key" Style="{StaticResource CaptionStyle}" />
+                            <TextBlock Text="Optional legacy OpenWeatherMap key" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
                             <PasswordBox x:Name="WeatherApiKeyBox" PasswordRevealMode="Peek" />
                         </StackPanel>
                     </StackPanel>
 
+                    <TextBlock Text="Location is optional. If Windows location is unavailable, turn it off and enter a city. Leave the legacy key blank to use Open-Meteo." Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                    <HyperlinkButton Content="Weather data and attribution" NavigateUri="https://open-meteo.com/" HorizontalAlignment="Left" />
                     <TextBlock Text="Theme per condition" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}" />
                     <Grid ColumnSpacing="10" RowSpacing="10">

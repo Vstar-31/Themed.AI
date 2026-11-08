@@ -13,16 +13,10 @@ namespace ThemeManager.Core.Services;
 public enum WeatherCondition { Clear, Clouds, Rain, Thunderstorm, Snow, Fog }
 
 /// <summary>
-/// Abstraction over "what's the weather like right now in this city" — kept separate from the
-/// widget-side weather fetch (<c>ThemeManager.Integration.Skins.WeatherMeasure</c>) deliberately:
-/// that one drives a single widget's per-meter refresh loop and reads temperature/description,
-/// this one drives the whole app's active theme on a much slower cadence and only cares about the
-/// coarse <see cref="WeatherCondition"/> bucket. Both happen to hit the same OpenWeatherMap
-/// endpoint, but keeping the two independent means a widget's weather config can't accidentally
-/// break theme automation, or vice versa.
-///
-/// Like <see cref="ISystemThemeIntegrator"/>, every method here is async and must be
-/// failure-tolerant — never throw to <see cref="ThemeAutomationService"/>.
+/// Supplies a coarse weather condition for theme automation. Providers may share
+/// transport/cache with widget readings while keeping per-city settings separate.
+/// Implementations return null when no usable reading is available. An empty API
+/// key selects the configured key-free provider; a key preserves legacy support.
 /// </summary>
 public interface IWeatherConditionProvider
 {

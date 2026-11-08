@@ -265,13 +265,13 @@ public sealed class WidgetGeneratorViewModel : ViewModelBase
                 // Autofill weather target from settings if available
                 var schedule = App.Settings?.Schedule;
                 string? weatherCity = schedule?.WeatherUseDynamicLocation == true ? "AUTO" : schedule?.WeatherCity;
-                if (!string.IsNullOrWhiteSpace(weatherCity) && !string.IsNullOrWhiteSpace(schedule?.WeatherApiKey))
+                if (!string.IsNullOrWhiteSpace(weatherCity))
                 {
                     foreach (var measure in candidate.Skin.Measures)
                     {
                         if ((measure.Type == MeasureType.WeatherTemp || measure.Type == MeasureType.WeatherDesc || measure.Type == MeasureType.WeatherCity) && string.IsNullOrEmpty(measure.Target))
                         {
-                            measure.Target = $"{weatherCity}|{schedule!.WeatherApiKey}";
+                            measure.Target = string.IsNullOrWhiteSpace(schedule?.WeatherApiKey) ? weatherCity : $"{weatherCity}|{schedule.WeatherApiKey}";
                         }
                     }
                 }

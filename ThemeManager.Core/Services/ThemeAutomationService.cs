@@ -118,9 +118,9 @@ public sealed class ThemeAutomationService : IDisposable
         // three-line change if that's not the priority you want.
         string? weatherCity = schedule.WeatherUseDynamicLocation ? "AUTO" : schedule.WeatherCity;
         if (schedule.WeatherReactiveEnabled && _weatherProvider is not null
-            && !string.IsNullOrWhiteSpace(weatherCity) && !string.IsNullOrWhiteSpace(schedule.WeatherApiKey))
+            && !string.IsNullOrWhiteSpace(weatherCity))
         {
-            var condition = await _weatherProvider.GetCurrentConditionAsync(weatherCity, schedule.WeatherApiKey);
+            var condition = await _weatherProvider.GetCurrentConditionAsync(weatherCity, schedule.WeatherApiKey ?? "");
             if (condition is not null)
             {
                 var (slot, themeId) = ScheduleResolver.ResolveWeatherSlot(schedule, condition.Value);

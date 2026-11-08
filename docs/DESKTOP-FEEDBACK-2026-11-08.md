@@ -17,17 +17,17 @@ Based on the user's 7 November desktop test notes. Branch: `codex/desktop-feedba
 
 ## Verification
 
-The full desktop logic suite passed: 816 tests, no failures or skips. New tests cover palette grouping and undo branches, duplicate-ID repair and persistence, style conversion with groups/bindings, and changing the selected theme while battery saver remains active.
+The final desktop logic suite passed: 832 tests, no failures or skips. New tests cover palette grouping and undo branches, duplicate-ID repair and persistence, style conversion with groups/bindings, and changing the selected theme while battery saver remains active.
 
 The Release WinUI build passed with no warnings or errors. The bundled documentation was compared with its source files. Tests used `THEMEDAI_LOCAL_DATA_ROOT` pointing to an isolated folder. Personal widgets were not used as fixtures.
 
-Computer Use failed during initialization with `failed to write kernel assets: The system cannot find the path specified. (os error 3)`, including after resetting the runtime. These results are not GUI acceptance.
+Computer Use initially failed with a kernel-assets error, then recovered later in this session. The final isolated build rendered a live key-free weather widget: 27 degrees, Jaipur, Clear sky. The signed-in deployed VibeFinder library initially showed a history load error; after an isolated app restart with the saved test session, playlists and history rendered and all three library GET routes returned HTTP 200. This demonstrates recovery, not a proven cause of the earlier failure. These checks are not full GUI acceptance of the unpublished frontend fixes.
 
 ## Still open
 
-- The user clarified that missed keystrokes occur in the VibeFinder prompt. General prompt typing, focus and playback command handling need a working desktop/browser reproduction. The hex-field fix is separate.
-- Playlists and history still need authenticated endpoint diagnostics. Public deployed JavaScript was inspected, but the route probe was not executed because automatic approval review hit a usage limit. No account data or credentials were used for that inspection.
-- Weather still uses OpenWeatherMap. A key-free or centrally managed replacement has not been implemented. Provider terms, caching, location consent and distribution limits must be settled before choosing a replacement.
+- VibeFinder fixes are prepared in the separate `codex/vfai-feedback-fixes` branch: remove duplicate command handlers and DOM polling, preserve typed prompts during reconnect, await video prefetches, retry transient lookup failures, and wire saved-playlist/history actions. They need deployment and an end-to-end typing/playback retest. The hex-field fix is separate.
+- Library failures now have status-only native diagnostics. Anonymous route probes returned HTTP 401 as expected; authenticated GUI requests returned HTTP 200 after restart. The prepared frontend handles per-tab errors, timeouts, retries and expired sessions instead of treating failed requests as empty collections.
+- Key-free Open-Meteo weather is implemented for the user-confirmed free, non-commercial preview. Settings, widgets and generation defaults accept a city without a key. Legacy keyed configurations are preserved. Provider endpoints and cache intervals are configurable; see `WEATHER-PROVIDER.md`. Wider/commercial distribution needs provider-capacity/licensing review.
 - The full app-wide plain-language pass and all GUI acceptance checks remain open.
 - Existing cross-repository security work remains separate. This branch does not merge, deploy or validate those fixes.
 
@@ -41,3 +41,11 @@ Official references checked on 8 November 2026:
 
 - [MeitY: notified Digital Personal Data Protection Rules, 2025](https://www.meity.gov.in/static/uploads/2025/11/53450e6e5dc0bfa85ebd78686cadad39.pdf). The notification provides phased commencement. Do not present every rule as already effective.
 - [India Code: Consumer Protection Act, 2019](https://www.indiacode.nic.in/bitstream/123456789/15256/5/A2019-35.pdf). The draft terms preserve mandatory rights rather than imposing a blanket exclusion.
+
+## Follow-up implementation
+
+- Share weather readings and geocoding across widgets and automation. Cache readings for 30 minutes, back off failed attempts, expire readings after two hours, round automatic coordinates, and use invariant numeric formatting.
+- The live smoke check exposed that `Jaipur, IN` needed an explicit country filter. The corrected query and live widget both passed.
+- Native Save & Apply explicitly requests replacement of a web prompt; ordinary reconnect/theme synchronization does not override a user-edited prompt in the updated frontend.
+- Build output used for the final weather GUI check: `artifacts/feedback-final/ThemeManager.WinUI.exe`. Only test data under the workspace's `test-evidence/2026-11-08-feedback-gui/data` was used.
+- The frontend branch has 20 passing tests and a successful production build. Focused lint passes for the new hooks, regression tests and simplified profile bridge. The branch builds on the existing, separate endpoint-hardening work; this desktop batch does not deploy that work.

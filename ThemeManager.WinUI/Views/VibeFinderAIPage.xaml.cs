@@ -48,6 +48,14 @@ public sealed partial class VibeFinderAIPage : Page
                 return;
             }
             ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+            VibeFinderWebView.CoreWebView2.WebResourceResponseReceived += (_, response) =>
+            {
+                // Record status only, never authorization headers, query strings or account data.
+                if (Uri.TryCreate(response.Request.Uri, UriKind.Absolute, out var requestUri)
+                    && VibeFinderSite.IsTrusted(requestUri.AbsoluteUri)
+                    && requestUri.AbsolutePath is "/api/playlist/list" or "/api/user/history" or "/api/vibe/history")
+                    _logger.LogInformation("VibeFinder library request {Path}: HTTP {Status}", requestUri.AbsolutePath, response.Response.StatusCode);
+            };
             VibeFinderWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
             {
                 if (!VibeFinderSite.IsTrusted(args.Source)) return;
@@ -368,7 +376,7 @@ public sealed partial class VibeFinderAIPage : Page
         await ApplyVibeFinderCredentialsAsync(target);
         await TryInjectLoginAsync(user, pass);
         App.MainWindow?.ResetVibeFinderPrewarm();
-        PushVibePromptAndTrackLimit();
+        PushVibePromptAndTrackLimit(force: true);
 
         StatusText.Text = "Saved — syncing VibeFinder AI…";
         StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
@@ -550,7 +558,7 @@ public sealed partial class VibeFinderAIPage : Page
         catch { return false; }
     }
 
-    private void PushVibePromptAndTrackLimit(bool triggerRun = true)
+    private void PushVibePromptAndTrackLimit(bool triggerRun = true, bool force = false)
     {
         if (ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand is null) return;
         string rawPrompt = PromptBox.Text?.Trim() ?? "";
@@ -564,7 +572,7 @@ public sealed partial class VibeFinderAIPage : Page
             // Keep the visible VibeFinder prompt faithful to the saved setting. "$theme" is
             // a user-facing sentinel; only the analysis payload should contain its resolved
             // theme description.
-            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
+            ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setPrompt", text = rawText, force }));
             ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "setTrackLimit", value = AutoFillTrackLimit }));
             if (triggerRun)
             {
@@ -574,7 +582,7 @@ public sealed partial class VibeFinderAIPage : Page
                     return;
                 }
 
-                ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit }));
+                ThemeManager.Integration.Skins.VibeFinderWebState.SendCommand(JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = AutoFillTrackLimit, force }));
                 _initialAnalysisTriggered = true;
                 _initialAnalysisDeferredForNativePreview = false;
             }
