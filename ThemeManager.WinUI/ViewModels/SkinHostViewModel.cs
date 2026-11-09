@@ -90,6 +90,17 @@ public sealed class SkinHostViewModel : ViewModelBase
         }
     }
 
+    public void ResumeMeasures()
+    {
+        lock (_measureGate)
+        {
+            if (!IsClosed) return;
+            BuildMeasures();
+            _measuresDisposed = 0;
+            IsClosed = false;
+        }
+    }
+
     private double? ResolveMeasure(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
@@ -187,6 +198,8 @@ public sealed class SkinHostViewModel : ViewModelBase
                         Definition.Name, disposable.GetType().Name);
                 }
             }
+            _measuresByName.Clear();
+            _formulaMeasures.Clear();
         }
     }
 }

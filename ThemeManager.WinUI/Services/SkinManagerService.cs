@@ -103,7 +103,7 @@ public sealed class SkinManagerService : IDisposable
     private void TickDueWidgets()
     {
         var now = _schedulerClock.ElapsedMilliseconds;
-        var snapshot = _open.ToList();
+        var snapshot = _open.Where(pair => !pair.Value.Window.IsWorldHidden).ToList();
         var dueIds = _scheduler.GetDue(snapshot.Select(x => x.Value.ViewModel.Definition), now).Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (skinId, entry) in snapshot)
         {
@@ -223,7 +223,7 @@ public sealed class SkinManagerService : IDisposable
 
     public async Task ApplyScenePlacementAsync(SkinDefinition skin, double x, double y, double opacity, bool enabled)
     {
-        await ApplyScenePlacementCoreAsync(skin, x, y, opacity, enabled);
+        ApplyScenePlacement(skin, x, y, opacity, enabled);
         await PersistAsync(false);
     }
 
@@ -357,7 +357,7 @@ public sealed class SkinManagerService : IDisposable
                 placement.Definition = skin.Clone(skin.Id);
             }
 
-            await ApplyScenePlacementCoreAsync(
+            ApplyScenePlacement(
                 skin,
                 placement.X,
                 placement.Y,
@@ -384,7 +384,7 @@ public sealed class SkinManagerService : IDisposable
             // Close any actual HWND that survived a legacy world switch even if its persisted
             // Enabled flag says false. Transparent widget windows can otherwise leave isolated
             // glyphs floating over the app after their scene placements were removed.
-            await ApplyScenePlacementCoreAsync(skin, skin.X, skin.Y, skin.Opacity, false);
+            ApplyScenePlacement(skin, skin.X, skin.Y, skin.Opacity, false);
         }
 
         // Persist a cleaned active-world composition when the caller passed the actual scene list.
@@ -417,7 +417,7 @@ public sealed class SkinManagerService : IDisposable
         }
     }
 
-    private async Task ApplyScenePlacementCoreAsync(SkinDefinition skin, double x, double y, double opacity, bool enabled)
+    private void ApplyScenePlacement(SkinDefinition skin, double x, double y, double opacity, bool enabled)
     {
         skin.X = x;
         skin.Y = y;
@@ -426,19 +426,18 @@ public sealed class SkinManagerService : IDisposable
 
         if (enabled)
         {
-            if (_open.TryGetValue(skin.Id, out var existing))
-            {
-                existing.Window.ApplyPosition(skin.X, skin.Y);
-                existing.Window.ApplyOpacity(skin.Opacity);
-            }
-            else
-            {
-                OpenWindowFor(skin);
-            }
+            OpenWindowFor(skin);
+            var window = _open[skin.Id].Window;
+            window.ApplyPosition(skin.X, skin.Y);
+            window.ApplyOpacity(skin.Opacity);
         }
-        else
+        else if (_open.TryGetValue(skin.Id, out var entry) && !entry.Window.IsWorldHidden)
         {
-            await CloseWindowFor(skin);
+            // A scene placement controls visibility. Destroying the XAML island here
+            // can fail-fast in XamlDiagnostics::RemoveRootObjectFromLVT under VS.
+            entry.Window.SuspendForWorld();
+            _scheduler.Remove(skin.Id);
+            _logger.LogDebug("World hid widget {SkinId}", skin.Id);
         }
     }
 
@@ -479,7 +478,11 @@ public sealed class SkinManagerService : IDisposable
     public void ToggleAllWidgetsVisibility()
     {
         _widgetsHidden = !_widgetsHidden;
-        foreach (var (window, _) in _open.Values) { if (_widgetsHidden) window.AppWindow.Hide(); else window.AppWindow.Show(); }
+        foreach (var (window, _) in _open.Values)
+        {
+            if (_widgetsHidden) window.AppWindow.Hide();
+            else window.ShowIfVisibleInWorld();
+        }
     }
 
     public async Task<SkinDefinition> CreateNewSkinAsync()
@@ -613,7 +616,18 @@ public sealed class SkinManagerService : IDisposable
 
     private void OpenWindowFor(SkinDefinition skin)
     {
-        if (_open.ContainsKey(skin.Id)) return;
+        if (_open.TryGetValue(skin.Id, out var existing))
+        {
+            if (existing.Window.IsWorldHidden)
+            {
+                existing.Window.ResumeForWorld();
+                if (!_widgetsHidden) existing.Window.ShowIfVisibleInWorld();
+                _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
+                _ = RefreshWidgetAsync(existing.ViewModel);
+                _logger.LogDebug("World resumed widget {SkinId}", skin.Id);
+            }
+            return;
+        }
         var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>(), App.ThemeService, _pluginRegistry);
         var window = new SkinHostWindow(viewModel);
         window.PositionChanged += (x, y) => OnWindowMoved(skin, x, y);
@@ -634,12 +648,7 @@ public sealed class SkinManagerService : IDisposable
 
         try
         {
-            window.Activate();
-            // Explicit Show is intentional: unlike Activate(), it does not make the newly-created
-            // widget depend on activation/focus state to remain visible while a world is being
-            // composed. It is harmless for normal individual widget toggles and makes batch world
-            // application deterministic.
-            window.AppWindow.Show();
+            if (!_widgetsHidden) window.ShowIfVisibleInWorld();
         }
         catch (Exception ex)
         {

@@ -60,6 +60,8 @@ public sealed partial class SkinHostWindow : Window
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _stateTimer;
     private bool _widgetActive;
     private bool _windowClosed;
+    public bool IsWorldHidden { get; private set; }
+    private readonly List<(WebView2 View, Uri Source)> _embeddedPages = new();
 
     // Monitor anchoring. The key records the inputs of the last applied layout so the per-tick
     // check is a cheap comparison and only moves/resizes the window when something changed.
@@ -220,6 +222,28 @@ public sealed partial class SkinHostWindow : Window
         {
             _logger.LogWarning(ex, "True transparency failed to apply; widget will render on a solid card instead");
         }
+    }
+
+    public void SuspendForWorld()
+    {
+        IsWorldHidden = true;
+        _stateTimer?.Stop();
+        AppWindow.Hide();
+        _viewModel.DisposeMeasures();
+        foreach (var (view, _) in _embeddedPages) view.Source = new Uri("about:blank");
+    }
+
+    public void ResumeForWorld()
+    {
+        _viewModel.ResumeMeasures();
+        foreach (var (view, source) in _embeddedPages) view.Source = source;
+        IsWorldHidden = false;
+        EvaluateStates();
+    }
+
+    public void ShowIfVisibleInWorld()
+    {
+        if (!IsWorldHidden && !_anchorHidden && !_windowClosed) AppWindow.Show(false);
     }
 
     public void PrepareForClose()
@@ -683,7 +707,7 @@ public sealed partial class SkinHostWindow : Window
     /// signed in once via VibeFinderAIPage's browser, every WebEmbed meter using this same default
     /// environment is signed in too — no separate login, no credentials passed through the URL.
     /// </summary>
-    private static Microsoft.UI.Xaml.Controls.WebView2 BuildWebEmbedVisual(WebEmbedMeterViewModel vm)
+    private Microsoft.UI.Xaml.Controls.WebView2 BuildWebEmbedVisual(WebEmbedMeterViewModel vm)
     {
         var webView = new Microsoft.UI.Xaml.Controls.WebView2
         {
@@ -705,7 +729,9 @@ public sealed partial class SkinHostWindow : Window
 
         try
         {
-            webView.Source = new Uri(vm.Url);
+            var source = new Uri(vm.Url);
+            webView.Source = source;
+            _embeddedPages.Add((webView, source));
         }
         catch (UriFormatException ex)
         {
@@ -1263,7 +1289,7 @@ public sealed partial class SkinHostWindow : Window
 
     private void OnMetersUpdated()
     {
-        if (_windowClosed) return;
+        if (_windowClosed || IsWorldHidden) return;
         try
         {
             EvaluateStates();
@@ -1279,7 +1305,7 @@ public sealed partial class SkinHostWindow : Window
     /// least one of them is still blending. An idle widget costs nothing between ticks.</summary>
     private void EvaluateStates()
     {
-        if (_windowClosed || _stateControllers.Count == 0) return;
+        if (_windowClosed || IsWorldHidden || _stateControllers.Count == 0) return;
 
         long now = _stateClock.ElapsedMilliseconds;
         bool animating = false;
@@ -1456,7 +1482,7 @@ public sealed partial class SkinHostWindow : Window
         if (hidden == _anchorHidden) return;
         _anchorHidden = hidden;
         if (hidden) AppWindow.Hide();
-        else AppWindow.Show();
+        else ShowIfVisibleInWorld();
     }
 
     /// <summary>After a drag, folds the new position back into the anchor's margins so the widget
