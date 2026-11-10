@@ -19,6 +19,7 @@ public sealed partial class VibeFinderAIPage : Page
     private bool _isInitializing = true;
     private bool _embedReady;
     private bool _embedHasToken;
+    private bool _applySavedPromptOnReady;
     private bool _initialAnalysisTriggered;
     private bool _initialAnalysisDeferredForNativePreview;
     private bool _isPageVisible;
@@ -75,6 +76,8 @@ public sealed partial class VibeFinderAIPage : Page
                 }
                 if (TryParseAppReady(json, out bool hasToken))
                 {
+                    var forcePrompt = hasToken && _applySavedPromptOnReady;
+                    if (forcePrompt) _applySavedPromptOnReady = false;
                     _embedReady = true;
                     _embedHasToken = hasToken;
                     ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(hasToken);
@@ -93,27 +96,14 @@ public sealed partial class VibeFinderAIPage : Page
                     // Do not replace a native preview midway through its 30-second clip just
                     // because the user opened this tab. Once it finishes, initialize the visible SPA.
                     // The pending flag makes repeated APP_READY notifications safe.
-                    if (hasToken && !_initialAnalysisTriggered)
+                    if (hasToken && !_initialAnalysisTriggered && ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
                     {
-                        if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
-                        {
-                            _initialAnalysisDeferredForNativePreview = true;
-                            PushVibePromptAndTrackLimit(triggerRun: false);
-                            _logger.LogInformation("VibeFinderAIPage: initial analysis deferred while a native preview source is loaded");
-                        }
-                        else if (!_initialAnalysisDeferredForNativePreview)
-                        {
-                            PushVibePromptAndTrackLimit(triggerRun: true);
-                        }
-                        else
-                        {
-                            PushVibePromptAndTrackLimit(triggerRun: false);
-                        }
+                        _initialAnalysisDeferredForNativePreview = true;
+                        _logger.LogInformation("VibeFinderAIPage: initial analysis deferred while a native preview source is loaded");
                     }
-                    else
-                    {
-                        PushVibePromptAndTrackLimit(triggerRun: false);
-                    }
+                    PushVibePromptAndTrackLimit(
+                        triggerRun: hasToken && !_initialAnalysisTriggered && !_initialAnalysisDeferredForNativePreview,
+                        force: forcePrompt);
                     return;
                 }
                 if (TryGetMessageType(json) == "VIBEFINDER_RESULTS")
@@ -132,7 +122,13 @@ public sealed partial class VibeFinderAIPage : Page
             {
                 args.Cancel = !VibeFinderSite.IsTrusted(args.Uri);
                 if (!args.Cancel)
+                {
+                    _embedReady = false;
+                    _embedHasToken = false;
+                    _initialAnalysisTriggered = false;
+                    _initialAnalysisDeferredForNativePreview = false;
                     ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+                }
             };
             VibeFinderWebView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
             VibeFinderWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
@@ -374,13 +370,12 @@ public sealed partial class VibeFinderAIPage : Page
         _logger.LogInformation("VibeFinderAIPage: Save & Apply — updating credentials for user \"{User}\"", user);
         string target = $"{user}|{pass}|{prompt}";
         await ApplyVibeFinderCredentialsAsync(target);
-        await TryInjectLoginAsync(user, pass);
-        App.MainWindow?.ResetVibeFinderPrewarm();
-        PushVibePromptAndTrackLimit(force: true);
-
-        StatusText.Text = "Saved — syncing VibeFinder AI…";
+        _applySavedPromptOnReady = true;
+        StatusText.Text = "Saved. Connecting to VibeFinder AI…";
         StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
         StatusText.Visibility = Visibility.Visible;
+        await TryInjectLoginAsync(user, pass);
+        App.MainWindow?.ResetVibeFinderPrewarm();
     }
 
     private async System.Threading.Tasks.Task ApplyVibeFinderCredentialsAsync(string target)
@@ -440,36 +435,21 @@ public sealed partial class VibeFinderAIPage : Page
     {
         if (success)
         {
-            _embedReady = true;
-            _embedHasToken = true;
-            ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(true);
-            StatusText.Text = "Connected to VibeFinder AI ✓";
-            StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Green);
-            StatusText.Visibility = Visibility.Visible;
-            _logger.LogInformation("VibeFinderAIPage: embed login succeeded");
-            if (!_initialAnalysisTriggered && !_initialAnalysisDeferredForNativePreview)
-            {
-                if (ThemeManager.Integration.Skins.VibeFinderPreviewPlayer.HasSource)
-                {
-                    _initialAnalysisDeferredForNativePreview = true;
-                    PushVibePromptAndTrackLimit(triggerRun: false);
-                    _logger.LogInformation("VibeFinderAIPage: initial analysis deferred after login while native preview source remains loaded");
-                }
-                else
-                {
-                    PushVibePromptAndTrackLimit(triggerRun: true);
-                }
-            }
+            // Login stores the token and then reloads the SPA. Only APP_READY from the
+            // authenticated document can start analysis. The outgoing listener still
+            // holds its previous token and a 401 from it can sign out the new session.
+            _logger.LogInformation("VibeFinderAIPage: login succeeded; waiting for the authenticated page");
             return;
         }
 
-        if (_embedReady && _embedHasToken)
+        if (_embedReady && _embedHasToken && !_applySavedPromptOnReady)
         {
             _logger.LogDebug("VibeFinderAIPage: ignoring login failure ({Reason}) because embed is already ready with a token", reason ?? "unspecified");
             return;
         }
 
         ThemeManager.Integration.Skins.VibeFinderWebState.SetVisibleEmbedReady(false);
+        _applySavedPromptOnReady = false;
         _logger.LogWarning("VibeFinderAIPage: embed login failed, reason={Reason}", reason ?? "(unspecified)");
         if (reason == "network")
         {
