@@ -11,7 +11,6 @@ public sealed class DesktopWorldRuntime : IDisposable
 {
     private readonly DesktopSceneService _scenes;
     private readonly DispatcherQueue _dispatcher;
-    private readonly Dictionary<string, double> _baseOpacity = new(StringComparer.OrdinalIgnoreCase);
     private DesktopAtmosphereHost? _atmosphere;
     private DispatcherQueueTimer? _timer;
     private bool _started;
@@ -52,15 +51,30 @@ public sealed class DesktopWorldRuntime : IDisposable
     }
 
     private void OnVibeFinderStateChanged(object? sender, EventArgs e) { if (_dispatcher.HasThreadAccess) PullVibeFinderState(); else _dispatcher.TryEnqueue(PullVibeFinderState); }
-    private static void PullVibeFinderState()
+
+    private void PullVibeFinderState()
     {
-        if (!VibeFinderWebState.IsActive) return;
-        var signal = VibeAnalyzer.Analyze($"{VibeFinderWebState.Title} {VibeFinderWebState.Artist}");
+        if (!VibeFinderWebState.IsActive && VibeFinderWebState.Profile.Signals <= 0) return;
+
+        var titleArtist = $"{VibeFinderWebState.Title} {VibeFinderWebState.Artist}";
+        var signal = VibeAnalyzer.Analyze(titleArtist);
         var atmosphere = DesktopVibeAdapter.From(signal);
         var energy = VibeFinderWebState.IsPlaying ? atmosphere.Energy : atmosphere.Energy * 0.22;
         var mood = signal.HasSignal ? atmosphere.Mood : (VibeFinderWebState.IsPlaying ? "Atmospheric" : "Neutral");
         var warmth = signal.HasSignal ? atmosphere.Warmth : 0.5;
-        VibeSnapshotHub.Publish(new VibeSnapshot(mood, Math.Clamp(energy, 0, 1), Math.Clamp(warmth, 0, 1), "VibeFinder", VibeFinderWebState.Title == "—" ? null : VibeFinderWebState.Title, VibeFinderWebState.Artist == "—" ? null : VibeFinderWebState.Artist));
+
+        var profile = VibeFinderWebState.Profile;
+        if (profile is { Signals: >= 2 } && !string.IsNullOrWhiteSpace(profile.TopMood))
+            mood = profile.TopMood;
+
+        VibeSnapshotHub.Publish(new VibeSnapshot(
+            mood,
+            Math.Clamp(energy, 0, 1),
+            Math.Clamp(warmth, 0, 1),
+            "VibeFinder",
+            VibeFinderWebState.Title == "—" ? null : VibeFinderWebState.Title,
+            VibeFinderWebState.Artist == "—" ? null : VibeFinderWebState.Artist,
+            profile));
     }
 
     private void OnVibeChanged(object? sender, VibeSnapshot snapshot)
@@ -70,7 +84,6 @@ public sealed class DesktopWorldRuntime : IDisposable
 
     private void OnSceneChanged(object? sender, DesktopScene? scene)
     {
-        _baseOpacity.Clear();
         if (_dispatcher.HasThreadAccess) RecalculateTarget(VibeSnapshotHub.Current); else _dispatcher.TryEnqueue(() => RecalculateTarget(VibeSnapshotHub.Current));
     }
 
@@ -97,7 +110,32 @@ public sealed class DesktopWorldRuntime : IDisposable
         if (behavior.ReactToMedia && snapshot.Source == "VibeFinder")
             energy = Math.Clamp(energy * Math.Max(0.35, behavior.AudioSensitivity), 0, 1);
 
-        TargetAtmosphere = ApplySceneEffects(DesktopVibeAdapter.From(snapshot.Mood, energy, snapshot.Warmth, behavior.TransitionSeconds));
+        var profile = snapshot.Profile;
+        if (profile is { Signals: >= 3 })
+        {
+            var learnedTheme = profile.TopTheme;
+            var learnedAmbience = profile.TopAmbience;
+
+            if (!string.IsNullOrWhiteSpace(learnedTheme))
+            {
+                if (learnedTheme.Contains("dark", StringComparison.OrdinalIgnoreCase) || learnedTheme.Contains("night", StringComparison.OrdinalIgnoreCase))
+                    energy *= 0.88;
+                else if (learnedTheme.Contains("bright", StringComparison.OrdinalIgnoreCase) || learnedTheme.Contains("light", StringComparison.OrdinalIgnoreCase))
+                    energy = Math.Min(1, energy * 1.08 + 0.03);
+                else if (learnedTheme.Contains("minimal", StringComparison.OrdinalIgnoreCase))
+                    energy *= 0.94;
+            }
+
+            if (!string.IsNullOrWhiteSpace(learnedAmbience))
+            {
+                if (learnedAmbience.Contains("calm", StringComparison.OrdinalIgnoreCase) || learnedAmbience.Contains("cozy", StringComparison.OrdinalIgnoreCase))
+                    energy *= 0.9;
+                else if (learnedAmbience.Contains("dynamic", StringComparison.OrdinalIgnoreCase) || learnedAmbience.Contains("neon", StringComparison.OrdinalIgnoreCase))
+                    energy = Math.Min(1, energy * 1.06 + 0.02);
+            }
+        }
+
+        TargetAtmosphere = ApplySceneEffects(DesktopVibeAdapter.From(snapshot.Mood, Math.Clamp(energy, 0, 1), snapshot.Warmth, behavior.TransitionSeconds));
         _transitioning = true;
     }
 
@@ -131,16 +169,15 @@ public sealed class DesktopWorldRuntime : IDisposable
 
         if (App.SkinManager is null) return;
         var motion = Math.Clamp(CurrentAtmosphere.Motion * Math.Max(0, scene.Behavior.MotionIntensity), 0, 1);
+        // Atmosphere is a presentation effect, never a persisted widget edit.
+        // Static worlds retain their exact saved opacity, including transparent cards.
+        var reactive = scene.Behavior.ReactToVibeFinder || scene.Behavior.ReactToMedia;
+        var multiplier = reactive && scene.Behavior.MotionIntensity > 0
+            ? 0.92 + motion * 0.08
+            : 1.0;
         foreach (var widget in App.SkinManager.Skins)
         {
-            if (!widget.Enabled) continue;
-            if (!_baseOpacity.ContainsKey(widget.Id)) _baseOpacity[widget.Id] = Math.Clamp(widget.Opacity, 0.05, 1.0);
-            var targetOpacity = Math.Clamp(_baseOpacity[widget.Id] * (0.92 + motion * 0.08), 0.05, 1.0);
-            if (Math.Abs(widget.Opacity - targetOpacity) > 0.015)
-            {
-                widget.Opacity = targetOpacity;
-                _ = App.SkinManager.SetOpacityAsync(widget, targetOpacity);
-            }
+            if (widget.Enabled) App.SkinManager.ApplyAtmosphereOpacity(widget, multiplier);
         }
     }
 
@@ -148,9 +185,52 @@ public sealed class DesktopWorldRuntime : IDisposable
     {
         var active = _scenes.ActiveScene;
         if (active is null || !active.Behavior.AutoSwitch || !active.Behavior.ReactToVibeFinder) return;
-        var desiredTag = snapshot.Mood.ToLowerInvariant() switch { "nocturnal" => "nocturnal", "cozy" => "cozy", "euphoric" or "intense" => "neon", "bright" => "minimal", "melancholic" => "nocturnal", _ => null };
+
+        var profile = snapshot.Profile;
+        var learnedMood = profile?.TopMood;
+        var learnedTheme = profile?.TopTheme;
+        var learnedAmbience = profile?.TopAmbience;
+
+        var effectiveMood = !string.IsNullOrWhiteSpace(learnedMood) && profile!.Signals >= 3
+            ? learnedMood!
+            : snapshot.Mood;
+
+        var desiredTag = effectiveMood.ToLowerInvariant() switch
+        {
+            "nocturnal" => "nocturnal",
+            "cozy" => "cozy",
+            "euphoric" or "intense" => "neon",
+            "bright" => "minimal",
+            "melancholic" or "heartbreak" => "nocturnal",
+            "focus" or "calm" => "minimal",
+            _ => null
+        };
+
+        if (desiredTag is null && !string.IsNullOrWhiteSpace(learnedTheme))
+        {
+            desiredTag = learnedTheme.ToLowerInvariant() switch
+            {
+                var value when value.Contains("neon") => "neon",
+                var value when value.Contains("dark") || value.Contains("night") => "nocturnal",
+                var value when value.Contains("cozy") || value.Contains("warm") => "cozy",
+                var value when value.Contains("minimal") || value.Contains("light") || value.Contains("bright") => "minimal",
+                _ => null
+            };
+        }
+
+        if (desiredTag is null && !string.IsNullOrWhiteSpace(learnedAmbience))
+        {
+            desiredTag = learnedAmbience.ToLowerInvariant() switch
+            {
+                var value when value.Contains("neon") || value.Contains("dynamic") => "neon",
+                var value when value.Contains("cozy") || value.Contains("calm") => "cozy",
+                var value when value.Contains("dark") || value.Contains("night") => "nocturnal",
+                _ => null
+            };
+        }
+
         if (desiredTag is null || active.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase))) return;
-        var candidate = _scenes.Scenes.FirstOrDefault(s => s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
+        var candidate = _scenes.Scenes.FirstOrDefault(s => !s.RequiresExplicitActivation && s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
         if (candidate is not null) _scenes.SetActiveScene(candidate);
     }
 
@@ -163,7 +243,11 @@ public sealed class DesktopWorldRuntime : IDisposable
         _scenes.ActiveSceneChanged -= OnSceneChanged;
         _timer?.Stop();
         _timer = null;
-        _baseOpacity.Clear();
+        if (App.SkinManager is not null)
+        {
+            foreach (var widget in App.SkinManager.Skins)
+                App.SkinManager.ApplyAtmosphereOpacity(widget, 1.0);
+        }
         _atmosphere?.Dispose();
         _atmosphere = null;
     }

@@ -12,10 +12,12 @@ public class SkinModelTests
         Assert.True(skin.Enabled);
         Assert.Equal(0.90, skin.Opacity);
         Assert.False(skin.ClickThrough);
+        Assert.False(skin.AlwaysOnTop);
         Assert.False(skin.Locked);
         Assert.NotEmpty(skin.Id);
         Assert.Equal(220, skin.Width);
         Assert.Equal(120, skin.Height);
+        Assert.Equal(SkinDefinition.CurrentSchemaVersion, skin.SchemaVersion);
     }
 
     [Fact]
@@ -64,7 +66,8 @@ public class SkinModelTests
     {
         var clock = SkinDefaults.CreateClock();
         Assert.Equal("Cozy Clock", clock.Name);
-        Assert.Equal(3, clock.SchemaVersion);
+        Assert.Equal(5, clock.SchemaVersion);
+        Assert.False(clock.AlwaysOnTop);
         Assert.Equal(2, clock.Measures.Count);
         Assert.Equal(2, clock.Meters.Count);
         Assert.True(clock.Meters[0].Height >= clock.Meters[0].FontSize * 1.4);
@@ -109,7 +112,11 @@ public class SkinModelTests
     }
 
     [Fact]
-    public void CreateAllDefaults_AllEnabled() => Assert.All(SkinDefaults.CreateAllDefaults(), s => Assert.True(s.Enabled));
+    public void CreateAllDefaults_AreDesktopFirst()
+    {
+        Assert.All(SkinDefaults.CreateAllDefaults(), s => Assert.False(s.AlwaysOnTop));
+        Assert.All(SkinDefaults.CreateAllDefaults(), s => Assert.True(s.Enabled));
+    }
 
     [Fact]
     public void CreateNetworkMonitor_HasNetworkMeasures()
@@ -135,6 +142,54 @@ public class SkinModelTests
         Assert.NotNull(rings);
         Assert.DoesNotContain(rings!.Measures, m => m.Type == MeasureType.DiskFree);
         Assert.Contains(rings.Measures, m => m.Type == MeasureType.DiskUsed);
+    }
+
+    [Fact]
+    public void SkinDefinition_Clone_DeepCopiesNestedState()
+    {
+        var source = SkinDefaults.CreateClock();
+        source.Tags.Add("snapshot");
+        source.Variables["source"] = "original";
+        source.Measures[0].Target = "target";
+
+        var copy = source.Clone("copy-id");
+        copy.Tags.Add("copy-only");
+        copy.Variables["source"] = "changed";
+        copy.Measures[0].Target = "changed-target";
+        copy.Meters[0].X = 999;
+
+        Assert.Equal("copy-id", copy.Id);
+        Assert.NotSame(source, copy);
+        Assert.DoesNotContain("copy-only", source.Tags);
+        Assert.Equal("original", source.Variables["source"]);
+        Assert.Equal("target", source.Measures[0].Target);
+        Assert.NotEqual(999, source.Meters[0].X);
+    }
+
+    [Fact]
+    public void SceneWidgetPlacement_PreservesDesktopCoordinates()
+    {
+        var placement = new ThemeManager.Core.Models.SceneWidgetPlacement
+        {
+            WidgetId = "clock",
+            X = 1420,
+            Y = 88,
+            Scale = 1.15,
+            Rotation = 4,
+            Opacity = 0.72,
+            ZIndex = 7,
+            Visible = true,
+            Monitor = "Primary"
+        };
+
+        Assert.Equal(1420, placement.X);
+        Assert.Equal(88, placement.Y);
+        Assert.Equal(1.15, placement.Scale);
+        Assert.Equal(4, placement.Rotation);
+        Assert.Equal(0.72, placement.Opacity);
+        Assert.Equal(7, placement.ZIndex);
+        Assert.True(placement.Visible);
+        Assert.Equal("Primary", placement.Monitor);
     }
 
     [Fact]

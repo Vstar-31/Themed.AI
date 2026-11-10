@@ -17,6 +17,19 @@ public sealed class PaletteHistory
 
     private readonly LinkedList<PaletteSnapshot> _undoStack = new();
     private readonly LinkedList<PaletteSnapshot> _redoStack = new();
+    private string? _continuousKey;
+    private long _lastEditTick;
+
+    /// <summary>Keep one starting snapshot for updates to the same control until it pauses.</summary>
+    public void PushContinuous(CozyTheme theme, string key, long tick)
+    {
+        if (_continuousKey != key || tick < _lastEditTick || tick - _lastEditTick >= 450)
+            Push(theme);
+        _continuousKey = key;
+        _lastEditTick = tick;
+    }
+
+    public void EndContinuousEdit() => _continuousKey = null;
 
     // Raised whenever the stack state changes so the ViewModel can update
     // CanUndo / CanRedo without polling.
@@ -34,8 +47,13 @@ public sealed class PaletteHistory
     /// Clears the redo stack (standard undo/redo semantics).
     /// </summary>
     public void Push(CozyTheme theme)
+        => Push(PaletteSnapshot.From(theme));
+
+    /// <summary>Pushes a pre-captured state before an operation that mutates the theme in place.</summary>
+    public void Push(PaletteSnapshot snapshot)
     {
-        _undoStack.AddLast(PaletteSnapshot.From(theme));
+        EndContinuousEdit();
+        _undoStack.AddLast(snapshot);
         if (_undoStack.Count > MaxSteps)
             _undoStack.RemoveFirst();
 
@@ -52,6 +70,7 @@ public sealed class PaletteHistory
     /// </summary>
     public PaletteSnapshot? Undo(CozyTheme currentTheme)
     {
+        EndContinuousEdit();
         if (!CanUndo) return null;
 
         _redoStack.AddLast(PaletteSnapshot.From(currentTheme));
@@ -69,6 +88,7 @@ public sealed class PaletteHistory
     /// </summary>
     public PaletteSnapshot? Redo(CozyTheme currentTheme)
     {
+        EndContinuousEdit();
         if (!CanRedo) return null;
 
         _undoStack.AddLast(PaletteSnapshot.From(currentTheme));
@@ -81,6 +101,7 @@ public sealed class PaletteHistory
     /// <summary>Wipes both stacks (called when a new theme is loaded).</summary>
     public void Clear()
     {
+        EndContinuousEdit();
         _undoStack.Clear();
         _redoStack.Clear();
         HistoryChanged?.Invoke(this, EventArgs.Empty);

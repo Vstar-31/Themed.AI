@@ -15,16 +15,24 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ThemeManager.Core\ThemeManager.Core.csproj" />
+    <ProjectReference Include="..\ThemeManager.Integration\ThemeManager.Integration.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Actual editor logic, with explicit dispatcher/persistence doubles in Editor/.
+       These are logic regressions; they do not exercise WinUI bindings or rendering. -->
+  <ItemGroup>
+    <Compile Include="..\ThemeManager.WinUI\ViewModels\SkinEditorViewModel*.cs" Link="EditorSource\%(Filename)%(Extension)" />
+    <Compile Include="..\ThemeManager.WinUI\ViewModels\WidgetBehaviorEditorItems.cs" Link="EditorSource\WidgetBehaviorEditorItems.cs" />
+    <Compile Include="..\ThemeManager.WinUI\ViewModels\ViewModelBase.cs" Link="EditorSource\ViewModelBase.cs" />
+  </ItemGroup>
 </Project>

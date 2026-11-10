@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Services;
 using ThemeManager.WinUI.Services;
 
 namespace ThemeManager.WinUI.ViewModels;
@@ -22,16 +23,10 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
     public SkinsViewModel(SkinManagerService manager)
     {
         _manager = manager;
-
-        // Store the handler so it can be unsubscribed in Dispose() — same reasoning as
-        // ThemesViewModel: an inline lambda here could never be removed, and every SkinsPage
-        // navigation would add another permanent listener.
         _skinsChangedHandler = (_, _) => RefreshList();
         _manager.SkinsChanged += _skinsChangedHandler;
-
         _saveFailedHandler = (_, msg) => StatusMessage = msg;
         _manager.SaveFailed += _saveFailedHandler;
-
         RefreshList();
     }
 
@@ -58,12 +53,23 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         StatusMessage = locked ? $"\"{skin.Name}\" position locked." : $"\"{skin.Name}\" can be dragged again.";
     }
 
+    public async Task ToggleAlwaysOnTopAsync(SkinDefinition skin, bool enabled)
+    {
+        // Always-on-top is deliberately opt-in. SaveSkinAsync rebuilds the native host so the
+        // WinUI presenter receives the new z-order flag, while preserving the persisted X/Y.
+        skin.AlwaysOnTop = enabled;
+        await _manager.SaveSkinAsync(skin);
+        StatusMessage = enabled
+            ? $"\"{skin.Name}\" will stay above other windows."
+            : $"\"{skin.Name}\" now behaves like a normal desktop widget.";
+    }
+
     public async Task ToggleDesktopLayerAsync(SkinDefinition skin, bool enabled)
     {
         if (!enabled)
         {
             await _manager.SetDesktopLayerAsync(skin, false);
-            StatusMessage = $"\"{skin.Name}\" back to normal always-on-top mode.";
+            StatusMessage = $"\"{skin.Name}\" returned to its normal desktop window layer.";
             return;
         }
 
@@ -71,7 +77,7 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         bool succeeded = await _manager.SetDesktopLayerAsync(skin, true);
         StatusMessage = succeeded
             ? $"\"{skin.Name}\" is now behind your desktop icons."
-            : $"Couldn't attach \"{skin.Name}\" behind the desktop icons on this system — it's staying always-on-top instead.";
+            : $"Couldn't attach \"{skin.Name}\" behind the desktop icons on this system — it's staying in the normal desktop window layer.";
     }
 
     public async Task ResetPositionAsync(SkinDefinition skin)
@@ -87,8 +93,6 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         private set => SetProperty(ref _selectedSkin, value);
     }
 
-    /// <summary>Creates a new blank widget and stores it in <see cref="SelectedSkin"/> so the
-    /// page can navigate straight to the editor for it.</summary>
     public async Task CreateSkinAsync()
     {
         SelectedSkin = await _manager.CreateNewSkinAsync();
@@ -101,28 +105,36 @@ public sealed class SkinsViewModel : ViewModelBase, IDisposable
         StatusMessage = $"\"{skin.Name}\" deleted.";
     }
 
+    public async Task ImportPackageAsync(string path)
+    {
+        var skin = await new SkinPackageService().ImportAsync(path);
+        await _manager.AddImportedSkinAsync(skin);
+        SelectedSkin = skin;
+        StatusMessage = $"Imported \"{skin.Name}\". It is off; edit it or turn it on when ready.";
+    }
+
+    public async Task ExportPackageAsync(SkinDefinition skin, string path)
+    {
+        await new SkinPackageService().ExportAsync(skin, path);
+        StatusMessage = $"Exported \"{skin.Name}\" with its images. Connection settings were omitted.";
+    }
+
     public void Dispose()
     {
         _manager.SkinsChanged -= _skinsChangedHandler;
         _manager.SaveFailed -= _saveFailedHandler;
     }
 
-    public void ToggleMasterVisibility()
-    {
-        _manager.ToggleAllWidgetsVisibility();
-    }
+    public void ToggleMasterVisibility() => _manager.ToggleAllWidgetsVisibility();
 
     private void RefreshList()
     {
         var source = _manager.Skins;
         for (int i = 0; i < source.Count; i++)
         {
-            if (Skins.Count > i)
-                Skins[i] = source[i];
-            else
-                Skins.Add(source[i]);
+            if (Skins.Count > i) Skins[i] = source[i];
+            else Skins.Add(source[i]);
         }
-        while (Skins.Count > source.Count)
-            Skins.RemoveAt(Skins.Count - 1);
+        while (Skins.Count > source.Count) Skins.RemoveAt(Skins.Count - 1);
     }
 }

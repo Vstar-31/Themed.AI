@@ -6,8 +6,15 @@ namespace ThemeManager.Core.Services;
 
 public sealed class ThemeRepository
 {
-    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
-    private static readonly string ThemesFilePath = Path.Combine(StorageFolder, "themes.json");
+    private readonly string StorageFolder;
+    private readonly string ThemesFilePath;
+
+    public ThemeRepository(string? storageFolder = null)
+    {
+        StorageFolder = storageFolder ?? Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
+        ThemesFilePath = Path.Combine(StorageFolder, "themes.json");
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -44,11 +51,21 @@ public sealed class ThemeRepository
         {
             var list = themes.ToList();
             var tempPath = $"{ThemesFilePath}.{Guid.NewGuid():N}.tmp";
-            try { await WriteAndMoveAsync(list, tempPath); }
-            catch (IOException)
+            try
             {
-                await Task.Delay(200);
-                await WriteAndMoveAsync(list, tempPath);
+                try { await WriteAndMoveAsync(list, tempPath); }
+                catch (IOException)
+                {
+                    await Task.Delay(200);
+                    await WriteAndMoveAsync(list, tempPath);
+                }
+            }
+            finally
+            {
+                // Clean only this attempt's temporary file; never replace the original on failure.
+                try { File.Delete(tempPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
             }
         }
         finally { _saveLock.Release(); }
@@ -81,7 +98,7 @@ public sealed class ThemeRepository
         catch { return null; }
     }
 
-    private static void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
+    private void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
 
     private static void EnsureBuiltInThemesPresent(List<CozyTheme> themes)
     {

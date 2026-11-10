@@ -1,25 +1,23 @@
 using Microsoft.UI.Xaml;
-using ThemeManager.WinUI.Services;
 
 namespace ThemeManager.WinUI.Views;
 
 public sealed partial class VibeFinderAIPage
 {
-    private async void Page_Loaded(object sender, RoutedEventArgs e)
+    private void Page_Loaded(object sender, RoutedEventArgs e)
     {
-        foreach (var skin in _skinManager.Skins.Where(s => s.Name.StartsWith("VibeFinder", StringComparison.Ordinal)))
-        {
-            if (skin.Variables.TryGetValue("designVersion", out var version) && version == DefaultWidgetCatalog.DesignVersion)
-                continue;
+        _isPageVisible = true;
 
-            var enabled = skin.Enabled;
-            var x = skin.X;
-            var y = skin.Y;
-            DefaultWidgetCatalog.RebuildVibeFinder(skin);
-            skin.Enabled = enabled;
-            skin.X = x;
-            skin.Y = y;
-            await _skinManager.SaveSkinAsync(skin);
+        // Rebind only when the cached browser is actually ready. Claim authority after the
+        // command sink exists so widget clicks can never be routed to a half-initialized WebView.
+        if (VibeFinderWebView.CoreWebView2 is not null)
+        {
+            BindVisibleEmbedBridge();
+            ThemeManager.Integration.Skins.VibeFinderWebState.ClaimVisibleEmbed();
         }
+
+        // Keep the switches synchronized with the active world's saved composition.
+        // navigation must never tear down and recreate VFAI windows.
+        SyncWidgetTogglesFromActiveWorld();
     }
 }
