@@ -10,6 +10,9 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <!-- Our design-system tokens and control overrides -->
                 <ResourceDictionary Source="Resources/ThemeResources.xaml" />
+                <!-- Last in order: overrides stock WinUI foreground/fill keys that otherwise
+                     stay white when the rehaul uses a light café palette. -->
+                <ResourceDictionary Source="Resources/WinUIControlTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

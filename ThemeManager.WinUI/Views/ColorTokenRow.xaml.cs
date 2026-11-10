@@ -57,6 +57,7 @@ public sealed partial class ColorTokenRow : UserControl
     // ── Event ─────────────────────────────────────────────────────────────────
     /// <summary>Fires after the user confirms a valid color change.</summary>
     public event EventHandler<string>? ColorChanged;
+    public event EventHandler? EditCompleted;
 
     // ── Guard flags to prevent circular updates ───────────────────────────────
     private bool _updatingFromCode;
@@ -64,7 +65,15 @@ public sealed partial class ColorTokenRow : UserControl
     public ColorTokenRow()
     {
         InitializeComponent();
+        InlinePicker.AddHandler(UIElement.PointerReleasedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => CompleteEdit()), true);
+        InlinePicker.AddHandler(UIElement.PointerCaptureLostEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => CompleteEdit()), true);
+        PickerFlyout.Closed += (_, _) => CompleteEdit();
+        HexBox.LostFocus += (_, _) => CompleteEdit();
     }
+
+    private void CompleteEdit() => EditCompleted?.Invoke(this, EventArgs.Empty);
 
     // ── Property change callbacks ─────────────────────────────────────────────
 
@@ -116,8 +125,12 @@ public sealed partial class ColorTokenRow : UserControl
     private void SwatchButton_Click(object sender, RoutedEventArgs e)
     {
         // Seed the picker with the current color before opening.
-        if (TryParseHex(HexValue, out var c))
-            InlinePicker.Color = c;
+        _updatingFromCode = true;
+        try
+        {
+            if (TryParseHex(HexValue, out var c)) InlinePicker.Color = c;
+        }
+        finally { _updatingFromCode = false; }
     }
 
     private void InlinePicker_ColorChanged(
@@ -133,13 +146,17 @@ public sealed partial class ColorTokenRow : UserControl
         if (_updatingFromCode) return;
         var raw = HexBox.Text?.Trim() ?? string.Empty;
         if (!raw.StartsWith('#')) raw = "#" + raw;
-        if (TryParseHex(raw, out _))
+        // Leave partial text alone. Normalizing it would pad/expand the value
+        // while the user is still typing and move their caret unexpectedly.
+        if (raw.Length == 7 && TryParseHex(raw, out _))
             PushChange(raw.ToUpperInvariant());
     }
 
     private void ResetButton_Click(object sender, RoutedEventArgs e)
     {
+        CompleteEdit();
         PushChange(DefaultHex);
+        CompleteEdit();
     }
 
     /// <summary>

@@ -1,0 +1,41 @@
+Themed.AI help
+Updated 8 November 2026
+
+Themes and worlds
+
+A theme sets the app's colors. A world combines a theme with wallpaper, widgets and their placement. Selecting a world can show a preview or apply it, depending on the Studio switch. Use Apply to desktop when you want to apply the selected world explicitly.
+
+Apply worlds when I select them controls what happens when you browse the list. The switch for the selected world controls whether that world participates in selection-based changes. Switch worlds to match the music lets the active world's music rules choose another world.
+
+Editing a widget
+
+Select an element in the preview or layer list. Change style lets a text, bar, ring or graph element display its existing data another way. A ring may need a square size. Image and web elements keep their own editing controls. Undo restores the previous style and size.
+
+The right panel shows both the widget and its desktop placement. Change the monitor, edge, margins and sample screen size under Monitor placement. Preview changes do not change the saved desktop widget until you save.
+
+Palette undo
+
+Continuous changes to one color are grouped until you pause or finish the picker gesture. Undo returns to the start of that group; Redo restores its final value. Type all six hex digits before expecting the color to update.
+
+Automation
+
+Turn on theme automation, enable the rule you want and assign a theme to it. Save the settings. Saving checks the rules immediately; the app then checks every 30 seconds. Battery saver takes priority, followed by a configured weather match, Windows light/dark mode and time of day. A battery rule uses Windows' actual battery-saver state, not just the battery percentage.
+
+Weather
+
+Choose a city and country in Settings, or opt into Windows location, then select a theme for each weather condition you want. No account or API key is needed for Open-Meteo. Enable automation as well as weather rules. For a weather widget, enter a city such as London, GB in its data-source target. Existing City|API-key targets keep using OpenWeatherMap. Internet access is required; current readings refresh about every 30 minutes, and readings older than two hours are not used after an outage. If automatic location fails, enter a city instead.
+
+Weather data: Open-Meteo, https://open-meteo.com/ (CC BY 4.0). Location search data: GeoNames, https://www.geonames.org/. The default public API is for this free, non-commercial preview. A commercial release needs suitable provider hosting or a subscription.
+
+VibeFinder
+
+VibeFinder needs a network connection and a valid account for private playlists and history. The desktop Connection & widgets panel stores sign-in settings used by native widgets. The embedded music page also has a web session. A successful native login does not prove that every web or provider request succeeded.
+
+If playback or the library fails, note the action and the time, then contact support. Include any error shown on screen. Do not put passwords in logs or screenshots.
+
+Backups and support
+
+Export designs you want to keep before removing local data. Settings > Open Data Folder shows the saved desktop files. Diagnostics also writes local logs under the Windows local application-data folder in ThemeManager.AI/logs. Review any file before sharing it because it can contain personal paths, prompts or account details.
+
+Publisher: Vijay Shankar, India
+Support and privacy: themed.aiapp@gmail.com

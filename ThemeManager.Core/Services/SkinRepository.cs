@@ -6,8 +6,14 @@ namespace ThemeManager.Core.Services;
 
 public sealed class SkinRepository
 {
-    private static readonly string StorageFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ThemedAI");
-    private static readonly string SkinsFilePath = Path.Combine(StorageFolder, "skins.json");
+    private readonly string StorageFolder;
+    private readonly string SkinsFilePath;
+
+    public SkinRepository(string? storageFolder = null)
+    {
+        StorageFolder = storageFolder ?? Path.Combine(ThemeManager.Core.Services.AppDataPaths.LocalRoot, "ThemedAI");
+        SkinsFilePath = Path.Combine(StorageFolder, "skins.json");
+    }
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -23,8 +29,10 @@ public sealed class SkinRepository
             EnsureStorageFolderExists();
             if (!File.Exists(SkinsFilePath)) return await SeedDefaultsAsync();
 
-            await using var stream = File.OpenRead(SkinsFilePath);
-            var skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions) ?? new();
+            List<SkinDefinition> skins;
+            await using (var stream = File.OpenRead(SkinsFilePath))
+                skins = await JsonSerializer.DeserializeAsync<List<SkinDefinition>>(stream, JsonOptions) ?? new();
+            // Close the read handle before migration replaces skins.json on Windows.
             if (Migrate(skins))
             {
                 try
@@ -65,53 +73,69 @@ public sealed class SkinRepository
 
     public async Task SaveAllAsync(IEnumerable<SkinDefinition> skins)
     {
-        try
-        {
-            EnsureStorageFolderExists();
-            await _saveLock.WaitAsync();
-            try
-            {
-                var list = skins.ToList();
-                var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
-                try
-                {
-                    await WriteAndMoveAsync(list, tempPath);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // A reader/another instance/AV scanner may briefly own the target. Retry once,
-                    // then deliberately leave the in-memory state authoritative instead of failing
-                    // the UI operation or crashing startup.
-                    await Task.Delay(200);
-                    try
-                    {
-                        await WriteAndMoveAsync(list, tempPath);
-                    }
-                    catch (Exception retryEx) when (retryEx is IOException or UnauthorizedAccessException)
-                    {
-                    }
-                }
-            }
-            finally { _saveLock.Release(); }
-        }
+        try { await SaveAllCheckedAsync(skins); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Storage is persistence, not a prerequisite for rendering the desktop.
+            // Existing edits keep their in-memory fallback when storage is unavailable.
         }
     }
 
-    private static async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
+    /// <summary>Use for imports, which must not report success unless persistence succeeds.</summary>
+    public async Task SaveAllCheckedAsync(IEnumerable<SkinDefinition> skins)
+    {
+        EnsureStorageFolderExists();
+        await _saveLock.WaitAsync();
+        var tempPath = $"{SkinsFilePath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            var snapshot = skins.ToList();
+            try { await WriteAndMoveAsync(snapshot, tempPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(200);
+                await WriteAndMoveAsync(snapshot, tempPath);
+            }
+        }
+        finally
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            finally { _saveLock.Release(); }
+        }
+    }
+
+    private async Task WriteAndMoveAsync(List<SkinDefinition> list, string tempPath)
     {
         await using (var stream = File.Create(tempPath))
             await JsonSerializer.SerializeAsync(stream, list, JsonOptions);
         File.Move(tempPath, SkinsFilePath, overwrite: true);
     }
 
-    private static void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
+    private void EnsureStorageFolderExists() => Directory.CreateDirectory(StorageFolder);
 
     private static bool Migrate(List<SkinDefinition> skins)
     {
         bool changed = false;
+        var unique = new Dictionary<string, SkinDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var skin in skins.ToArray())
+        {
+            if (unique.TryGetValue(skin.Id, out var original))
+            {
+                // Older world switches appended an existing definition a second time.
+                // Keep distinct user edits as an inactive recovered copy rather than lose them.
+                var copy = skin.Clone(original.Id);
+                if (JsonSerializer.Serialize(original, JsonOptions) == JsonSerializer.Serialize(copy, JsonOptions))
+                    skins.Remove(skin);
+                else
+                {
+                    skin.Id = Guid.NewGuid().ToString();
+                    skin.Enabled = false;
+                    skin.Name += " (recovered copy)";
+                    unique.Add(skin.Id, skin);
+                }
+                changed = true;
+            }
+            else unique.Add(skin.Id, skin);
+        }
         var defaults = SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
         foreach (var skin in skins)
@@ -146,6 +170,58 @@ public sealed class SkinRepository
             else if (skin.SchemaVersion < 3)
             {
                 skin.SchemaVersion = 3;
+                changed = true;
+            }
+
+            // v4 changes the desktop window policy: widgets are normal desktop windows by default,
+            // not global always-on-top windows. A future explicit user choice is stored in
+            // AlwaysOnTop; only legacy skins created before this policy existed are migrated.
+            if (skin.SchemaVersion < 4)
+            {
+                skin.AlwaysOnTop = false;
+                skin.SchemaVersion = 4;
+                changed = true;
+            }
+
+            // v5 introduces composition groups. Existing widgets need no structural migration:
+            // the field deserializes as an empty list and all current meters remain at widget scope.
+            if (skin.SchemaVersion < 5)
+            {
+                skin.SchemaVersion = 5;
+                changed = true;
+            }
+
+            // v6 adds per-meter states and monitor anchoring. Both are optional additions, so older
+            // widgets need only the version bump; they keep their static look and saved X/Y.
+            if (skin.SchemaVersion < 6)
+            {
+                skin.SchemaVersion = 6;
+                changed = true;
+            }
+
+            if (skin.Groups is null)
+            {
+                skin.Groups = new List<WidgetGroupDefinition>();
+                changed = true;
+            }
+
+            if (skin.Meters is null)
+            {
+                skin.Meters = new List<MeterDefinition>();
+                changed = true;
+            }
+            foreach (var meter in skin.Meters)
+            {
+                if (meter.States is null)
+                {
+                    meter.States = new List<MeterStateDefinition>();
+                    changed = true;
+                }
+            }
+
+            if (skin.Anchor is { Responsive: null } anchor)
+            {
+                anchor.Responsive = new List<WidgetResponsiveRule>();
                 changed = true;
             }
 

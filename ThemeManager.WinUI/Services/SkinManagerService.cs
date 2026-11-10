@@ -1,6 +1,8 @@
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
 using ThemeManager.Core.Services;
 using ThemeManager.WinUI.ViewModels;
@@ -8,171 +10,188 @@ using ThemeManager.WinUI.Views;
 
 namespace ThemeManager.WinUI.Services;
 
-/// <summary>
-/// Central service for skin (desktop widget) state management — the counterpart to
-/// <see cref="ThemeService"/>, but living in the WinUI project because it has to create
-/// real <see cref="SkinHostWindow"/> instances, which <c>ThemeManager.Core</c> can't reference.
-///
-/// - Holds the in-memory skin list and delegates persistence to <see cref="SkinRepository"/>.
-/// - Owns one <see cref="SkinHostWindow"/> per *enabled* skin.
-/// - Runs one lightweight scheduler tick and gives every widget its own refresh cadence.
-///   Fast widgets can update at 50–100 ms while expensive web/weather widgets can stay at 5–60 s.
-/// </summary>
 public sealed class SkinManagerService : IDisposable
 {
     private readonly SkinRepository _repo;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
-
+    private readonly DispatcherQueue _dispatcher;
+    private readonly WidgetPluginRegistry? _pluginRegistry;
     private List<SkinDefinition> _skins = new();
     public IReadOnlyList<SkinDefinition> Skins => _skins;
-
-    /// <summary>Fired whenever a skin is added, removed, or has a setting changed.</summary>
     public event EventHandler? SkinsChanged;
-
     private readonly Dictionary<string, (SkinHostWindow Window, SkinHostViewModel ViewModel)> _open = new();
     private DispatcherQueueTimer? _timer;
     private readonly Stopwatch _schedulerClock = Stopwatch.StartNew();
     private readonly WidgetTickScheduler _scheduler = new();
     private bool _widgetsHidden;
-
-    /// <summary>Minimum scheduler quantum. Individual widgets keep their own cadence, while a
-    /// single lightweight UI timer wakes the scheduler so hundreds of widgets do not require
-    /// hundreds of WinUI timers.</summary>
+    private bool _initialized;
+    private readonly SemaphoreSlim _windowMutationGate = new(1, 1);
     private const int SchedulerQuantumMs = 50;
+    private static readonly IReadOnlyDictionary<string, SkinDefinition> CanonicalDefaults =
+        SkinDefaults.CreateAllDefaults().ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
 
-    public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null)
+    public SkinManagerService(SkinRepository repository, ILoggerFactory? loggerFactory = null, WidgetPluginRegistry? pluginRegistry = null)
     {
         _repo = repository;
         _loggerFactory = loggerFactory;
+        _pluginRegistry = pluginRegistry;
         _logger = loggerFactory?.CreateLogger<SkinManagerService>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SkinManagerService>.Instance;
+        _dispatcher = DispatcherQueue.GetForCurrentThread()
+            ?? throw new InvalidOperationException("SkinManagerService must be created on the WinUI dispatcher thread.");
     }
 
-    /// <summary>Must be called once on startup, after the main window exists (needs a DispatcherQueue).</summary>
     public async Task InitializeAsync()
     {
         _skins = await _repo.LoadAllAsync();
 
+        // Repair off-canvas VibeFinder meters before creating native widget windows. This also
+        // migrates the old stock Minimal transport row without resetting user-authored layouts.
         bool changed = false;
-        foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
+        foreach (var skin in _skins.Where(IsVibeFinderSkin))
         {
-            int removed = skin.Meters.RemoveAll(m => m.Kind == MeterKind.WebEmbed);
-            if (removed > 0)
+            if (DefaultWidgetCatalog.RepairVibeFinderLayout(skin))
             {
-                // Restore the original height if we just removed the 230px tall embed
-                if (skin.Name == "VibeFinder Playlist" && skin.Height > 400)
-                    skin.Height -= 230;
                 changed = true;
+                _logger.LogInformation(
+                    "VibeFinder layout repaired before window creation for {WidgetName}",
+                    skin.Name);
             }
+        }
 
-            foreach (var meter in skin.Meters.Where(m => m.Kind == MeterKind.String && 
-                (m.MeasureName == "VibeTitle" || m.MeasureName == "VibeArtist" || m.MeasureName == "VibeMood")))
+        // Studio worlds own VibeFinder visibility. Resolve the persisted active world before
+        // opening any windows so legacy global Enabled flags cannot briefly resurrect widgets
+        // that are disabled in the current world.
+        await App.SceneService.InitializeAsync();
+        if (App.SceneService.ActiveScene is { } activeScene)
+        {
+            foreach (var vibeSkin in _skins.Where(IsVibeFinderSkin))
             {
-                if (string.IsNullOrEmpty(meter.Format) || meter.Format == "{0:F0}")
+                var placement = activeScene.Widgets.FirstOrDefault(p =>
+                    p.WidgetId.Equals(vibeSkin.Id, StringComparison.OrdinalIgnoreCase));
+
+                if (placement is not null)
                 {
-                    meter.Format = "{1}";
-                    changed = true;
+                    vibeSkin.X = placement.X;
+                    vibeSkin.Y = placement.Y;
+                    vibeSkin.Opacity = Math.Clamp(placement.Opacity, 0, 1);
+                    vibeSkin.Enabled = placement.Visible;
+                }
+                else
+                {
+                    vibeSkin.Enabled = false;
                 }
             }
         }
+
+        foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
+        {
+            int removed = skin.Meters.RemoveAll(m => m.Kind == MeterKind.WebEmbed);
+            if (removed > 0) { if (skin.Name == "VibeFinder Playlist" && skin.Height > 400) skin.Height -= 230; changed = true; }
+            foreach (var meter in skin.Meters.Where(m => m.Kind == MeterKind.String && (m.MeasureName == "VibeTitle" || m.MeasureName == "VibeArtist" || m.MeasureName == "VibeMood")))
+                if (string.IsNullOrEmpty(meter.Format) || meter.Format == "{0:F0}") { meter.Format = "{1}"; changed = true; }
+        }
         if (changed) await PersistAsync(false);
-
-        foreach (var skin in _skins.Where(s => s.Enabled))
-            OpenWindowFor(skin);
-
-        _timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        foreach (var skin in _skins.Where(s => s.Enabled)) OpenWindowFor(skin);
+        _timer = _dispatcher.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(SchedulerQuantumMs);
         _timer.Tick += (_, _) => TickDueWidgets();
         _timer.Start();
+        _initialized = true;
     }
 
     private void TickDueWidgets()
     {
         var now = _schedulerClock.ElapsedMilliseconds;
-        var dispatcher = DispatcherQueue.GetForCurrentThread();
-
-        var snapshot = _open.ToList();
-        var dueIds = _scheduler.GetDue(
-            snapshot.Select(x => x.Value.ViewModel.Definition), now)
-            .Select(s => s.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
+        var snapshot = _open.Where(pair => !pair.Value.Window.IsWorldHidden).ToList();
+        var dueIds = _scheduler.GetDue(snapshot.Select(x => x.Value.ViewModel.Definition), now).Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (skinId, entry) in snapshot)
         {
             var viewModel = entry.ViewModel;
             if (viewModel.IsClosed || !dueIds.Contains(skinId)) continue;
-
-            Task.Run(() =>
-            {
-                if (viewModel.IsClosed) return;
-                try
-                {
-                    viewModel.RefreshMeasures();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to refresh its measures",
-                        viewModel.Definition.Id, viewModel.Definition.Name);
-                }
-
-                dispatcher.TryEnqueue(() =>
-                {
-                    if (viewModel.IsClosed) return;
-                    try
-                    {
-                        viewModel.UpdateMeters();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): failed to update its meters",
-                            viewModel.Definition.Id, viewModel.Definition.Name);
-                    }
-                });
-            });
+            _ = RefreshWidgetAsync(viewModel);
         }
     }
 
-    // ── Per-skin settings (each mutates in-memory, applies live, then persists) ──────
+    private async Task RefreshWidgetAsync(SkinHostViewModel viewModel)
+    {
+        try
+        {
+            await viewModel.RefreshCoordinator.TryRefreshAsync(
+                viewModel.RefreshMeasures,
+                callback => _dispatcher.TryEnqueue(() => callback()),
+                viewModel.UpdateMeters,
+                () => viewModel.IsClosed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skin {SkinId} ({SkinName}): refresh failed",
+                viewModel.Definition.Id, viewModel.Definition.Name);
+        }
+    }
 
     public async Task SetEnabledAsync(SkinDefinition skin, bool enabled)
     {
-        skin.Enabled = enabled;
+        ArgumentNullException.ThrowIfNull(skin);
 
-        if (enabled) OpenWindowFor(skin);
-        else await CloseWindowFor(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            if (skin.Enabled == enabled)
+            {
+                await SyncActiveScenePlacementAsync(skin);
+                return;
+            }
 
-        // notifyListChanged: true — SkinsChanged's own doc comment says it fires on "a setting
-        // changed" too, not just add/remove, but this call was passing false, so nothing outside
-        // this class could ever observe a widget being toggled on/off (see MainWindow.
-        // EnsureVibeFinderPrewarm, which needs exactly that to pre-warm on widget activation).
-        await PersistAsync(true);
+            skin.Enabled = enabled;
+            if (enabled) OpenWindowFor(skin);
+            else await CloseWindowFor(skin);
+
+            await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
     }
 
     public async Task SetOpacityAsync(SkinDefinition skin, double opacity)
     {
         skin.Opacity = Math.Clamp(opacity, 0.0, 1.0);
-        if (_open.TryGetValue(skin.Id, out var entry))
-            entry.Window.ApplyOpacity(skin.Opacity);
+        if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyOpacity(skin.Opacity);
         await PersistAsync(false);
+    }
+
+    // A transient visual adjustment must not alter saved skins or scene snapshots.
+    internal void ApplyAtmosphereOpacity(SkinDefinition skin, double multiplier)
+    {
+        if (_open.TryGetValue(skin.Id, out var entry))
+            entry.Window.ApplyOpacity(Math.Clamp(skin.Opacity * multiplier, 0.0, 1.0));
     }
 
     public async Task SetClickThroughAsync(SkinDefinition skin, bool enabled)
     {
         skin.ClickThrough = enabled;
-        if (_open.TryGetValue(skin.Id, out var entry))
-            entry.Window.ApplyClickThrough(skin.ClickThrough);
+        if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyClickThrough(skin.ClickThrough);
         await PersistAsync(false);
     }
 
     public async Task SetLockedAsync(SkinDefinition skin, bool locked)
     {
         skin.Locked = locked;
-        if (_open.TryGetValue(skin.Id, out var entry))
-            entry.Window.ApplyLocked(skin.Locked);
+        if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyLocked(skin.Locked);
         await PersistAsync(false);
     }
 
-    /// <summary>Changes a widget's refresh cadence without rebuilding its native window.</summary>
+    public async Task SetAlwaysOnTopAsync(SkinDefinition skin, bool enabled)
+    {
+        skin.AlwaysOnTop = enabled;
+        if (_open.TryGetValue(skin.Id, out var entry) && entry.Window.AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.IsAlwaysOnTop = enabled;
+        await PersistAsync(true);
+    }
+
     public async Task SetUpdateIntervalAsync(SkinDefinition skin, int intervalMs)
     {
         skin.UpdateIntervalMs = Math.Clamp(intervalMs, 50, 60_000);
@@ -180,39 +199,280 @@ public sealed class SkinManagerService : IDisposable
         await PersistAsync(false);
     }
 
-    /// <summary>
-    /// Experimental — see <c>DesktopLayerInterop</c>. Returns whether attachment actually
-    /// succeeded so the UI can say so; <see cref="SkinDefinition.DesktopLayer"/> still gets set
-    /// to the requested value either way (it's what gets *retried* on next launch), but a
-    /// failed attach leaves the widget visibly in its normal always-on-top mode regardless of
-    /// what the toggle says.
-    /// </summary>
     public async Task<bool> SetDesktopLayerAsync(SkinDefinition skin, bool enabled)
     {
         skin.DesktopLayer = enabled;
         bool succeeded = true;
-
-        if (_open.TryGetValue(skin.Id, out var entry))
-            succeeded = await entry.Window.ApplyDesktopLayerAsync(enabled);
-
+        if (_open.TryGetValue(skin.Id, out var entry)) succeeded = await entry.Window.ApplyDesktopLayerAsync(enabled);
         await PersistAsync(false);
         return succeeded;
     }
 
     public async Task ResetPositionAsync(SkinDefinition skin)
     {
-        skin.X = 60;
-        skin.Y = 60;
-        if (_open.TryGetValue(skin.Id, out var entry))
-            entry.Window.ApplyPosition(skin.X, skin.Y);
+        skin.X = 60; skin.Y = 60;
+        // An anchored widget resets to its default distance from the anchored edge; its position
+        // is derived from the anchor, so X/Y alone would have no visible effect.
+        if (skin.Anchor is { } anchor)
+        {
+            anchor.ResetMargins();
+        }
+        if (_open.TryGetValue(skin.Id, out var entry)) entry.Window.ApplyPosition(skin.X, skin.Y);
         await PersistAsync(false);
+    }
+
+    public async Task ApplyScenePlacementAsync(SkinDefinition skin, double x, double y, double opacity, bool enabled)
+    {
+        ApplyScenePlacement(skin, x, y, opacity, enabled);
+        await PersistAsync(false);
+    }
+
+    /// <summary>
+    /// Reconciles the complete widget composition of a desktop world in one pass. A world placement
+    /// may carry a serialized widget definition; when its id is no longer present in skins.json we
+    /// materialize that definition back into the live widget library instead of silently dropping the
+    /// placement. All window changes are performed before one persistence operation, which also avoids
+    /// the repeated file churn that the old Studio loop caused for every widget.
+    /// </summary>
+    public async Task<(int Applied, int Missing)> ApplySceneAsync(IEnumerable<SceneWidgetPlacement> placements)
+    {
+        ArgumentNullException.ThrowIfNull(placements);
+
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            var scenePlacements = placements
+            .Where(p => !string.IsNullOrWhiteSpace(p.WidgetId))
+            .OrderBy(p => p.ZIndex)
+            .ToList();
+
+        var sceneWasMutated = false;
+
+        // Worlds should contain one placement per widget. Older versions could leave behind
+        // orphaned GUIDs or duplicate VibeFinder placements during provisioning/rebuilds.
+        // Normalize those records before opening any windows so a world can never resurrect
+        // two copies of the same widget.
+        var cleanedPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
+        var seenPlacementKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var placement in scenePlacements)
+        {
+            var key = !string.IsNullOrWhiteSpace(placement.Definition?.Name) &&
+                      placement.Definition!.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase)
+                ? $"name:{placement.Definition.Name}"
+                : $"id:{placement.WidgetId}";
+
+            if (!seenPlacementKeys.Add(key))
+            {
+                _logger.LogWarning(
+                    "Desktop world ignored duplicate widget placement {WidgetId} ({WidgetName})",
+                    placement.WidgetId,
+                    placement.Definition?.Name ?? "(unknown)");
+                sceneWasMutated = true;
+                continue;
+            }
+
+            cleanedPlacements.Add(placement);
+        }
+
+        scenePlacements = cleanedPlacements;
+
+        var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var successfulPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
+        var applied = 0;
+        var missing = 0;
+
+        foreach (var placement in scenePlacements)
+        {
+            if (!known.TryGetValue(placement.WidgetId, out var skin))
+            {
+                if (placement.Definition is not null)
+                {
+                    // Legacy worlds may contain an old random WidgetId while the snapshot still
+                    // identifies the canonical VibeFinder widget by name. Rebind it to the live
+                    // definition instead of creating a second native widget instance.
+                    var snapshotName = placement.Definition.Name?.Trim();
+                    var liveVibe = !string.IsNullOrWhiteSpace(snapshotName) &&
+                                   IsVibeFinderSkin(placement.Definition)
+                        ? _skins.FirstOrDefault(s =>
+                            s.Name.Equals(snapshotName, StringComparison.OrdinalIgnoreCase))
+                        : null;
+
+                    if (liveVibe is not null)
+                    {
+                        var oldWidgetId = placement.WidgetId;
+                        skin = liveVibe;
+                        placement.WidgetId = liveVibe.Id;
+                        sceneWasMutated = true;
+                        _logger.LogInformation(
+                            "Desktop world rebound legacy widget placement {OldWidgetId} to canonical {WidgetId} ({WidgetName})",
+                            oldWidgetId, skin.Id, skin.Name);
+                    }
+                    else
+                    {
+                        skin = placement.Definition.Clone(placement.WidgetId);
+                        _logger.LogInformation(
+                            "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
+                            skin.Id, skin.Name);
+                    }
+                }
+                else if (CanonicalDefaults.TryGetValue(placement.WidgetId, out var canonical))
+                {
+                    // Built-in widget ids are stable, so pre-snapshot worlds can still be repaired
+                    // even when a local skins.json reset removed the corresponding definition.
+                    skin = canonical.Clone(placement.WidgetId);
+                    _logger.LogInformation(
+                        "Desktop world restored canonical built-in widget {WidgetId} ({WidgetName})",
+                        skin.Id, skin.Name);
+                }
+                else
+                {
+                    missing++;
+                    sceneWasMutated = true;
+                    _logger.LogWarning(
+                        "Desktop world removed orphaned placement {WidgetId} with no live or recoverable widget definition",
+                        placement.WidgetId);
+                    continue;
+                }
+
+                // Rebinding can resolve to a definition already in the library.
+                // Only recovered definitions need adding; never add the live instance twice.
+                if (!known.ContainsKey(skin.Id))
+                {
+                    skin.Enabled = false;
+                    _skins.Add(skin);
+                    known[skin.Id] = skin;
+                }
+            }
+            if (!sceneIds.Add(skin.Id))
+            {
+                // Different legacy IDs can resolve to the same canonical definition.
+                sceneWasMutated = true;
+                continue;
+            }
+
+            if (IsVibeFinderSkin(skin) && DefaultWidgetCatalog.RepairVibeFinderLayout(skin))
+            {
+                sceneWasMutated = true;
+                placement.Definition = skin.Clone(skin.Id);
+            }
+
+            ApplyScenePlacement(
+                skin,
+                placement.X,
+                placement.Y,
+                placement.Opacity,
+                placement.Visible);
+            successfulPlacements.Add(placement);
+            applied++;
+
+            // World application can create several WinUI top-level windows in one dispatcher turn.
+            // Give WinUI a dispatcher turn between placements so each HWND gets created, shown and
+            // registered before the next widget is activated. This is especially important for a
+            // world containing many widgets: without the yield, Windows can visually settle only the
+            // last activation even though the composition model and _open registry contain every skin.
+            await YieldToDispatcherAsync();
+        }
+
+        // Anything currently visible but not part of this world is hidden. This is deliberately
+        // based on the resolved ids so an unresolvable/corrupt placement cannot accidentally keep a
+        // stale widget around forever.
+        foreach (var skin in _skins
+                     .Where(s => !sceneIds.Contains(s.Id) && (s.Enabled || _open.ContainsKey(s.Id)))
+                     .ToList())
+        {
+            // Close any actual HWND that survived a legacy world switch even if its persisted
+            // Enabled flag says false. Transparent widget windows can otherwise leave isolated
+            // glyphs floating over the app after their scene placements were removed.
+            ApplyScenePlacement(skin, skin.X, skin.Y, skin.Opacity, false);
+        }
+
+        // Persist a cleaned active-world composition when the caller passed the actual scene list.
+        if (placements is List<SceneWidgetPlacement> sourcePlacements &&
+            App.SceneService is not null)
+        {
+            var owner = App.SceneService.Scenes.FirstOrDefault(s =>
+                ReferenceEquals(s.Widgets, sourcePlacements));
+            if (owner is not null && sceneWasMutated)
+            {
+                sourcePlacements.Clear();
+                sourcePlacements.AddRange(successfulPlacements);
+                await App.SceneService.UpsertAsync(owner);
+            }
+        }
+
+        await PersistAsync(true);
+
+        _logger.LogInformation(
+            "Desktop world applied: {AppliedCount} widget placements resolved, {MissingCount} missing definitions, {PlacementCount} placements in scene",
+            applied,
+            missing,
+            scenePlacements.Count);
+
+            return (applied, missing);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
+    }
+
+    private void ApplyScenePlacement(SkinDefinition skin, double x, double y, double opacity, bool enabled)
+    {
+        skin.X = x;
+        skin.Y = y;
+        skin.Opacity = Math.Clamp(opacity, 0, 1);
+        skin.Enabled = enabled;
+
+        if (enabled)
+        {
+            OpenWindowFor(skin);
+            var window = _open[skin.Id].Window;
+            window.ApplyPosition(skin.X, skin.Y);
+            window.ApplyOpacity(skin.Opacity);
+        }
+        else if (_open.TryGetValue(skin.Id, out var entry) && !entry.Window.IsWorldHidden)
+        {
+            // A scene placement controls visibility. Destroying the XAML island here
+            // can fail-fast in XamlDiagnostics::RemoveRootObjectFromLVT under VS.
+            entry.Window.SuspendForWorld();
+            _scheduler.Remove(skin.Id);
+            _logger.LogDebug("World hid widget {SkinId}", skin.Id);
+        }
     }
 
     private async void OnWindowMoved(SkinDefinition skin, double x, double y)
     {
-        skin.X = x;
-        skin.Y = y;
-        await PersistAsync(false);
+        try
+        {
+            skin.X = x;
+            skin.Y = y;
+            await PersistAsync(false);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to remember widget {SkinId} position in the active desktop world", skin.Id);
+        }
+    }
+
+    private async Task SyncActiveScenePlacementAsync(SkinDefinition skin)
+    {
+        var sceneService = App.SceneService;
+        var scene = sceneService?.ActiveScene;
+        if (scene is null || sceneService is null) return;
+
+        var placement = scene.Widgets.FirstOrDefault(
+            p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+        if (placement is null) return;
+
+        placement.X = skin.X;
+        placement.Y = skin.Y;
+        placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
+        placement.Visible = skin.Enabled;
+        placement.Definition = skin.Clone(skin.Id);
+
+        await sceneService.UpsertAsync(scene);
     }
 
     public void ToggleAllWidgetsVisibility()
@@ -220,97 +480,156 @@ public sealed class SkinManagerService : IDisposable
         _widgetsHidden = !_widgetsHidden;
         foreach (var (window, _) in _open.Values)
         {
-            if (_widgetsHidden)
-                window.AppWindow.Hide();
-            else
-                window.AppWindow.Show();
+            if (_widgetsHidden) window.AppWindow.Hide();
+            else window.ShowIfVisibleInWorld();
         }
     }
 
-    // ── Editor support (create / save / delete a whole widget) ──────────────────────
-
-    /// <summary>
-    /// Creates a small blank widget, adds it to the list, and persists it immediately —
-    /// mirrors <c>ThemesViewModel.CreateThemeAsync</c>'s "create now, refine in the editor"
-    /// pattern, so there's never a half-created widget floating around unsaved.
-    /// Starts disabled: an empty widget with zero meters has nothing worth showing yet.
-    /// </summary>
     public async Task<SkinDefinition> CreateNewSkinAsync()
     {
-        var skin = new SkinDefinition
-        {
-            Name = "New Widget",
-            Enabled = false,
-            X = 60,
-            Y = 60,
-            Width = 200,
-            Height = 100,
-        };
-
-        _skins.Add(skin);
-        await PersistAsync(true);
-        return skin;
+        var skin = new SkinDefinition { Name = "New Widget", Enabled = false, X = 60, Y = 60, Width = 200, Height = 100 };
+        _skins.Add(skin); await PersistAsync(true); return skin;
     }
 
-    /// <summary>
-    /// Same "create now, refine in the editor" pattern as <see cref="CreateNewSkinAsync"/>, but
-    /// for a fully-built <see cref="SkinDefinition"/> — used by the prompt-based widget
-    /// generator, which already knows the measures/meters/layout and just needs it added to the
-    /// list and persisted before handing off to the editor for final customization.
-    /// </summary>
-    public async Task AddGeneratedSkinAsync(SkinDefinition skin)
+    public async Task AddImportedSkinAsync(SkinDefinition skin)
     {
-        _skins.Add(skin);
-        await PersistAsync(true);
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            skin.Enabled = false;
+            if (_skins.Any(s => s.Id.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("This widget has already been imported.");
+            await _repo.SaveAllCheckedAsync(_skins.Append(skin));
+            _skins.Add(skin);
+            SkinsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally { _windowMutationGate.Release(); }
     }
 
+    public async Task AddGeneratedSkinAsync(SkinDefinition skin) { _skins.Add(skin); await PersistAsync(true); }
+
     /// <summary>
-    /// Call after editing a skin's meters/measures/name/size in place. The editor mutates the
-    /// same <see cref="SkinDefinition"/> instance that's already in <see cref="Skins"/> (same
-    /// approach <c>ThemeEditorViewModel</c> uses for themes), so this just needs to persist and,
-    /// if the widget is currently showing, rebuild its window so the new layout actually appears —
-    /// simpler and far more robust than trying to hot-patch a running window's meter list.
+    /// Persists measure/target changes without destroying the existing widget window.
     /// </summary>
+    public async Task PersistSkinDataAsync(SkinDefinition skin)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            if (_open.TryGetValue(skin.Id, out var entry))
+            {
+                entry.ViewModel.ReloadMeasures();
+                entry.ViewModel.RefreshMeasures();
+                _dispatcher.TryEnqueue(entry.ViewModel.UpdateMeters);
+            }
+
+            await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
+    }
+
     public async Task SaveSkinAsync(SkinDefinition skin)
     {
-        if (_open.ContainsKey(skin.Id))
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
         {
-            await CloseWindowFor(skin);
-            if (skin.Enabled) OpenWindowFor(skin);
-        }
-        else if (skin.Enabled)
-        {
-            OpenWindowFor(skin);
-        }
+            if (_open.ContainsKey(skin.Id))
+            {
+                await CloseWindowFor(skin);
+                if (skin.Enabled) OpenWindowFor(skin);
+            }
+            else if (skin.Enabled)
+            {
+                OpenWindowFor(skin);
+            }
 
-        await PersistAsync(true);
+            await PersistAsync(true);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
+    }
+
+    public async Task SaveSkinDraftAsync(SkinDefinition skin, bool createNew = false)
+    {
+        ArgumentNullException.ThrowIfNull(skin);
+        var errors = WidgetDefinitionValidator.Validate(skin).Where(i => i.IsError).ToList();
+        if (errors.Count > 0) throw new ArgumentException(string.Join(" ", errors.Select(i => i.Message)), nameof(skin));
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            var index = _skins.FindIndex(s => s.Id == skin.Id);
+            if (index < 0 && !createNew) throw new InvalidOperationException("This widget no longer exists.");
+            if (index >= 0 && createNew) throw new InvalidOperationException("This widget identity already exists.");
+            // Persist the candidate before replacing the live definition or its window.
+            var snapshot = _skins.ToList();
+            if (index < 0) snapshot.Add(skin); else snapshot[index] = skin;
+            await _repo.SaveAllCheckedAsync(snapshot);
+            if (index < 0) _skins.Add(skin);
+            else
+            {
+                await CloseWindowFor(_skins[index]);
+                _skins[index] = skin;
+            }
+            if (skin.Enabled) OpenWindowFor(skin);
+            SkinsChanged?.Invoke(this, EventArgs.Empty);
+            await SyncActiveScenePlacementAsync(skin);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
     }
 
     public async Task DeleteSkinAsync(SkinDefinition skin)
     {
-        await CloseWindowFor(skin);
-        _skins.RemoveAll(s => s.Id == skin.Id);
-        await PersistAsync(true);
-    }
+        ArgumentNullException.ThrowIfNull(skin);
+        await _windowMutationGate.WaitAsync();
+        try
+        {
+            await CloseWindowFor(skin);
+            _skins.RemoveAll(s => s.Id == skin.Id);
 
-    // ── Window lifecycle ──────────────────────────────────────────────────────────
+            var scene = App.SceneService.ActiveScene;
+            var placement = scene?.Widgets.FirstOrDefault(p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+            if (placement is not null)
+                scene!.Widgets.Remove(placement);
+            if (scene is not null)
+                await App.SceneService.UpsertAsync(scene);
+
+            await PersistAsync(true);
+        }
+        finally
+        {
+            _windowMutationGate.Release();
+        }
+    }
 
     private void OpenWindowFor(SkinDefinition skin)
     {
-        if (_open.ContainsKey(skin.Id))
+        if (_open.TryGetValue(skin.Id, out var existing))
         {
-            _logger.LogDebug("Skin {SkinId} ({SkinName}): OpenWindowFor called but it's already open — ignored", skin.Id, skin.Name);
-            return; // already open
+            if (existing.Window.IsWorldHidden)
+            {
+                existing.Window.ResumeForWorld();
+                if (!_widgetsHidden) existing.Window.ShowIfVisibleInWorld();
+                _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
+                _ = RefreshWidgetAsync(existing.ViewModel);
+                _logger.LogDebug("World resumed widget {SkinId}", skin.Id);
+            }
+            return;
         }
-        _logger.LogInformation("Skin {SkinId} ({SkinName}): opening widget window ({MeasureCount} measure(s), {MeterCount} meter(s))",
-            skin.Id, skin.Name, skin.Measures.Count, skin.Meters.Count);
-
-        // App.ThemeService (same static-service pattern already used for App.MainWindow below)
-        // is how a VibeFinderAI measure targeting "$theme" resolves the active theme — see
-        // SkinHostViewModel's activeThemeProvider param and phases.md, Phase 6.
-        var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>(), App.ThemeService);
+        var viewModel = new SkinHostViewModel(skin, _loggerFactory?.CreateLogger<SkinHostViewModel>(), App.ThemeService, _pluginRegistry);
         var window = new SkinHostWindow(viewModel);
-
         window.PositionChanged += (x, y) => OnWindowMoved(skin, x, y);
         window.EditRequested += () => App.MainWindow.NavigateToSkinEditor(skin);
         window.LockToggleRequested += () => _ = SetLockedAsync(skin, !skin.Locked);
@@ -318,42 +637,72 @@ public sealed class SkinManagerService : IDisposable
         window.DisableRequested += () => _ = SetEnabledAsync(skin, false);
         window.Closed += (_, _) =>
         {
-            // Covers the unlikely case the OS closes it for us (e.g. explorer restart) —
-            // keep in-memory state consistent rather than pointing at a dead window.
-            _open.Remove(skin.Id);
+            if (_open.TryGetValue(skin.Id, out var current) && ReferenceEquals(current.Window, window))
+            {
+                _open.Remove(skin.Id);
+                _scheduler.Remove(skin.Id);
+            }
         };
-
         _open[skin.Id] = (window, viewModel);
         _scheduler.RunImmediately(skin.Id, _schedulerClock.ElapsedMilliseconds);
-        window.Activate();
-        if (_widgetsHidden) window.AppWindow.Hide(); // stay consistent with a global hide from the hotkey
-        viewModel.RefreshMeasures(); // safe to call synchronously on first open since there's no data yet
-        viewModel.UpdateMeters(); // paint real values immediately instead of waiting up to 1s for the first tick
+
+        try
+        {
+            if (!_widgetsHidden) window.ShowIfVisibleInWorld();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Widget {WidgetId} ({WidgetName}) was created but could not be shown during activation",
+                skin.Id,
+                skin.Name);
+        }
+
+        _logger.LogDebug(
+            "Widget window opened: {WidgetId} ({WidgetName}) at ({X:0.##},{Y:0.##}), size {Width:0.##}×{Height:0.##}; open windows={OpenCount}",
+            skin.Id,
+            skin.Name,
+            skin.X,
+            skin.Y,
+            skin.Width,
+            skin.Height,
+            _open.Count);
+
+        if (_widgetsHidden) window.AppWindow.Hide();
+        _ = RefreshWidgetAsync(viewModel);
+    }
+
+    private Task YieldToDispatcherAsync()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcher.TryEnqueue(() => completion.TrySetResult()))
+            completion.TrySetResult();
+        return completion.Task;
     }
 
     private async Task CloseWindowFor(SkinDefinition skin)
     {
-        if (!_open.TryGetValue(skin.Id, out var entry))
-        {
-            _logger.LogDebug("Skin {SkinId} ({SkinName}): CloseWindowFor called but it isn't open — ignored", skin.Id, skin.Name);
-            return;
-        }
-        _logger.LogInformation("Skin {SkinId} ({SkinName}): closing widget window", skin.Id, skin.Name);
+        if (!_open.TryGetValue(skin.Id, out var entry)) return;
+
         _open.Remove(skin.Id);
         _scheduler.Remove(skin.Id);
-        entry.ViewModel.IsClosed = true;
 
-        // Hide the window immediately so it visually disappears without delay
-        entry.Window.AppWindow.Hide();
+        // Stop measure-owned background work before destroying the HWND. This is particularly
+        // important for VibeFinder widgets, whose recommendation/login tasks outlive a single
+        // visual frame. Closing one of several VibeFinder instances must not leave its measure
+        // objects racing the remaining windows.
+        entry.ViewModel.DisposeMeasures();
+
+        try { entry.Window.AppWindow.Hide(); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Widget {SkinId}: hide during teardown failed", skin.Id); }
 
         entry.Window.PrepareForClose();
 
+        // Desktop-layer windows need a small native settle time after detachment before Close().
         if (skin.DesktopLayer)
-        {
-            // Yield to the WinUI compositor so it can process the reparenting/backdrop changes
-            // before we destroy the HWND. Without this, WinUI throws STATUS_STOWED_EXCEPTION.
             await Task.Delay(150);
-        }
+
+        await YieldToDispatcherAsync();
 
         try
         {
@@ -361,287 +710,93 @@ public sealed class SkinManagerService : IDisposable
         }
         catch (Exception ex)
         {
-            // Window.Close() is a WinRT-projected call, and PrepareForClose() above already
-            // catches everything it does — so if native window teardown still throws here
-            // despite that plus the delay, it's an OS/compositor-level failure one widget
-            // hit, not something the rest of the app should die for. Log and move on.
-            _logger.LogWarning(ex, "Widget window failed to close cleanly for skin {SkinId} ({SkinName})", skin.Id, skin.Name);
+            _logger.LogWarning(ex,
+                "Widget window failed to close cleanly for skin {SkinId} ({SkinName})",
+                skin.Id,
+                skin.Name);
         }
     }
 
     private async Task PersistAsync(bool notifyListChanged)
     {
-        try
-        {
-            await _repo.SaveAllAsync(_skins);
-        }
-        catch (IOException ex)
-        {
-            _logger.LogWarning(ex, "Failed to persist skins.json (file locked). It will be saved on the next edit.");
-            SaveFailed?.Invoke(this, "Widget changes couldn't be saved (file was locked) — they'll be saved with the next edit.");
-        }
-        
-        if (notifyListChanged)
-            SkinsChanged?.Invoke(this, EventArgs.Empty);
+        try { await _repo.SaveAllCheckedAsync(_skins); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _logger.LogWarning(ex, "Failed to persist skins.json. It will be saved on the next edit."); SaveFailed?.Invoke(this, "Widget changes could not be saved to disk. Check storage and file access; changes will be retried on the next edit."); }
+        if (notifyListChanged) SkinsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Raised when a save fails so the UI can show a transient warning.</summary>
     public event EventHandler<string>? SaveFailed;
 
     public void Dispose()
     {
         _timer?.Stop();
+
+        foreach (var (_, entry) in _open.Values)
+            entry.ViewModel.DisposeMeasures();
+
         foreach (var (window, _) in _open.Values)
         {
-            window.PrepareForClose();
-            try
-            {
-                window.Close();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "A widget window failed to close cleanly during shutdown");
-            }
+            try { window.PrepareForClose(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Widget teardown preparation failed during shutdown"); }
+
+            try { window.Close(); }
+            catch (Exception ex) { _logger.LogWarning(ex, "A widget window failed to close cleanly during shutdown"); }
         }
+
         _open.Clear();
         _scheduler.Clear();
     }
 
-    public void EnsureVibeFinderSkinsExist()
+    private static bool IsVibeFinderSkin(SkinDefinition skin) =>
+        skin.Name.StartsWith("VibeFinder", StringComparison.OrdinalIgnoreCase);
+
+    public Task EnsureVibeFinderSkinsExist()
     {
+        if (!_initialized) throw new InvalidOperationException("Saved widgets must finish loading before provisioning defaults.");
         bool changed = false;
-        const string vibeTarget = "listener|hunter2|$theme";
-
-        // ── VibeFinder Primary ──────────────────────────────────────────────
-        // VibeState/VibeProgress used to be added inline here, same as everything else — but that
-        // meant a skin from before those two existed (gated below by name, not by content) would
-        // never receive them: `!_skins.Any(s => s.Name == "VibeFinder Primary")` is false for an
-        // existing skin regardless of what's actually inside it, so a same-named skin auto-created
-        // months ago stays frozen at whatever the preset looked like that day, forever, even after
-        // the preset itself grows new fields. This was silently true for both play/pause and the
-        // progress bar — both correctly wired end-to-end after this session's other fixes, but
-        // invisible on any widget that predates them. Splitting the checks below out of the
-        // "already exists, skip" gate is what actually surfaces them.
-        var primary = _skins.FirstOrDefault(s => s.Name == "VibeFinder Primary");
-        if (primary is null)
+        const string vibeTarget = "||$theme";
+        foreach (var vibe in new[] { "VibeFinder Primary", "VibeFinder Minimal", "VibeFinder Playlist" })
         {
-            primary = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Primary", Enabled = true, X = 50, Y = 50, Width = 300, Height = 120 };
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = vibeTarget });
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = vibeTarget });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 100, Height = 100 });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 120, Y = 15, Width = 170, Height = 30, FontSize = 16, Bold = true });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeArtist", X = 120, Y = 45, Width = 170, Height = 25, FontSize = 14 });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 155, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
-            _skins.Add(primary);
-            changed = true;
-        }
-        if (!primary.Meters.Any(m => m.ActionUrl == "themed://media/prev"))
-        {
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 80, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
-            changed = true;
-        }
-        if (!primary.Measures.Any(m => m.Name == "VibeState"))
-        {
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = vibeTarget });
-            changed = true;
-        }
-        if (!primary.Meters.Any(m => m.MeasureName == "VibeState"))
-        {
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 117, Y = 82, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
-            changed = true;
-        }
-        if (!primary.Measures.Any(m => m.Name == "VibeProgress"))
-        {
-            primary.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = vibeTarget });
-            changed = true;
-        }
-        if (!primary.Meters.Any(m => m.MeasureName == "VibeProgress"))
-        {
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 120, Y = 110, Width = 170, Height = 4 });
-            changed = true;
-        }
-        // "1:23 / 3:45" under the fill bar — VibeFinderMeasure.Refresh() reformats
-        // VibeTrackProgress's Text into that shape now, this just gives it somewhere to actually
-        // render (a Bar meter has no text of its own; only a String meter reads measure.Text).
-        // Gated on its own so an existing widget that already has the Bar above but predates this
-        // block still gets the label added underneath it, same reasoning as every other gate in
-        // this method. Grows the widget rather than shrinking anything already placed — the Bar
-        // above ends at Y=114 inside the original Height=120, so this starts right at that
-        // original boundary rather than overlapping it.
-        if (!primary.Meters.Any(m => m.MeasureName == "VibeProgress" && m.Kind == MeterKind.String))
-        {
-            var newRowY = primary.Height;
-            primary.Height += 20;
-            primary.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeProgress", Format = "{1}", X = 120, Y = newRowY, Width = 170, Height = 16, FontSize = 11 });
-            changed = true;
-        }
-
-        // ── VibeFinder Minimal ──────────────────────────────────────────────
-        var minimal = _skins.FirstOrDefault(s => s.Name == "VibeFinder Minimal");
-        if (minimal is null)
-        {
-            minimal = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Minimal", Enabled = false, X = 50, Y = 200, Width = 200, Height = 65 };
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = vibeTarget });
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 10, Y = 10, Width = 140, Height = 40, FontSize = 14, Bold = true });
-            _skins.Add(minimal);
-            changed = true;
-        }
-        if (!minimal.Measures.Any(m => m.Name == "VibeState"))
-        {
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = vibeTarget });
-            changed = true;
-        }
-        if (!minimal.Meters.Any(m => m.MeasureName == "VibeState"))
-        {
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 160, Y = 15, Width = 30, Height = 30, FontSize = 14, IconGlyph = "\uE768" });
-            changed = true;
-        }
-        if (!minimal.Measures.Any(m => m.Name == "VibeProgress"))
-        {
-            minimal.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = vibeTarget });
-            changed = true;
-        }
-        if (!minimal.Meters.Any(m => m.MeasureName == "VibeProgress"))
-        {
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 50, Width = 180, Height = 4 });
-            changed = true;
-        }
-        // Same "1:23 / 3:45" label as Primary/Playlist below — see that block's comment. Minimal
-        // is the tightest of the three widgets already, so this uses a smaller font and a shorter
-        // grow than Primary's equivalent row.
-        if (!minimal.Meters.Any(m => m.MeasureName == "VibeProgress" && m.Kind == MeterKind.String))
-        {
-            var newRowY = minimal.Height;
-            minimal.Height += 16;
-            minimal.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeProgress", Format = "{1}", X = 10, Y = newRowY, Width = 180, Height = 14, FontSize = 10 });
-            changed = true;
-        }
-
-        // ── VibeFinder Playlist ──────────────────────────────────────────────
-        var playlist = _skins.FirstOrDefault(s => s.Name == "VibeFinder Playlist");
-        if (playlist is null)
-        {
-            playlist = new SkinDefinition { Id = Guid.NewGuid().ToString(), Name = "VibeFinder Playlist", Enabled = false, X = 400, Y = 50, Width = 250, Height = 300 };
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeMood", Type = MeasureType.VibeMood, Target = vibeTarget });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeTitle", Type = MeasureType.VibeTrackTitle, Target = vibeTarget });
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeArtist", Type = MeasureType.VibeTrackArtist, Target = vibeTarget });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, StaticText = "Now Playing from Vibe", X = 10, Y = 10, Width = 230, Height = 20, FontSize = 12 });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeMood", X = 10, Y = 30, Width = 230, Height = 40, FontSize = 24, Bold = true });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeTitle", X = 10, Y = 80, Width = 230, Height = 150 });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeTitle", X = 10, Y = 240, Width = 230, Height = 25, FontSize = 16, Bold = true });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeArtist", X = 10, Y = 265, Width = 230, Height = 20, FontSize = 14 });
-            _skins.Add(playlist);
-            changed = true;
-        }
-        if (!playlist.Measures.Any(m => m.Name == "VibeProgress"))
-        {
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeProgress", Type = MeasureType.VibeTrackProgress, Target = vibeTarget });
-            changed = true;
-        }
-        if (!playlist.Meters.Any(m => m.MeasureName == "VibeProgress"))
-        {
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Bar, MeasureName = "VibeProgress", X = 10, Y = 290, Width = 230, Height = 4 });
-            changed = true;
-        }
-        // Same "1:23 / 3:45" label as Primary/Minimal above — see Primary's block for the full
-        // reasoning. Placed here, between the progress bar and the play/pause row below, so the
-        // play/pause block's own `newRowY = playlist.Height` (unchanged, reads whatever Height
-        // already is when it runs) naturally stacks under this instead of overlapping it — order
-        // of these blocks is what determines vertical order on screen, not just their own X/Y.
-        if (!playlist.Meters.Any(m => m.MeasureName == "VibeProgress" && m.Kind == MeterKind.String))
-        {
-            var newRowY = playlist.Height;
-            playlist.Height += 20;
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.String, MeasureName = "VibeProgress", Format = "{1}", X = 10, Y = newRowY, Width = 230, Height = 16, FontSize = 11, CenterText = true });
-            changed = true;
-        }
-        // Playlist never had play/pause/next at all, in any version — a pure "now playing"
-        // display by original design, which is exactly the gap flagged this session ("that right
-        // panel should show...actual controls"). Its layout already packs content to the original
-        // bottom edge (the Bar above sits at Y=290 in what was, until now, a 300-tall widget), so
-        // there's no existing room for a control row without overlapping something already there.
-        // Grows the widget downward instead — additive, doesn't move anything already placed —
-        // then adds the row into that new strip. Uses the skin's *current* Height rather than a
-        // hardcoded 300, so this is correct whether the skin is brand new or already
-        // user-resized.
-        if (!playlist.Measures.Any(m => m.Name == "VibeState"))
-        {
-            playlist.Measures.Add(new MeasureDefinition { Name = "VibeState", Type = MeasureType.VibePlaybackState, Target = vibeTarget });
-            changed = true;
-        }
-        if (!playlist.Meters.Any(m => m.MeasureName == "VibeState"))
-        {
-            var newRowY = playlist.Height;
-            playlist.Height += 40;
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 10, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, MeasureName = "VibeState", StaticText = "⏯", ActionUrl = "themed://media/playpause", X = 50, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE768" });
-            playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏩", ActionUrl = "themed://media/next", X = 90, Y = newRowY + 5, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE893" });
-            changed = true;
-        }
-        else if (!playlist.Meters.Any(m => m.ActionUrl == "themed://media/prev"))
-        {
-            // Add the prev button to an existing playlist control row and shift the others right
-            var playPause = playlist.Meters.FirstOrDefault(m => m.ActionUrl == "themed://media/playpause");
-            var next = playlist.Meters.FirstOrDefault(m => m.ActionUrl == "themed://media/next");
-            if (playPause != null && next != null)
+            var skin = _skins.FirstOrDefault(s => s.Name.Equals(vibe, StringComparison.Ordinal));
+            if (skin is null)
             {
-                var rowY = playPause.Y;
-                playPause.X = 50;
-                next.X = 90;
-                playlist.Meters.Add(new MeterDefinition { Kind = MeterKind.Icon, StaticText = "⏪", ActionUrl = "themed://media/prev", X = 10, Y = rowY, Width = 30, Height = 30, FontSize = 16, IconGlyph = "\uE892" });
+                skin = vibe switch
+                {
+                    "VibeFinder Primary" => DefaultWidgetCatalog.CreateVibeFinderPrimary(vibeTarget),
+                    "VibeFinder Minimal" => DefaultWidgetCatalog.CreateVibeFinderMinimal(vibeTarget),
+                    _ => DefaultWidgetCatalog.CreateVibeFinderPlaylist(vibeTarget)
+                };
+                _skins.Add(skin); changed = true;
+            }
+            else
+            {
+                var needsRebuild = !skin.Variables.TryGetValue("designVersion", out var version) ||
+                                   !string.Equals(version, DefaultWidgetCatalog.DesignVersion, StringComparison.Ordinal);
+                if (!needsRebuild)
+                {
+                    if (DefaultWidgetCatalog.RepairVibeFinderLayout(skin)) changed = true;
+                    continue;
+                }
+
+                var enabled = skin.Enabled;
+                var x = skin.X;
+                var y = skin.Y;
+                var opacity = skin.Opacity;
+                var aot = skin.AlwaysOnTop;
+                var locked = skin.Locked;
+                var layer = skin.DesktopLayer;
+
+                DefaultWidgetCatalog.RebuildVibeFinder(skin);
+
+                skin.Enabled = enabled;
+                skin.X = x;
+                skin.Y = y;
+                skin.Opacity = opacity;
+                skin.AlwaysOnTop = aot;
+                skin.Locked = locked;
+                skin.DesktopLayer = layer;
                 changed = true;
             }
         }
-
-
-        foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
-        {
-            foreach (var meter in skin.Meters.Where(m => m.Kind == MeterKind.String && 
-                (m.MeasureName == "VibeTitle" || m.MeasureName == "VibeArtist" || m.MeasureName == "VibeMood")))
-            {
-                if (string.IsNullOrEmpty(meter.Format) || meter.Format == "{0:F0}")
-                {
-                    meter.Format = "{1}";
-                    changed = true;
-                }
-            }
-        }
-
-        if (changed)
-        {
-            _ = PersistAsync(true);
-        }
-    }
-
-    public void UpdateVibeFinderCredentials(string target)
-    {
-        bool changed = false;
-        foreach (var skin in _skins)
-        {
-            if (skin.Name.StartsWith("VibeFinder"))
-            {
-                foreach (var measure in skin.Measures)
-                {
-                    if (measure.Type == MeasureType.VibeTrackTitle || 
-                        measure.Type == MeasureType.VibeTrackArtist || 
-                        measure.Type == MeasureType.VibeMood ||
-                        measure.Type == MeasureType.VibePlaybackState ||
-                        measure.Type == MeasureType.VibeTrackProgress)
-                    {
-                        measure.Target = target;
-                        changed = true;
-                    }
-                }
-            }
-        }
-
-        if (changed)
-        {
-            foreach (var skin in _skins.Where(s => s.Name.StartsWith("VibeFinder")))
-            {
-                _ = SaveSkinAsync(skin);
-            }
-        }
+        return changed ? PersistAsync(true) : Task.CompletedTask;
     }
 }

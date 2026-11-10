@@ -1,3 +1,4 @@
+using ThemeManager.Core.Services;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -18,42 +19,270 @@ namespace ThemeManager.WinUI;
 public sealed partial class MainWindow : Window
 {
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<MainWindow>();
+    private bool _sidebarCollapsed;
+    private bool _moreToolsExpanded;
     private bool _vibeFinderPrewarmStarted;
     private bool _vibeFinderAwaitingNetwork;
+    private bool _vibeFinderPrewarmHandlersAttached;
+    private const int VibeTrackLimit = 50;
+    private const string ActiveThemeSentinel = "$theme";
     private static int _vibeFinderDialogOpen;
 
     public MainWindow()
     {
         InitializeComponent();
         ConfigureTitleBar();
+        ApplyWindowTheme(App.ThemeService.ActiveTheme);
+        InitializeSidebarState();
         ContentFrame.Navigate(typeof(ThemesPage));
         SetActiveNav(NavThemes);
+
+        // App enables navigation only after saved widgets and startup services are ready.
+        // Constructor-time provisioning can otherwise persist defaults over the loading library.
+        StartupContent.IsEnabled = false;
+
+        // Keep the hidden VibeFinder session in lock-step with the active Themed.AI world.
+        // ThemeService commits a theme only once at the end of a crossfade, so this does not
+        // trigger one analysis per interpolation frame.
+        App.ThemeService.ThemeChanged += MainWindow_ThemeChanged;
+        Closed += (_, _) => App.ThemeService.ThemeChanged -= MainWindow_ThemeChanged;
     }
+
+    internal void CompleteStartup() => StartupContent.IsEnabled = true;
+
+    private void MainWindow_ThemeChanged(object? sender, ThemeManager.Core.Models.CozyTheme theme)
+    {
+        if (VibeFinderWebState.IsVisibleEmbedActive || VibeFinderPreviewPlayer.HasSource)
+        {
+            _logger.LogTrace("VibeFinder theme sync skipped; the cached primary page or native preview owns playback");
+            return;
+        }
+        if (!_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (VibeFinderWebState.IsVisibleEmbedActive ||
+                !_vibeFinderPrewarmStarted || VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+            _logger.LogInformation("VibeFinder prewarm theme sync: refreshing playlist for \"{Theme}\"", theme.Name);
+            PushVibePromptAndTrackLimit();
+        });
+    }
+
+    public bool IsVibeFinderPrewarmActive =>
+        _vibeFinderPrewarmStarted && VibeFinderPrewarmWebView.CoreWebView2 is not null;
 
     public async void EnsureVibeFinderPrewarm()
     {
-        if (_vibeFinderPrewarmStarted) { _logger.LogDebug("EnsureVibeFinderPrewarm: already started — ignored"); return; }
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("EnsureVibeFinderPrewarm: cached primary VibeFinder page owns playback; hidden prewarm is not restarted");
+            return;
+        }
+
+        if (_vibeFinderPrewarmStarted)
+        {
+            RebindVibeFinderPrewarmBridge();
+            _logger.LogDebug("EnsureVibeFinderPrewarm: already started — bridge rebound/ignored");
+            return;
+        }
         if (App.SkinManager is null) return;
-        if (!App.SkinManager.Skins.Any(s => s.Name.StartsWith("VibeFinder") && s.Enabled)) { _logger.LogDebug("EnsureVibeFinderPrewarm: no enabled VibeFinder widget — skipping"); return; }
+        if (!App.SkinManager.Skins.Any(s => s.Name.StartsWith("VibeFinder") && s.Enabled))
+        {
+            _logger.LogDebug("EnsureVibeFinderPrewarm: no enabled VibeFinder widget — skipping");
+            return;
+        }
+
         var (user, pass) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass)) return;
-        if (!NetworkStatus.IsInternetAvailable()) { SubscribeVibeFinderNetworkRetry(); return; }
-        _vibeFinderPrewarmStarted = true;
-        try { await VibeFinderPrewarmWebView.EnsureCoreWebView2Async(); }
-        catch (Exception ex) { _vibeFinderPrewarmStarted = false; _logger.LogWarning(ex, "VibeFinderAI pre-warm failed to initialize CoreWebView2"); await ShowVibeFinderIssueDialogAsync("VibeFinder AI widgets need the WebView2 Runtime", "Themed.AI couldn't start the embedded browser used to sign in and fetch playlists. Installing (or repairing) the Microsoft Edge WebView2 Runtime should fix this."); return; }
-        VibeFinderPrewarmWebView.CoreWebView2.WebMessageReceived += async (sender, args) => { var json = args.TryGetWebMessageAsString(); if (!string.IsNullOrEmpty(json)) await HandleVibeFinderLoginResultAsync(json); };
-        VibeFinderPrewarmWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
+        if (!NetworkStatus.IsInternetAvailable())
         {
-            if (!args.IsSuccess) return;
-            var uri = sender.Source; if (string.IsNullOrEmpty(uri) || !uri.Contains("vibefinderai")) return;
-            try { await sender.ExecuteScriptAsync(VibeFinderAuth.SkipTutorialScript); } catch (Exception ex) { _logger.LogDebug(ex, "VibeFinder prewarm tutorial skip failed"); }
-            var (u, p) = VibeFinderAuth.TryReadCredentials(App.SkinManager); if (string.IsNullOrWhiteSpace(u) || string.IsNullOrWhiteSpace(p)) return;
-            try { await sender.ExecuteScriptAsync(VibeFinderAuth.BuildAutoLoginScript(u, p)); } catch (Exception ex) { _logger.LogWarning(ex, "VibeFinder prewarm auto-login failed for user {User}", u); }
-        };
-        VibeFinderPrewarmWebView.Source = new Uri("https://vibefinderai.netlify.app/app");
+            SubscribeVibeFinderNetworkRetry();
+            return;
+        }
+
+        _vibeFinderPrewarmStarted = true;
+        try
+        {
+            await VibeFinderPrewarmWebView.EnsureCoreWebView2Async();
+        }
+        catch (Exception ex)
+        {
+            _vibeFinderPrewarmStarted = false;
+            _logger.LogWarning(ex, "VibeFinderAI pre-warm failed to initialize CoreWebView2");
+            await ShowVibeFinderIssueDialogAsync(
+                "VibeFinder AI widgets need the WebView2 Runtime",
+                "Themed.AI couldn't start the embedded browser used to sign in and control VibeFinder AI. Installing (or repairing) the Microsoft Edge WebView2 Runtime should fix this.");
+            return;
+        }
+
+        if (!_vibeFinderPrewarmHandlersAttached)
+        {
+            _vibeFinderPrewarmHandlersAttached = true;
+            VibeFinderPrewarmWebView.CoreWebView2.WebMessageReceived += async (sender, args) =>
+            {
+                if (!VibeFinderSite.IsTrusted(args.Source)) return;
+                string json;
+                try { json = args.TryGetWebMessageAsString(); }
+                catch (ArgumentException) { return; }
+                if (string.IsNullOrEmpty(json)) return;
+
+                if (VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason))
+                {
+                    await HandleVibeFinderLoginResultAsync(json);
+                    return;
+                }
+
+                if (TryParseAppReady(json, out bool hasToken))
+                {
+                    _logger.LogInformation("VibeFinder prewarm: embed ready (hasToken={HasToken})", hasToken);
+                    if (VibeFinderWebState.IsVisibleEmbedActive)
+                    {
+                        _logger.LogTrace("VibeFinder prewarm: ignoring readiness while the cached primary page owns playback");
+                        return;
+                    }
+                    if (hasToken)
+                        PushVibePromptAndTrackLimit();
+                    return;
+                }
+
+                VibeFinderWebState.HandleMessage(json);
+            };
+
+            VibeFinderPrewarmWebView.CoreWebView2.NavigationStarting += (_, args) =>
+                args.Cancel = !VibeFinderSite.IsTrusted(args.Uri);
+            VibeFinderPrewarmWebView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
+
+            VibeFinderPrewarmWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
+            {
+                if (!args.IsSuccess) return;
+                var uri = sender.Source;
+                if (!VibeFinderSite.IsTrusted(uri)) return;
+
+                try { await sender.ExecuteScriptAsync(VibeFinderAuth.SkipTutorialScript); }
+                catch (Exception ex) { _logger.LogDebug(ex, "VibeFinder prewarm tutorial skip failed"); }
+
+                var (u, p) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
+                if (string.IsNullOrWhiteSpace(u) || string.IsNullOrWhiteSpace(p)) return;
+                try
+                {
+                    await sender.ExecuteScriptAsync(VibeFinderAuth.BuildAutoLoginScript(u, p));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinder prewarm auto-login failed for user {User}", u);
+                }
+            };
+        }
+
+        RebindVibeFinderPrewarmBridge();
+        VibeFinderPrewarmWebView.Source = new Uri(VibeFinderSite.AppUrl);
     }
 
-    public void ResetVibeFinderPrewarm() { _vibeFinderPrewarmStarted = false; EnsureVibeFinderPrewarm(); }
+    public void ResetVibeFinderPrewarm()
+    {
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogDebug("VibeFinder prewarm reset skipped; the cached primary page will receive the updated credentials and prompt");
+            return;
+        }
+
+        _vibeFinderPrewarmStarted = false;
+        EnsureVibeFinderPrewarm();
+    }
+
+    public void RebindVibeFinderPrewarmBridge()
+    {
+        // Never steal the bridge away from the visible VibeFinder page. The prewarm browser
+        // is only the fallback authority when the dedicated page is not open.
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("VibeFinder prewarm bridge: visible embed owns authority — rebind skipped");
+            return;
+        }
+
+        var dispatch = DispatcherQueue;
+        VibeFinderWebState.SendCommand = commandJson =>
+        {
+            dispatch.TryEnqueue(() =>
+            {
+                try
+                {
+                    var core = VibeFinderPrewarmWebView.CoreWebView2;
+                    if (core is null || !VibeFinderSite.IsTrusted(core.Source)) return;
+                    core.PostWebMessageAsJson(commandJson);
+                    _logger.LogTrace("VibeFinder prewarm bridge: posted command {Command}", commandJson);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "VibeFinder prewarm bridge: failed to post command {Command}", commandJson);
+                }
+            });
+        };
+    }
+
+    private void PushVibePromptAndTrackLimit()
+    {
+        if (VibeFinderWebState.IsVisibleEmbedActive)
+        {
+            _logger.LogTrace("VibeFinder prewarm prompt push skipped; primary page owns results and playback");
+            return;
+        }
+        if (VibeFinderPrewarmWebView.CoreWebView2 is null) return;
+
+        string rawPrompt = "";
+        var (user, pass) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
+        if (App.SkinManager is not null)
+        {
+            var vibeSkin = App.SkinManager.Skins.FirstOrDefault(s => s.Name.StartsWith("VibeFinder"));
+            var measure = vibeSkin?.Measures.FirstOrDefault(m =>
+                m.Type == MeasureType.VibeTrackTitle ||
+                m.Type == MeasureType.VibeTrackArtist ||
+                m.Type == MeasureType.VibeMood);
+            if (!string.IsNullOrWhiteSpace(measure?.Target))
+            {
+                var target = measure.Target!;
+                if (target.StartsWith("|")) target = target[1..];
+                var parts = target.Split('|', 3);
+                if (parts.Length >= 3) rawPrompt = parts[2];
+            }
+        }
+
+        string rawText = rawPrompt.Trim();
+        string vibeText = string.Equals(rawText, ActiveThemeSentinel, StringComparison.OrdinalIgnoreCase)
+            ? ThemeManager.Core.NLP.ThemeVibeText.Describe(App.ThemeService.ActiveTheme)
+            : rawText;
+
+        if (string.IsNullOrWhiteSpace(vibeText)) return;
+
+        try
+        {
+            var core = VibeFinderPrewarmWebView.CoreWebView2;
+            // Mirror the saved prompt in the web UI while keeping the resolved theme phrase
+            // for the actual analysis request.
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setPrompt", text = rawText }));
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "setTrackLimit", value = VibeTrackLimit }));
+            core.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { command = "runAnalysis", text = vibeText, trackLimit = VibeTrackLimit }));
+            _logger.LogDebug("VibeFinder prewarm: pushed prompt and triggered analysis for {User}", user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "VibeFinder prewarm: failed to push prompt/run analysis");
+        }
+    }
+
+    private static bool TryParseAppReady(string messageJson, out bool hasToken)
+    {
+        hasToken = false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(messageJson);
+            if (!doc.RootElement.TryGetProperty("type", out var typeEl) || typeEl.GetString() != "VIBEFINDER_APP_READY")
+                return false;
+            if (doc.RootElement.TryGetProperty("hasToken", out var tokenEl) && tokenEl.ValueKind == System.Text.Json.JsonValueKind.True)
+                hasToken = true;
+            return true;
+        }
+        catch { return false; }
+    }
 
     private void SubscribeVibeFinderNetworkRetry()
     {
@@ -65,16 +294,32 @@ public sealed partial class MainWindow : Window
     private void OnNetworkStatusChangedForVibeFinderRetry(object sender)
     {
         if (!NetworkStatus.IsInternetAvailable()) return;
-        DispatcherQueue.TryEnqueue(() => { NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChangedForVibeFinderRetry; _vibeFinderAwaitingNetwork = false; EnsureVibeFinderPrewarm(); });
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            NetworkInformation.NetworkStatusChanged -= OnNetworkStatusChangedForVibeFinderRetry;
+            _vibeFinderAwaitingNetwork = false;
+            EnsureVibeFinderPrewarm();
+        });
     }
 
     private async Task HandleVibeFinderLoginResultAsync(string json)
     {
         if (!VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason)) return;
         if (success) return;
-        if (reason == "network") { _vibeFinderPrewarmStarted = false; SubscribeVibeFinderNetworkRetry(); return; }
-        if (reason == "invalid_credentials") await ShowVibeFinderIssueDialogAsync("VibeFinder AI sign-in failed", "The saved VibeFinder AI username/password were rejected. Update them from Widgets → VibeFinder AI, then hit Save & Apply.");
-        else await ShowVibeFinderIssueDialogAsync("VibeFinder AI is unreachable", "VibeFinder AI's servers returned an error rather than signing in. This is usually temporary — it'll be retried the next time a widget is toggled or the app restarts.");
+
+        if (reason == "network")
+        {
+            _vibeFinderPrewarmStarted = false;
+            SubscribeVibeFinderNetworkRetry();
+            _logger.LogWarning("VibeFinder prewarm login reported a network failure; scheduled retry without user-facing error");
+            return;
+        }
+        if (reason == "invalid_credentials")
+        {
+            _logger.LogWarning("VibeFinder prewarm login rejected saved credentials");
+            return;
+        }
+        _logger.LogWarning("VibeFinder prewarm login failed: {Reason}; leaving the visible embed authoritative", reason ?? "unknown");
     }
 
     private async Task ShowVibeFinderIssueDialogAsync(string title, string message)
@@ -91,6 +336,23 @@ public sealed partial class MainWindow : Window
         finally { Interlocked.Exchange(ref _vibeFinderDialogOpen, 0); }
     }
 
+    internal void ApplyWindowTheme(ThemeManager.Core.Models.CozyTheme theme)
+    {
+        // Popups and stock controls must use the same light/dark variant as the app palette,
+        // independently of Windows' theme or whether system theme synchronization is enabled.
+        StartupContent.RequestedTheme =
+            ThemeManager.Core.Utilities.ContrastChecker.BestBlackOrWhiteForeground(theme.BackgroundBase) == "#FFFFFF"
+                ? ElementTheme.Dark : ElementTheme.Light;
+        if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+        var titleBar = AppWindow.TitleBar;
+        titleBar.ButtonForegroundColor = App.HexToColor(theme.TextPrimary);
+        titleBar.ButtonInactiveForegroundColor = App.HexToColor(theme.TextMuted);
+        titleBar.ButtonHoverForegroundColor = App.HexToColor(theme.TextPrimary);
+        titleBar.ButtonPressedForegroundColor = App.HexToColor(theme.TextPrimary);
+        titleBar.ButtonHoverBackgroundColor = App.HexToColor(theme.Surface);
+        titleBar.ButtonPressedBackgroundColor = App.HexToColor(theme.BackgroundAlt);
+    }
+
     private void ConfigureTitleBar()
     {
         ExtendsContentIntoTitleBar = true;
@@ -102,32 +364,199 @@ public sealed partial class MainWindow : Window
             tb.ExtendsContentIntoTitleBar = true;
             tb.ButtonBackgroundColor = Colors.Transparent;
             tb.ButtonInactiveBackgroundColor = Colors.Transparent;
-            tb.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(0x20, 0, 0, 0);
-            tb.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(0x30, 0, 0, 0);
-            tb.ButtonForegroundColor = Windows.UI.Color.FromArgb(0xFF, 0x3B, 0x2A, 0x20);
         }
-        AppWindow?.Resize(new SizeInt32(1100, 720));
         if (appWindow is not null)
         {
+            try
+            {
+                // Start inside the usable work area of the monitor hosting this window. A fixed
+                // 1100-DIP initial width was pushing the right half of Studio off-screen on smaller
+                // displays and when Windows restored a stale window position after a display change.
+                var display = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary);
+                var work = display.WorkArea;
+                int availableWidth = Math.Max(480, work.Width - 48);
+                int availableHeight = Math.Max(360, work.Height - 48);
+                int width = Math.Min(1100, availableWidth);
+                int height = Math.Min(720, availableHeight);
+                int x = work.X + Math.Max(0, (work.Width - width) / 2);
+                int y = work.Y + Math.Max(0, (work.Height - height) / 2);
+                appWindow.MoveAndResize(new RectInt32(x, y, width, height));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not measure the main window's monitor; using a conservative startup size");
+                appWindow.Resize(new SizeInt32(1000, 680));
+            }
+
             appWindow.Changed += (s, e) =>
             {
                 if (!e.DidSizeChange) return;
-                const int minW = 880, minH = 560;
-                var size = s.Size;
-                if (size.Width < minW || size.Height < minH) s.Resize(new SizeInt32(Math.Max(size.Width, minW), Math.Max(size.Height, minH)));
+                try
+                {
+                    var display = DisplayArea.GetFromWindowId(s.Id, DisplayAreaFallback.Primary);
+                    var work = display.WorkArea;
+                    int minW = Math.Min(880, Math.Max(480, work.Width - 48));
+                    int minH = Math.Min(560, Math.Max(360, work.Height - 48));
+                    var size = s.Size;
+                    if (size.Width < minW || size.Height < minH)
+                        s.Resize(new SizeInt32(Math.Max(size.Width, minW), Math.Max(size.Height, minH)));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not enforce the main window's monitor-aware minimum size");
+                }
             };
         }
     }
 
+    private static readonly object SidebarPreferencesLock = new();
+
+    private static string SidebarPreferencesPath => System.IO.Path.Combine(
+        ThemeManager.Core.Services.AppDataPaths.LocalRoot,
+        "ThemedAI",
+        "navigation-state.json");
+
+    private static Dictionary<string, bool> ReadSidebarPreferences()
+    {
+        try
+        {
+            var path = SidebarPreferencesPath;
+            if (!System.IO.File.Exists(path)) return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(System.IO.File.ReadAllText(path))
+                ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool ReadSidebarPreference(string key)
+    {
+        lock (SidebarPreferencesLock)
+            return ReadSidebarPreferences().TryGetValue(key, out var value) && value;
+    }
+
+    private void PersistSidebarPreference(string key, bool value)
+    {
+        try
+        {
+            lock (SidebarPreferencesLock)
+            {
+                var preferences = ReadSidebarPreferences();
+                preferences[key] = value;
+                var path = SidebarPreferencesPath;
+                var directory = System.IO.Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    System.IO.Directory.CreateDirectory(directory);
+                var tempPath = path + ".tmp";
+                System.IO.File.WriteAllText(tempPath, System.Text.Json.JsonSerializer.Serialize(preferences));
+                System.IO.File.Move(tempPath, path, overwrite: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not persist sidebar preference {PreferenceKey}", key);
+        }
+    }
+
+    private void InitializeSidebarState()
+    {
+        var collapsed = ReadSidebarPreference("Navigation.SidebarCollapsed");
+        var moreExpanded = ReadSidebarPreference("Navigation.MoreToolsExpanded");
+        SetMoreToolsExpanded(moreExpanded, persist: false);
+        SetSidebarCollapsed(collapsed, persist: false);
+    }
+
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+        => SetSidebarCollapsed(!_sidebarCollapsed, persist: true);
+
+    private void NavMore_Click(object sender, RoutedEventArgs e)
+    {
+        SetMoreToolsExpanded(!_moreToolsExpanded, persist: true);
+        SetActiveNav(NavMore);
+    }
+
+    private void SetMoreToolsExpanded(bool expanded, bool persist)
+    {
+        _moreToolsExpanded = expanded;
+        MoreToolsPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        NavMore.Content = _sidebarCollapsed ? "⋯" : (expanded ? "⌃  More tools" : "⌄  More tools");
+        ToolTipService.SetToolTip(NavMore, expanded ? "Collapse more tools" : "Expand more tools");
+        if (persist)
+            PersistSidebarPreference("Navigation.MoreToolsExpanded", expanded);
+    }
+
+    private void SetSidebarCollapsed(bool collapsed, bool persist)
+    {
+        _sidebarCollapsed = collapsed;
+        RootGrid.ColumnDefinitions[0].Width = new GridLength(collapsed ? 68 : 220);
+        BrandPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        SidebarFooter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        MakeHeader.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        var labels = new (Button Button, string Expanded, string Icon)[]
+        {
+            (NavStudio, "✦  Studio", "✦"),
+            (NavThemes, "🎨  Themes", "🎨"),
+            (NavWidgets, "🧩  Widgets", "🧩"),
+            (NavVibeFinderAI, "🎵  VibeFinder AI", "🎵"),
+            (NavWorld, "◈  Desktop World", "◈"),
+            (NavVibe, "✨  Palette generator", "✨"),
+            (NavWidgetVibe, "🪄  Widget generator", "🪄"),
+            (NavPreview, "◉  Preview / editor", "◉"),
+            (NavSystem, "⚙  System", "⚙"),
+            (NavGallery, "▦  Gallery", "▦"),
+            (NavSettings, "🔧  Settings", "🔧")
+        };
+
+        foreach (var item in labels)
+        {
+            item.Button.Content = collapsed ? item.Icon : item.Expanded;
+            item.Button.HorizontalContentAlignment = collapsed
+                ? HorizontalAlignment.Center
+                : HorizontalAlignment.Left;
+            item.Button.Padding = collapsed
+                ? new Thickness(0, 10, 0, 10)
+                : new Thickness(12, 10, 12, 10);
+        }
+
+        NavMore.Content = collapsed ? "⋯" : (_moreToolsExpanded ? "⌃  More tools" : "⌄  More tools");
+        NavMore.HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        NavMore.Padding = collapsed ? new Thickness(0, 10, 0, 10) : new Thickness(12, 10, 12, 10);
+        SidebarToggleButton.Content = collapsed ? "☰" : "‹";
+        ToolTipService.SetToolTip(SidebarToggleButton, collapsed ? "Expand sidebar" : "Collapse sidebar");
+        if (persist)
+            PersistSidebarPreference("Navigation.SidebarCollapsed", collapsed);
+    }
+
     private void NavThemes_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(ThemesPage)); SetActiveNav(NavThemes); }
-    private void NavVibe_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(VibePage)); SetActiveNav(NavVibe); }
-    private void NavPreview_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(ThemeEditorPage)); SetActiveNav(NavPreview); }
-    private void NavSystem_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(SystemIntegrationPage)); SetActiveNav(NavSystem); }
-    private void NavSettings_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(SettingsPage)); SetActiveNav(NavSettings); }
+    private void NavVibe_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(VibePage)); SetActiveNav(NavMore); }
+    private void NavPreview_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(ThemeEditorPage)); SetActiveNav(NavMore); }
+    private void NavSystem_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(SystemIntegrationPage)); SetActiveNav(NavMore); }
+    private void NavSettings_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(SettingsPage)); SetActiveNav(NavMore); }
     private void NavWidgets_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(SkinsPage)); SetActiveNav(NavWidgets); }
-    private void NavWidgetVibe_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(WidgetGeneratorPage)); SetActiveNav(NavWidgetVibe); }
-    private void NavGallery_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(GalleryPage)); SetActiveNav(NavGallery); }
-    private void NavVibeFinderAI_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(VibeFinderAIPage)); SetActiveNav(NavVibeFinderAI); }
+    private void NavWidgetVibe_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(WidgetGeneratorPage)); SetActiveNav(NavMore); }
+    private void NavGallery_Click(object sender, RoutedEventArgs e) { ContentFrame.Navigate(typeof(GalleryPage)); SetActiveNav(NavMore); }
+    private void NavVibeFinderAI_Click(object sender, RoutedEventArgs e)
+    {
+        // Clicking the already-open destination is a no-op. In particular, never re-navigate the
+        // VibeFinder page just to highlight the active sidebar item; WebView2 playback must stay put.
+        if (ContentFrame.Content is not VibeFinderAIPage)
+            ContentFrame.Navigate(typeof(VibeFinderAIPage));
+        SetActiveNav(NavVibeFinderAI);
+    }
+
+    public void NavigateToThemeGenerator()
+    {
+        ContentFrame.Navigate(typeof(VibePage));
+        SetActiveNav(NavThemes);
+    }
+
+    public void NavigateToWidgetGenerator()
+    {
+        ContentFrame.Navigate(typeof(WidgetGeneratorPage));
+        SetActiveNav(NavWidgets);
+    }
 
     public void NavigateToSkinEditor(SkinDefinition skin)
     {
@@ -139,7 +568,7 @@ public sealed partial class MainWindow : Window
 
     private void SetActiveNav(Button active)
     {
-        Button[] all = [NavThemes, NavVibe, NavPreview, NavSystem, NavWidgets, NavWidgetVibe, NavGallery, NavVibeFinderAI, NavSettings];
+        Button[] all = [NavStudio, NavThemes, NavWidgets, NavVibeFinderAI, NavMore, NavWorld, NavVibe, NavPreview, NavSystem, NavWidgetVibe, NavGallery, NavSettings];
         foreach (var btn in all)
         {
             btn.Style = btn == active ? (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemActiveStyle"] : (Microsoft.UI.Xaml.Style)Application.Current.Resources["NavItemStyle"];

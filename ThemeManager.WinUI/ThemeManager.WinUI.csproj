@@ -29,11 +29,18 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
     <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.20" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ThemeManager.Core\ThemeManager.Core.csproj" />
     <ProjectReference Include="..\ThemeManager.Integration\ThemeManager.Integration.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\docs\legal\PRIVACY.txt" Link="Assets\Documentation\PRIVACY.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\docs\legal\TERMS.txt" Link="Assets\Documentation\TERMS.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\docs\HELP.txt" Link="Assets\Documentation\HELP.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Phase 8 Local Gallery: bundled community pack(s), read by GalleryService at
@@ -49,6 +56,18 @@
 
   <!-- Reverted implicit item settings to use defaults and removed explicit duplications -->
 
+  <!-- Unpackaged dotnet publish must include the compiled UI and its resource index.
+       The WinUI SDK copies these to build output but does not include them in publish. -->
+  <Target Name="IncludeCompiledUiInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_AppCompiledUi Include="$(TargetDir)**\*.xbf;$(TargetDir)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Include="@(_AppCompiledUi)"
+                             Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>%(_AppCompiledUi.RecursiveDir)%(_AppCompiledUi.Filename)%(_AppCompiledUi.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <Error Condition="!Exists('$(TargetDir)MainWindow.xbf') Or !Exists('$(TargetDir)$(AssemblyName).pri')"
+           Text="Compiled WinUI resources are missing. Build the app before publishing." />
+  </Target>
 </Project>
-
-  

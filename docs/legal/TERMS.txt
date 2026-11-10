@@ -1,0 +1,50 @@
+Themed.AI terms of use
+Preview version, updated 8 November 2026
+
+Publisher and contact
+
+Themed.AI is published by Vijay Shankar in India. Contact themed.aiapp@gmail.com for support, privacy concerns or questions about these terms.
+
+Using the preview
+
+Themed.AI helps you create themes and widgets, arrange desktop worlds and optionally connect to music and weather services. It can change wallpaper, colors, widget windows and automation settings when you use those features. Keep backups of designs and settings you need. Preview features can change and may contain errors.
+
+These terms describe use of the app and its connected features. They do not replace rights granted by the source-code license or the licenses of included components. If you use the app on someone else's computer or account, obtain their permission first.
+
+Your account and content
+
+Use only accounts you own or are permitted to use. Keep your credentials private and tell the publisher if you believe your account has been accessed without permission. The desktop preview's saved widget settings are not a protected password vault.
+
+You retain your rights in your original prompts, designs, images and other content. Import or share only content you are entitled to use. Sharing a playlist, artwork or widget does not transfer rights in music, trademarks or third-party material to you or to the publisher. The app uses content you provide as needed to perform the features you request; these terms do not grant a general right to sell your content.
+
+Acceptable use
+
+Do not use the app or its services to access another person's data without permission, distribute malicious code, bypass access controls, impersonate others or deliberately overload a service. Security testing must stay within the system owner's authorization. Report suspected vulnerabilities privately to themed.aiapp@gmail.com without sending other people's private data.
+
+Plugins and shared widgets
+
+Plugins can execute code, and widgets can open links, load web content or request data from external sites. Review their source and permissions before using them. Back up important settings before importing a package. Only the capabilities and restrictions actually implemented by the app can protect your device; a label or description is not a security guarantee.
+
+Online services
+
+VibeFinderAI, music playback, provider connections and weather depend on network access and external services. Their availability, limits, catalog, account requirements and policies can change. You must follow the terms that apply to each service you use. Themed.AI is not endorsed by those providers unless an endorsement is expressly stated by the provider.
+
+Recommendations and generated designs may be incomplete or inaccurate. Weather is provided for desktop display and theme selection, not emergency or safety decisions. Music recommendations are not professional advice.
+
+Privacy
+
+The accompanying privacy policy explains local files, sign-in information, music requests, weather, location and support messages. Read it before using connected features or sharing diagnostic files. These terms do not turn optional data processing into blanket consent.
+
+Availability and responsibility
+
+The preview is supplied as available. To the extent permitted by applicable law, the publisher does not promise uninterrupted service, error-free operation or compatibility with every device, plugin or Windows configuration. Nothing here excludes liability that cannot legally be excluded, removes mandatory consumer rights or limits rights under an applicable open-source license. No fixed liability cap or compulsory arbitration is imposed by these terms.
+
+Stopping use
+
+You can stop using the app and uninstall it. Local data may remain after uninstalling. Removing the desktop app does not close your online accounts; see the privacy policy for deletion requests. Connected services may restrict access to address abuse or security incidents, subject to their terms and applicable law.
+
+Changes and disputes
+
+New versions may change features and these documents. The version date identifies the text supplied with this build. Changes do not retroactively remove rights you already have.
+
+Indian law applies to these terms where permitted. Mandatory protections and the courts or complaint bodies available under applicable law remain available to you. Contact themed.aiapp@gmail.com first if you would like the publisher to help resolve a problem; doing so is not a condition for exercising your legal rights.

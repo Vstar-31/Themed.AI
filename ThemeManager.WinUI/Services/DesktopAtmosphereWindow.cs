@@ -93,10 +93,41 @@ public sealed class DesktopAtmosphereWindow : Window, IDisposable
         }
     }
 
+    // System Composition needs the Windows.System queue in addition to WinUI's queue.
+    // Retain its controller for the lifetime of the atmosphere window.
+    private object? _systemDispatcherQueueController;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DispatcherQueueOptions
+    {
+        public int Size;
+        public int ThreadType;
+        public int ApartmentType;
+    }
+
+    [DllImport("CoreMessaging.dll")]
+    private static extern int CreateDispatcherQueueController(
+        DispatcherQueueOptions options,
+        [In, Out, MarshalAs(UnmanagedType.IUnknown)] ref object? controller);
+
+    private void EnsureSystemDispatcherQueue()
+    {
+        if (Windows.System.DispatcherQueue.GetForCurrentThread() is not null
+            || _systemDispatcherQueueController is not null) return;
+
+        var options = new DispatcherQueueOptions
+        {
+            Size = Marshal.SizeOf<DispatcherQueueOptions>(),
+            ThreadType = 2, // DQTYPE_THREAD_CURRENT
+            ApartmentType = 2, // DQTAT_COM_STA
+        };
+        Marshal.ThrowExceptionForHR(CreateDispatcherQueueController(options, ref _systemDispatcherQueueController));
+    }
     private void EnableTransparency()
     {
         try
         {
+            EnsureSystemDispatcherQueue();
             var compositor = new Windows.UI.Composition.Compositor();
             var transparentBrush = compositor.CreateColorBrush(Color.FromArgb(0, 0, 0, 0));
             ((object)this).As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>().SystemBackdrop = transparentBrush;

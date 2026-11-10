@@ -17,14 +17,35 @@ public sealed partial class MainWindow
     private void NavWorld_Click(object sender, RoutedEventArgs e)
     {
         ContentFrame.Navigate(typeof(DesktopWorldPage));
-        SetActiveNav(NavThemes);
-        NavWorld.Style = (Style)Application.Current.Resources["NavItemActiveStyle"];
+        SetActiveNav(NavMore);
+
         if (_worldNavHooked) return;
         _worldNavHooked = true;
         ContentFrame.Navigated += (_, _) =>
         {
             if (ContentFrame.Content is not DesktopWorldPage)
-                NavWorld.Style = (Style)Application.Current.Resources["NavItemStyle"];
+                SetActiveNavFromCurrentContent();
         };
+    }
+
+    private void SetActiveNavFromCurrentContent()
+    {
+        var button = ContentFrame.Content switch
+        {
+            StudioPage => NavStudio,
+            ThemesPage => NavThemes,
+            VibePage => NavThemes,
+            ThemeEditorPage => NavThemes,
+            SkinsPage => NavWidgets,
+            SkinEditorPage => NavWidgets,
+            WidgetGeneratorPage => NavWidgets,
+            VibeFinderAIPage => NavVibeFinderAI,
+            DesktopWorldPage => NavMore,
+            SystemIntegrationPage => NavMore,
+            GalleryPage => NavMore,
+            SettingsPage => NavMore,
+            _ => NavStudio
+        };
+        SetActiveNav(button);
     }
 }

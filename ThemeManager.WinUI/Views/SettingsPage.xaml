@@ -178,14 +178,14 @@
                 </StackPanel>
             </Border>
 
-            <!-- Weather Settings (OpenWeatherMap) -->
+            <!-- Weather settings: key-free by default, legacy key supported -->
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="16">
                     <TextBlock Text="Weather Settings" Style="{StaticResource SectionHeaderStyle}" />
                     <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap">
-                        Connect your OpenWeatherMap API key and city so Themed.AI can
-                        automatically switch themes based on current weather conditions.
-                        Get a free API key at openweathermap.org.
+                        Choose a city to get weather without an account or API key.
+                        Weather data: Open-Meteo (CC BY 4.0); location names: GeoNames.
+                        Weather is refreshed about every 30 minutes. Internet access is required.
                     </TextBlock>
 
                     <ToggleSwitch x:Name="WeatherReactiveToggle"
@@ -193,7 +193,7 @@
                                   Style="{StaticResource CozyToggleStyle}" />
 
                     <ToggleSwitch x:Name="WeatherDynamicLocationToggle"
-                                  Header="Use dynamic location (Windows Location Services)"
+                                  Header="Use Windows location instead of a city"
                                   Style="{StaticResource CozyToggleStyle}"
                                   Toggled="WeatherDynamicLocationToggle_Toggled" />
 
@@ -203,11 +203,13 @@
                             <TextBox x:Name="WeatherCityBox" PlaceholderText="e.g. Jaipur,IN" />
                         </StackPanel>
                         <StackPanel Spacing="4" Width="180">
-                            <TextBlock Text="OpenWeatherMap API key" Style="{StaticResource CaptionStyle}" />
+                            <TextBlock Text="Optional legacy OpenWeatherMap key" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
                             <PasswordBox x:Name="WeatherApiKeyBox" PasswordRevealMode="Peek" />
                         </StackPanel>
                     </StackPanel>
 
+                    <TextBlock Text="Location is optional. If Windows location is unavailable, turn it off and enter a city. Leave the legacy key blank to use Open-Meteo." Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" />
+                    <HyperlinkButton Content="Weather data and attribution" NavigateUri="https://open-meteo.com/" HorizontalAlignment="Left" />
                     <TextBlock Text="Theme per condition" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}" />
                     <Grid ColumnSpacing="10" RowSpacing="10">
@@ -306,14 +308,21 @@
                     <TextBlock TextWrapping="Wrap"
                                FontSize="{StaticResource FontSizeBody}"
                                Foreground="{StaticResource TextPrimaryBrush}">
-                        Themed.AI — a lightweight, modular Windows 11 theme manager.
+                        Themed.AI helps you make Windows feel like your own.
                     </TextBlock>
                     <TextBlock Style="{StaticResource CaptionStyle}"
                                TextWrapping="Wrap">
                         Built with WinUI 3, Windows App SDK, and .NET 8.
-                        Open-source under the MIT license.
-                        No telemetry. No ads. No cloud required.
+                        Local theme and widget editing works without an account.
+                        Music and weather use online services. See the privacy policy for details.
                     </TextBlock>
+                    <TextBlock Text="Published by Vijay Shankar, India" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
+                    <HyperlinkButton Content="themed.aiapp@gmail.com" NavigateUri="mailto:themed.aiapp@gmail.com" />
+                    <StackPanel Spacing="8">
+                        <Button Content="Privacy policy" Tag="PRIVACY" Click="OpenDocumentation_Click" />
+                        <Button Content="Terms of use" Tag="TERMS" Click="OpenDocumentation_Click" />
+                        <Button Content="Help" Tag="HELP" Click="OpenDocumentation_Click" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

@@ -1,4 +1,6 @@
 using ThemeManager.Core.NLP;
+using ThemeManager.Core.Utilities;
+using ThemeManager.Core.Personalization;
 
 namespace ThemeManager.Tests;
 
@@ -234,6 +236,141 @@ public class VibeNlpPipelineTests
         Assert.Equal(theme1.AccentPrimary, theme2.AccentPrimary);
     }
 
+    // Curated aesthetics are first-class semantic anchors, not accidental fuzzy color matches.
+    [Theory]
+    [InlineData("Neon Afterglow", "Neon Afterglow")]
+    [InlineData("Frutiger Aero", "Frutiger Aero")]
+    [InlineData("Dark Academia", "Dark Academia")]
+    [InlineData("Poetcore", "Poetcore")]
+    [InlineData("Vamp Romantic", "Vamp Romantic")]
+    [InlineData("Neo Deco", "Neo Deco")]
+    [InlineData("Extra Celestial", "Extra Celestial")]
+    [InlineData("Gimme Gummy", "Gimme Gummy")]
+    [InlineData("Glitchy Glam digital night", "Glitchy Glam")]
+    [InlineData("Wilderkind", "Wilderkind")]
+    [InlineData("Glamoratti", "Glamoratti")]
+    [InlineData("Opera Aesthetic", "Opera Aesthetic")]
+    [InlineData("Arcane", "Arcane-Inspired")]
+    [InlineData("Studio Ghibli forest", "Storybook Forest")]
+    [InlineData("Star Wars cockpit", "Space Opera")]
+    [InlineData("Minecraft Cherry Grove", "Cherry Grove")]
+    [InlineData("Brooched vintage jewellery", "Brooched")]
+    [InlineData("Scent Stacking amber vanilla", "Scent Stacking")]
+    [InlineData("Pen Pals letter-writing desk", "Pen Pals")]
+    [InlineData("Darecations mountain escape", "Darecations")]
+    [InlineData("Cabbage Crush garden green", "Cabbage Crush")]
+    [InlineData("Cool Blue glacier aesthetic", "Cool Blue")]
+    [InlineData("FunHaus playful Bauhaus", "FunHaus")]
+    [InlineData("Khaki Coded expedition kit", "Khaki Coded")]
+    [InlineData("Mystic Outlands fantasy", "Mystic Outlands")]
+    [InlineData("Afrohemian Decor", "Afrohemian Decor")]
+    [InlineData("Laced Up lacecore", "Laced Up")]
+    [InlineData("Throwback Kid", "Throwback Kid")]
+    [InlineData("Wednesday Addams", "Wednesday Goth")]
+    [InlineData("Pip-Boy Fallout terminal", "Retro-Future Terminal")]
+    [InlineData("Blade Runner 2049", "Rain City 2049")]
+    [InlineData("Tron Legacy", "Digital Grid")]
+    [InlineData("K-pop comeback stage", "K-Pop Stage")]
+    public void Generate_RecognizedAesthetics_UsesCuratedProfileAndPassesContrast(string prompt, string expectedName)
+    {
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, k => k.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
+        var checks = ContrastChecker.Check(theme);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void Analyze_ExplicitNavyAndCoral_KeepsTwoHueAnchors()
+    {
+        var signal = VibeAnalyzer.Analyze("navy and coral");
+
+        Assert.True(signal.HasPrimaryPaletteHue);
+        Assert.True(signal.HasSecondaryPaletteHue);
+        Assert.InRange(signal.PrimaryPaletteHue, 190f, 245f);
+        Assert.True(signal.SecondaryPaletteHue >= 330f || signal.SecondaryPaletteHue <= 30f,
+            $"Expected a coral/red counterpoint, got {signal.SecondaryPaletteHue:F0}°.");
+    }
+
+    [Fact]
+    public void Generate_ExplicitNavyAndCoral_PreservesBlueAndCoralAccentRoles()
+    {
+        var theme = _gen.Generate("navy and coral");
+        var primaryHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentPrimary).H;
+        var strongHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentStrong).H;
+
+        Assert.InRange(primaryHue, 185f, 255f);
+        Assert.True(strongHue >= 330f || strongHue <= 35f,
+            $"Expected the secondary accent to remain coral/red, got {strongHue:F0}°.");
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void Generate_BlendedAestheticPrompt_ComposesBothProfilesAndPassesContrast()
+    {
+        const string prompt = "Frutiger Aero meets Neo Deco";
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal("Frutiger Aero × Neo Deco", theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, k => k == "Frutiger Aero");
+        Assert.Contains(analysis.MatchedKeywords, k => k == "Neo Deco");
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Theory]
+    [InlineData("not cyberpunk, make it cottagecore")]
+    [InlineData("don't want cyberpunk, make it cottagecore")]
+    [InlineData("without cyberpunk, make it cottagecore")]
+    public void Generate_NegatedAestheticDoesNotWinOverPositiveReference(string prompt)
+    {
+        var theme = _gen.Generate(prompt);
+
+        Assert.Equal("Cottagecore", theme.Name);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Theory]
+    [InlineData("dark midnight ocean storm")]
+    [InlineData("pastel cherry blossom pink")]
+    [InlineData("cool minimal arctic glass")]
+    [InlineData("warm terracotta reading nook")]
+    [InlineData("electric neon city with cyan accents")]
+    [InlineData("forest green and gold fantasy desktop")]
+    [InlineData("bright coral pop art")]
+    [InlineData("moonlit purple space opera")]
+    public void Generate_FreeFormPrompts_PassesContrastQualityGate(string prompt)
+    {
+        var theme = _gen.Generate(prompt);
+        var checks = ContrastChecker.Check(theme);
+
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
+    [Theory]
+    [InlineData("#FF4FD8", true)]
+    [InlineData("#286DB5", false)]
+    public void HarmonyLockPalette_PreservesAnchorAndRequestedPolarity(string accentHex, bool preferDark)
+    {
+        var palette = PaletteHarmonizer.FromAccentHex(accentHex, preferDark);
+        Assert.Equal(accentHex, palette.AccentPrimary);
+        Assert.Equal(preferDark, palette.IsDark);
+
+        var theme = new ThemeManager.Core.Models.CozyTheme();
+        palette.ApplyTo(theme);
+        var report = PaletteQualityValidator.ValidateAndRepair(theme, preferDark);
+
+        Assert.True(report.PassesAA);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} is only {check.Ratio:F2}:1"));
+    }
+
     [Fact]
     public void Generate_CircularCpuGauge_ReturnsRingMeter()
     {
@@ -253,5 +390,545 @@ public class VibeNlpPipelineTests
         var widgetGen = new WidgetVibeGenerator();
         var skin = widgetGen.Generate("add a gauge for CPU, circular");
         Assert.Contains(skin.Meters, m => m.Kind == ThemeManager.Core.Skins.MeterKind.Ring);
+    }
+
+    [Theory]
+    [InlineData("Minecraft", "Minecraft Overworld")]
+    [InlineData("Minecraft Cherry Grove", "Cherry Grove")]
+    [InlineData("Cherry Grove", "Cherry Grove")]
+    public void Generate_GeneralFranchiseAliasDoesNotOverrideSpecificAesthetic(string prompt, string expectedName)
+    {
+        var theme = _gen.Generate(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Theory]
+    [InlineData("Jade palette", "Jade Reverie")]
+    [InlineData("Pinterest Palette Plum Noir villain era", "Plum Noir")]
+    [InlineData("Wasabi green aesthetic", "Wasabi Voltage")]
+    [InlineData("Persimmon orange-red", "Persimmon Heat")]
+    [InlineData("brat green", "Brat Summer")]
+    [InlineData("office siren late night", "Office Siren")]
+    [InlineData("sea witchery", "Sea Witchery")]
+    [InlineData("Castlecore medieval romance", "Castlecore")]
+    [InlineData("cherry coded", "Cherry Coded")]
+    [InlineData("Terra Futura climate tech", "Terra Futura")]
+    [InlineData("clean girl quiet luxury", "Clean Girl")]
+    [InlineData("liminal space dreamcore", "Liminal Dream")]
+    [InlineData("Minecraft redstone", "Minecraft Overworld")]
+    [InlineData("Sailor Moon", "Moon Prism")]
+    [InlineData("Dune Arrakis spice", "Arrakis Spice")]
+    [InlineData("Wicked Emerald City", "Emerald Stage")]
+    [InlineData("KPop Demon Hunters", "Idol Exorcist")]
+    public void Generate_ExpandedCultureAndTrendReferences_UsesCuratedArtDirection(string prompt, string expectedName)
+    {
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, k => k.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
+    }
+
+    [Theory]
+    [InlineData("jelly blush with rubberized accessories", "Gimme Gummy")]
+    [InlineData("opalescent alien beauty", "Extra Celestial")]
+    [InlineData("chunky belt and baggy suit", "Glamoratti")]
+    [InlineData("scotland highlands aesthetic", "Mystic Outlands")]
+    [InlineData("letter writing desk with cute stamps", "Pen Pals")]
+    [InlineData("geometric glamour and sculpted brass", "Neo Deco")]
+    [InlineData("jet black nails and dark romantic makeup", "Vamp Romantic")]
+    [InlineData("circuscore decor and bold color blocking", "FunHaus")]
+    [InlineData("lace gloves with ribboncore", "Laced Up")]
+    [InlineData("90s toy aesthetic", "Throwback Kid")]
+    [InlineData("tropicoqueta showgirl aesthetic", "Hot Tropic")]
+    [InlineData("pirate eye makeup and suede mini skirt", "Swashbuckled")]
+    [InlineData("2000s rock outfits with thrifted band tees", "Shoegaze Aesthetic")]
+    [InlineData("airbrush jeans and rhinestone tops", "Peak Poptimism")]
+    [InlineData("organza shirt and angelic accessories", "Sheer Euphoria")]
+    [InlineData("theater kid mismatched outfit", "High Camp")]
+    [InlineData("post-human futurism and chrome utility", "Y3K")]
+    [InlineData("digicam party with smudged eyeliner aesthetic", "Indie Sleaze")]
+    [InlineData("desi streetwear with handloom aesthetic", "Desi-Core")]
+    public void Generate_TrendDescriptionLanguageResolvesToItsCuratedProfile(string prompt, string expectedName)
+    {
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal(expectedName, theme.Name);
+        Assert.Contains(analysis.MatchedKeywords, word =>
+            word.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
+    }
+
+    [Theory]
+    [InlineData("Neon Afterglw", "Neon Afterglow")]
+    [InlineData("Frutiger Aro", "Frutiger Aero")]
+    [InlineData("Plum Noire villain era", "Plum Noir")]
+    public void FindAesthetic_RepairsSmallTyposInNamedReferences(string prompt, string expectedName)
+    {
+        var profile = AestheticProfileCatalog.Find(prompt);
+        Assert.NotNull(profile);
+        Assert.Equal(expectedName, profile.Name);
+
+        var theme = _gen.Generate(prompt);
+        Assert.Equal(expectedName, theme.Name);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Theory]
+    [InlineData("Cool-Wasabi palette", "Cool Blue", "Wasabi Voltage")]
+    [InlineData("Persimmon-Plum palette", "Persimmon Heat", "Plum Noir")]
+    public void Generate_PinterestPaletteSubPalettes_BlendBothArtDirections(
+        string prompt, string firstName, string secondName)
+    {
+        var matches = AestheticProfileCatalog.FindAll(prompt);
+        Assert.Contains(matches, p => p.Name == firstName);
+        Assert.Contains(matches, p => p.Name == secondName);
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, matches));
+
+        var theme = _gen.Generate(prompt);
+        Assert.Equal($"{firstName} × {secondName}", theme.Name);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void Generate_EveryCuratedProfilePassesThePublicGenerationQualityGate()
+    {
+        foreach (var profile in AestheticProfileCatalog.Profiles)
+        {
+            var (theme, analysis) = _gen.GenerateAndExplain(profile.Name);
+            Assert.Equal(profile.Name, theme.Name);
+            Assert.Equal(theme.Name, analysis.GeneratedName);
+
+            var checks = ContrastChecker.Check(theme);
+            Assert.Equal(9, checks.Count);
+            Assert.All(checks, check =>
+                Assert.True(check.PassesAA,
+                    $"{profile.Name}: {check.PairName} is only {check.Ratio:F2}:1."));
+        }
+    }
+
+    [Theory]
+    [InlineData("Neon Afterglow with violet accents", true)]
+    [InlineData("Dark Academia with candlelight", true)]
+    [InlineData("Cool-Wasabi palette with brutalist hard edges", true)]
+    [InlineData("Poetcore with glassy navy panels", false)]
+    [InlineData("clean girl pastel minimal", false)]
+    public void Generate_EveryCandidateVariantPassesPaletteQualityGate(string prompt, bool mustBeDark)
+    {
+        var context = new GenerationContext
+        {
+            Prompt = prompt,
+            Constraints = new GenerationConstraints
+            {
+                MustBeDarkTheme = mustBeDark && prompt.Contains("Neon", StringComparison.OrdinalIgnoreCase),
+                MustBeLightTheme = !mustBeDark && prompt.Contains("clean girl", StringComparison.OrdinalIgnoreCase)
+            }
+        };
+        var candidates = new CandidateEngine().GenerateThemeCandidates(context, count: 3);
+        Assert.Equal(3, candidates.Count);
+
+        foreach (var candidate in candidates)
+        {
+            var checks = ContrastChecker.Check(candidate.Theme);
+            Assert.Equal(9, checks.Count);
+            Assert.All(checks, pair =>
+                Assert.True(pair.PassesAA,
+                    $"{prompt} ({candidate.GenerationSource}): {pair.PairName} {pair.Ratio:F2}:1"));
+            Assert.Equal(candidate.Theme.Name, candidate.Analysis?.GeneratedName);
+            Assert.Equal(
+                new[] { candidate.Theme.BackgroundBase, candidate.Theme.BackgroundAlt, candidate.Theme.Surface,
+                    candidate.Theme.AccentPrimary, candidate.Theme.AccentStrong },
+                candidate.Analysis?.Swatches);
+        }
+    }
+
+    [Fact]
+    public void Generate_AccentColorModifierKeepsNamedBackgroundIdentity()
+    {
+        var baseTheme = AestheticProfileCatalog.CreateTheme(
+            AestheticProfileCatalog.Find("Frutiger Aero")!, "Frutiger Aero");
+        var modified = _gen.Generate("Frutiger Aero with violet accents");
+
+        Assert.Equal(baseTheme.BackgroundBase, modified.BackgroundBase);
+        var hue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(modified.AccentPrimary).H;
+        Assert.InRange(hue, 255f, 300f);
+        Assert.All(ContrastChecker.Check(modified), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Theory]
+    [InlineData("Neon Afterglw meets Frutiger Aro", "Neon Afterglow", "Frutiger Aero")]
+    [InlineData("Frutiger Aro meets Neon Afterglw", "Frutiger Aero", "Neon Afterglow")]
+    public void Generate_TypoTolerantBlendsPreserveRequestedReferenceOrder(
+        string prompt, string firstName, string secondName)
+    {
+        var profiles = AestheticProfileCatalog.FindAll(prompt);
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, profiles));
+        Assert.Equal(new[] { firstName, secondName }, profiles.Take(2).Select(p => p.Name));
+
+        var theme = _gen.Generate(prompt);
+        Assert.Equal($"{firstName} × {secondName}", theme.Name);
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Generate_ThreeWayBlendUsesEveryNamedReference()
+    {
+        const string prompt = "Y3K meets Indie Sleaze meets Desi-Core";
+        var profiles = AestheticProfileCatalog.FindAll(prompt);
+        Assert.Equal(new[] { "Y3K", "Indie Sleaze", "Desi-Core" }, profiles.Take(3).Select(profile => profile.Name));
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, profiles));
+
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal("Y3K × Indie Sleaze × Desi-Core", theme.Name);
+        Assert.Contains("Y3K", analysis.MatchedKeywords);
+        Assert.Contains("Indie Sleaze", analysis.MatchedKeywords);
+        Assert.Contains("Desi-Core", analysis.MatchedKeywords);
+        Assert.Equal("blended aesthetic", analysis.KeywordCategories["Indie Sleaze"]);
+        Assert.Equal("blended aesthetic", analysis.KeywordCategories["Desi-Core"]);
+
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA,
+                $"{check.PairName} is only {check.Ratio:F2}:1 for the three-way blend."));
+    }
+
+    [Theory]
+    [InlineData("Y3K + Indie Sleaze + Desi-Core")]
+    [InlineData("Y3K × Indie Sleaze × Desi-Core")]
+    [InlineData("Y3K meets Indie Sleazee meets Desi-Core")]
+    public void Generate_ThreeWayBlendHandlesSeparatorsAndOneMisspelledReference(string prompt)
+    {
+        var profiles = AestheticProfileCatalog.FindAll(prompt);
+        Assert.Equal(new[] { "Y3K", "Indie Sleaze", "Desi-Core" }, profiles.Take(3).Select(profile => profile.Name));
+        Assert.True(AestheticProfileCatalog.RequestsBlend(prompt, profiles));
+
+        var (theme, analysis) = _gen.GenerateAndExplain(prompt);
+
+        Assert.Equal("Y3K × Indie Sleaze × Desi-Core", theme.Name);
+        Assert.Contains("Y3K", analysis.MatchedKeywords);
+        Assert.Contains("Indie Sleaze", analysis.MatchedKeywords);
+        Assert.Contains("Desi-Core", analysis.MatchedKeywords);
+        var checks = ContrastChecker.Check(theme);
+        Assert.Equal(9, checks.Count);
+        Assert.All(checks, check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} is only {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Generate_BlendedAestheticsPreserveCompositionModifiers()
+    {
+        var theme = _gen.Generate("Cool-Wasabi palette with brutalist hard edges and spacious layout");
+
+        Assert.Equal(0.55, theme.CornerRadiusScale);
+        Assert.True(theme.DensityScale > 1.0);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void Analyze_SingleTargetNegationDoesNotSuppressFollowingColor()
+    {
+        var analysis = VibeAnalyzer.Analyze("not too bright cyan accent");
+
+        Assert.Contains(analysis.MatchedKeywords,
+            word => word.Equals("cyan", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("not neon but cyan", "neon", "cyan")]
+    [InlineData("no blue, use coral", "blue", "coral")]
+    [InlineData("not dark academia, use cyan", "dark", "cyan")]
+    public void Analyze_NegatedColorsDoNotPollutePositiveColorSignals(
+        string prompt, string rejectedColor, string acceptedColor)
+    {
+        var analysis = VibeAnalyzer.Analyze(prompt);
+
+        Assert.DoesNotContain(analysis.MatchedKeywords,
+            word => word.Equals(rejectedColor, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(analysis.MatchedKeywords,
+            word => word.Equals(acceptedColor, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Generate_MinimalArtDirectionIncreasesWhitespaceInsteadOfTighteningLayout()
+    {
+        var baseline = _gen.Generate("Coquette");
+        var minimal = _gen.Generate("Coquette with a minimal, clean layout");
+
+        Assert.True(minimal.DensityScale > baseline.DensityScale,
+            $"Expected minimal spacing to increase, got {baseline.DensityScale:F2} -> {minimal.DensityScale:F2}.");
+        Assert.All(ContrastChecker.Check(minimal), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1 contrast."));
+    }
+
+    [Fact]
+    public void Generate_CompositionalGlassPromptAdjustsGeometryNotJustColors()
+    {
+        var baseline = AestheticProfileCatalog.CreateTheme(
+            AestheticProfileCatalog.Find("Frutiger Aero")!, "Frutiger Aero");
+        var glass = _gen.Generate("Frutiger Aero with liquid glass surfaces and spacious layout");
+
+        Assert.True(glass.CornerRadiusScale >= baseline.CornerRadiusScale);
+        Assert.True(glass.DensityScale > baseline.DensityScale);
+        Assert.Contains("Art direction:", glass.Description);
+        Assert.All(ContrastChecker.Check(glass), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
+    }
+
+    [Fact]
+    public void RankThemes_GlassPromptPrefersArtDirectedRoundedCandidate()
+    {
+        var seed = _gen.Generate("a calm violet interface");
+        var square = seed.Duplicate();
+        square.Name = "Square";
+        square.CornerRadiusScale = 0.55;
+        var rounded = seed.Duplicate();
+        rounded.Name = "Rounded Glass";
+        rounded.CornerRadiusScale = 1.35;
+
+        var ranking = new HeuristicRankingEngine().RankThemes(
+            [
+                new ThemeCandidate { Theme = square },
+                new ThemeCandidate { Theme = rounded }
+            ],
+            new UserProfile(),
+            new GenerationContext { Prompt = "glass interface" });
+
+        Assert.Equal("Rounded Glass", ranking[0].Theme.Name);
+    }
+
+    [Fact]
+    public void RankThemes_MinimalPromptPrefersSpaciousCandidate()
+    {
+        var seed = _gen.Generate("a calm violet interface");
+        var cramped = seed.Duplicate();
+        cramped.Name = "Cramped";
+        cramped.DensityScale = 0.82;
+        var spacious = seed.Duplicate();
+        spacious.Name = "Spacious Minimal";
+        spacious.DensityScale = 1.12;
+
+        var ranking = new HeuristicRankingEngine().RankThemes(
+            [
+                new ThemeCandidate { Theme = cramped },
+                new ThemeCandidate { Theme = spacious }
+            ],
+            new UserProfile(),
+            new GenerationContext { Prompt = "minimal interface" });
+
+        Assert.Equal("Spacious Minimal", ranking[0].Theme.Name);
+    }
+
+    [Fact]
+    public void ArtDirectionCues_RespectNegationAndWholePhraseBoundaries()
+    {
+        Assert.False(AestheticProfileCatalog.ContainsPositiveCue("not neon but use cyan", "neon"));
+        Assert.True(AestheticProfileCatalog.ContainsPositiveCue("not neon but use cyan", "cyan"));
+        Assert.False(AestheticProfileCatalog.ContainsPositiveCue("the software interface", "soft"));
+        Assert.False(AestheticProfileCatalog.ContainsPositiveCue("avoid using chrome", "chrome"));
+        Assert.True(AestheticProfileCatalog.ContainsPositiveCue("use glossy chrome panels", "chrome"));
+    }
+
+    [Fact]
+    public void RankThemes_NegatedGlassDoesNotPreferRoundedCandidate()
+    {
+        var seed = _gen.Generate("a calm violet interface");
+        var square = seed.Duplicate();
+        square.Name = "Square";
+        square.CornerRadiusScale = 0.55;
+        var rounded = seed.Duplicate();
+        rounded.Name = "Rounded Glass";
+        rounded.CornerRadiusScale = 1.35;
+
+        var ranking = new HeuristicRankingEngine().RankThemes(
+            [
+                new ThemeCandidate { Theme = square },
+                new ThemeCandidate { Theme = rounded }
+            ],
+            new UserProfile(),
+            new GenerationContext { Prompt = "not glass interface" });
+
+        Assert.Equal("Square", ranking[0].Theme.Name);
+    }
+
+    [Theory]
+    [InlineData("Coquette in dark mode", true)]
+    [InlineData("Neon Afterglow in light mode", false)]
+    [InlineData("Frutiger Aero dark mode then light mode", false)]
+    [InlineData("not dark mode, use light mode", false)]
+    public void Generate_ExplicitModeIntentOverridesCuratedProfileDefaults(string prompt, bool expectedDark)
+    {
+        var theme = _gen.Generate(prompt);
+
+        bool actualDark = ColorMath.LuminanceFromHex(theme.BackgroundBase) < 0.18f;
+        Assert.Equal(expectedDark, actualDark);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{prompt}: {check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void InferPreferredPolarity_DoesNotConfuseDarkAcademiaWithDarkModeCommand()
+    {
+        Assert.Null(AestheticProfileCatalog.InferPreferredPolarity("Dark Academia"));
+        Assert.True(AestheticProfileCatalog.InferPreferredPolarity("Dark Academia in dark mode"));
+        Assert.False(AestheticProfileCatalog.InferPreferredPolarity("Dark Academia in light mode"));
+    }
+
+    [Fact]
+    public void ValidateAndRepair_UsesFilledButtonForegroundForStrongAccent()
+    {
+        var theme = AestheticProfileCatalog.CreateTheme(
+            AestheticProfileCatalog.Find("Neon Afterglow")!, "Neon Afterglow");
+        var originalHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentStrong).H;
+
+        var report = PaletteQualityValidator.ValidateAndRepair(theme, preferDark: true);
+        var filledButtonText = ContrastChecker.BestBlackOrWhiteForeground(theme.AccentStrong);
+        var ratio = ThemeManager.Core.Utilities.ColorMath.ContrastRatio(filledButtonText, theme.AccentStrong);
+
+        Assert.True(report.PassesAA);
+        Assert.True(ratio >= 4.5f, $"Filled button text only has {ratio:F2}:1 contrast.");
+        var repairedHue = ThemeManager.Core.Utilities.ColorMath.HexToHsl(theme.AccentStrong).H;
+        var hueDelta = Math.Abs(repairedHue - originalHue);
+        Assert.True(Math.Min(hueDelta, 360f - hueDelta) < 2f,
+            "Button fill repair should preserve the palette's accent hue.");
+    }
+
+    [Theory]
+    [InlineData("Dark Academia", false)]
+    [InlineData("Frutiger Aero glass ocean", false)]
+    [InlineData("K-Pop Stage", false)]
+    [InlineData("change the theme to Dark Academia", false)]
+    [InlineData("change the theme to Frutiger Aero", false)]
+    [InlineData("use the Clean Girl aesthetic", false)]
+    [InlineData("switch to High Camp", false)]
+    [InlineData("make it darker", true)]
+    [InlineData("add violet accents", true)]
+    [InlineData("make the accents violet", true)]
+    [InlineData("make it violet", true)]
+    [InlineData("change the palette to more violet", true)]
+    [InlineData("use cyan accents", true)]
+    [InlineData("make it glassy", true)]
+    [InlineData("make the layout minimal and spacious", true)]
+    [InlineData("more vibrant", true)]
+    public void IsRefinementInstruction_DistinguishesCommandsFromNewAesthetics(string prompt, bool expected)
+    {
+        Assert.Equal(expected, _gen.IsRefinementInstruction(prompt));
+    }
+
+    [Fact]
+    public void Refine_UsesSameAccentHueSemanticsAsInitialGeneration()
+    {
+        var theme = _gen.Generate("Frutiger Aero");
+        var backgroundBefore = theme.BackgroundBase;
+        var altBefore = theme.BackgroundAlt;
+        var hueBefore = ColorMath.HexToHsl(theme.AccentPrimary).H;
+
+        var refined = _gen.Refine(theme, "add violet accents");
+
+        Assert.Same(theme, refined);
+        Assert.Equal(backgroundBefore, refined.BackgroundBase);
+        Assert.Equal(altBefore, refined.BackgroundAlt);
+        var hueAfter = ColorMath.HexToHsl(refined.AccentPrimary).H;
+        Assert.InRange(hueAfter, 255f, 300f);
+        Assert.True(Math.Abs(hueBefore - hueAfter) > 8f,
+            $"Expected refinement to move accent hue, got {hueBefore:F1}° -> {hueAfter:F1}°.");
+        Assert.All(ContrastChecker.Check(refined), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Refine_AccentOnlyColorLanguagePreservesBackgroundIdentity()
+    {
+        var theme = _gen.Generate("Frutiger Aero");
+        var background = theme.BackgroundBase;
+        var backgroundAlt = theme.BackgroundAlt;
+        var surface = theme.Surface;
+
+        _gen.Refine(theme, "make the accents violet");
+
+        Assert.Equal(background, theme.BackgroundBase);
+        Assert.Equal(backgroundAlt, theme.BackgroundAlt);
+        Assert.Equal(surface, theme.Surface);
+        var hue = ColorMath.HexToHsl(theme.AccentPrimary).H;
+        Assert.InRange(hue, 255f, 300f);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Refine_AppliesCompositionModifiersAndPreservesAccessibility()
+    {
+        var theme = _gen.Generate("Coquette");
+        var originalDensity = theme.DensityScale;
+        var originalRadius = theme.CornerRadiusScale;
+
+        _gen.Refine(theme, "make the layout minimal, spacious, and glassy");
+
+        Assert.True(theme.DensityScale > originalDensity,
+            $"Expected more whitespace, got {originalDensity:F2} -> {theme.DensityScale:F2}.");
+        Assert.True(theme.CornerRadiusScale >= originalRadius);
+        Assert.Contains("Art direction:", theme.Description);
+        Assert.All(ContrastChecker.Check(theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1."));
+    }
+
+    [Fact]
+    public void Refine_UnknownInstructionDoesNotGuessOrMutatePalette()
+    {
+        var theme = _gen.Generate("Neon Afterglow");
+        var before = new[]
+        {
+            theme.BackgroundBase, theme.BackgroundAlt, theme.Surface,
+            theme.AccentPrimary, theme.AccentStrong, theme.TextPrimary, theme.TextMuted,
+            theme.BorderSubtle
+        };
+
+        _gen.Refine(theme, "make this feel legendary");
+
+        Assert.Equal(before, new[]
+        {
+            theme.BackgroundBase, theme.BackgroundAlt, theme.Surface,
+            theme.AccentPrimary, theme.AccentStrong, theme.TextPrimary, theme.TextMuted,
+            theme.BorderSubtle
+        });
+    }
+
+    [Fact]
+    public void PersonalizationPipeline_FinalSelectedThemePassesPaletteGateAndAnalysisMatches()
+    {
+        var profilePath = Path.Combine(Path.GetTempPath(), $"themed-ai-test-profile-{Guid.NewGuid():N}.json");
+        var orchestrator = new PersonalizationOrchestrator(profilePath);
+        var candidate = orchestrator.GenerateBestTheme(new GenerationContext
+        {
+            Prompt = "Neon Afterglow with cyan accents",
+            Constraints = new GenerationConstraints { MustBeDarkTheme = true }
+        });
+
+        Assert.NotNull(candidate.Theme);
+        Assert.NotNull(candidate.Analysis);
+        Assert.Equal(candidate.Theme.Name, candidate.Analysis!.GeneratedName);
+        Assert.Equal(
+            new[] { candidate.Theme.BackgroundBase, candidate.Theme.BackgroundAlt, candidate.Theme.Surface,
+                candidate.Theme.AccentPrimary, candidate.Theme.AccentStrong },
+            candidate.Analysis.Swatches);
+        Assert.All(ContrastChecker.Check(candidate.Theme), check =>
+            Assert.True(check.PassesAA, $"{check.PairName} only has {check.Ratio:F2}:1"));
     }
 }

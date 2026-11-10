@@ -65,24 +65,36 @@ public static class ContrastChecker
                 LargeGrade(ratio)));
         }
 
-        // Primary text on all background surfaces
-        Add("Body text / Background Base",   theme.TextPrimary, theme.BackgroundBase);
-        Add("Body text / Background Alt",    theme.TextPrimary, theme.BackgroundAlt);
-        Add("Body text / Surface",           theme.TextPrimary, theme.Surface);
+        // Check actual semantic roles used by ThemeResources.xaml:
+        // TextPrimary is body/nav text; TextMuted is secondary copy; AccentPrimary is a
+        // foreground for transparent/ghost controls; AccentStrong is a filled primary-button
+        // background, whose foreground dynamically chooses black or white.
+        Add("Body text / Background Base", theme.TextPrimary, theme.BackgroundBase);
+        Add("Body text / Background Alt", theme.TextPrimary, theme.BackgroundAlt);
+        Add("Body text / Surface", theme.TextPrimary, theme.Surface);
 
-        // Muted text
-        Add("Muted text / Background Base",  theme.TextMuted,   theme.BackgroundBase);
-        Add("Muted text / Background Alt",   theme.TextMuted,   theme.BackgroundAlt);
+        Add("Muted text / Background Base", theme.TextMuted, theme.BackgroundBase);
+        Add("Muted text / Background Alt", theme.TextMuted, theme.BackgroundAlt);
 
-        // Accent text / interactive text on backgrounds
-        Add("Accent / Background Base",      theme.AccentPrimary, theme.BackgroundBase);
-        Add("Accent strong / Background",    theme.AccentStrong,  theme.BackgroundBase);
+        Add("Accent text / Background Base", theme.AccentPrimary, theme.BackgroundBase);
+        Add("Accent text / Background Alt", theme.AccentPrimary, theme.BackgroundAlt);
+        Add("Accent text / Surface", theme.AccentPrimary, theme.Surface);
 
-        // Text on Surface (buttons)
-        Add("Text on Surface (buttons)",     theme.BackgroundBase, theme.Surface);
-        Add("Strong text on Surface",        theme.AccentStrong,   theme.Surface);
+        Add("Primary-button text / Strong Accent",
+            BestBlackOrWhiteForeground(theme.AccentStrong), theme.AccentStrong);
 
         return results;
+    }
+
+    /// <summary>
+    /// Chooses a stable foreground for a filled control. The stronger of black and white always
+    /// provides better contrast than hard-coding white on every accent fill.
+    /// </summary>
+    public static string BestBlackOrWhiteForeground(string backgroundHex)
+    {
+        var white = ColorMath.ContrastRatio("#FFFFFF", backgroundHex);
+        var black = ColorMath.ContrastRatio("#000000", backgroundHex);
+        return white >= black ? "#FFFFFF" : "#000000";
     }
 
     /// <summary>

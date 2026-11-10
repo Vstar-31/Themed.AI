@@ -1,6 +1,7 @@
 using ThemeManager.Core.Models;
 using ThemeManager.Core.NLP;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Core.Personalization;
 
@@ -43,24 +44,105 @@ public class HeuristicRankingEngine
     private float ScoreTheme(ThemeCandidate candidate, UserProfile profile, GenerationContext context)
     {
         float score = 0f;
-        
-        // 1. Context Constraints
-        // (Skipping MustBeDarkTheme check since CozyTheme doesn't expose BaseTheme directly yet)
+        var theme = candidate.Theme;
+        var backgroundLuminance = ColorMath.LuminanceFromHex(theme.BackgroundBase);
+        var isDark = backgroundLuminance < 0.18f;
 
-        // 2. Profile History
-        if (profile.LikedThemeIds.Contains(candidate.Theme.Id)) score += 10f;
-        if (profile.DislikedThemeIds.Contains(candidate.Theme.Id)) score -= 20f;
+        // Explicit light/dark constraints are hard product requirements, not descriptive hints.
+        if (context.Constraints.MustBeDarkTheme)
+            score += isDark ? 12f : -40f;
+        if (context.Constraints.MustBeLightTheme)
+            score += isDark ? -40f : 12f;
 
-        // 3. Color Preferences (Heuristic Example)
-        // Check if the theme's primary color matches any highly preferred colors
-        string primaryHex = candidate.Theme.AccentPrimary;
-        if (profile.ColorPreferences.TryGetValue(primaryHex, out float weight))
+        // Aesthetic references get a strong semantic boost so a named look isn't beaten by a
+        // generic synonym variant just because that variant happened to match another color word.
+        var profileMatch = AestheticProfileCatalog.Find(context.Prompt);
+        if (profileMatch is not null &&
+            theme.Description.Contains(profileMatch.Description, StringComparison.OrdinalIgnoreCase))
+            score += 18f;
+
+        // Reward palettes that preserve the target color family while allowing art-directed
+        // alternatives to vary in saturation/lightness.
+        var targetSignal = VibeAnalyzer.Analyze(context.Prompt);
+        if (targetSignal.HasSignal)
         {
-            score += weight * 5f;
+            var actualHue = ColorMath.HexToHsl(theme.AccentPrimary).H;
+            var hueDistance = Math.Abs(actualHue - targetSignal.Hue);
+            hueDistance = Math.Min(hueDistance, 360f - hueDistance);
+            score += Math.Max(-2f, 8f - hueDistance / 18f);
         }
+
+        // Palette quality remains a first-class ranking signal even though all generated candidates
+        // are repaired before ranking; this also protects future generation paths that add candidates.
+        var contrast = ContrastChecker.Check(theme);
+        int passing = contrast.Count(r => r.PassesAA);
+        score += passing * 1.5f;
+        score -= (contrast.Count - passing) * 8f;
+
+        // Art-direction preferences are semantic ranking features, not just generation-time
+        // tweaks. Reward candidates whose surfaces, density and chroma match the language of the
+        // prompt; this matters when several safe variants all pass contrast.
+        var prompt = context.Prompt;
+        bool wantsGlass = HasAny(prompt, "glass", "glassmorphism", "liquid glass", "frutiger aero", "holographic", "glossy", "chrome");
+        bool wantsHardEdges = HasAny(prompt, "brutalist", "brutalism", "hard edges", "industrial", "terminal ui");
+        bool wantsMinimal = HasAny(prompt, "minimal", "minimalist", "clean girl", "quiet luxury", "focus desk", "less clutter");
+        bool wantsSpace = HasAny(prompt, "spacious", "airy layout", "breathing room", "lots of whitespace");
+        bool wantsMaximal = HasAny(prompt, "maximalist", "dopamine", "eclectic", "camp", "brat", "hyperpop");
+        bool wantsMuted = HasAny(prompt, "muted", "pastel", "soft", "matte", "desaturated", "quiet luxury");
+        bool wantsVibrant = HasAny(prompt, "vibrant", "electric", "neon", "dopamine", "maximalist", "brat", "hyperpop");
+        if (wantsGlass) score += theme.CornerRadiusScale >= 1.18 ? 2.5f : -1.5f;
+        if (wantsHardEdges) score += theme.CornerRadiusScale <= 0.72 ? 2.5f : -1.5f;
+        // DensityScale scales spacing tokens upward. Minimal layouts should keep fewer
+        // competing elements and more breathing room, not collapse the spacing between them.
+        if (wantsMinimal) score += theme.DensityScale >= 1.05 ? 1.8f : -0.8f;
+        if (wantsSpace) score += theme.DensityScale >= 1.02 ? 1.8f : -0.8f;
+        if (wantsMaximal) score += ColorMath.HexToOklch(theme.AccentPrimary).C >= 0.12f ? 2f : -1f;
+
+        // Evaluate the palette as a whole, not only AccentPrimary. Some intentionally bold
+        // styles (e.g. Brat Summer) use an acid background with a dark ink accent; judging only
+        // that accent would incorrectly classify the entire palette as muted.
+        var paletteChroma = new[]
+        {
+            ColorMath.HexToOklch(theme.BackgroundBase).C,
+            ColorMath.HexToOklch(theme.BackgroundAlt).C,
+            ColorMath.HexToOklch(theme.Surface).C,
+            ColorMath.HexToOklch(theme.AccentPrimary).C,
+            ColorMath.HexToOklch(theme.AccentStrong).C
+        }.Average();
+        if (wantsMuted) score += paletteChroma <= 0.105 ? 1.5f : -0.6f;
+        if (wantsVibrant) score += paletteChroma >= 0.105 ? 1.5f : -0.6f;
+
+        // Independent composition score checks role separation and tonal hierarchy in addition
+        // to AA contrast. Keep it as a tie-breaker, not a hard artistic rule: a deliberately
+        // monochrome/flat aesthetic must still be able to win when the prompt asks for it.
+        var composition = PaletteCompositionScorer.Evaluate(theme, prompt);
+        score += (composition.Score - 70f) * 0.10f;
+
+        // Regeneration rotates preference across the three intentionally distinct variants.
+        // This is a bounded preference (not a hard lock), so clear differences in accessibility,
+        // constraints or user preference can still outweigh a seed during ranking.
+        int preferredVariant = ((context.VariationSeed % 3) + 3) % 3;
+        int candidateVariant = candidate.GenerationSource switch
+        {
+            "ArtDirectedBase" => 0,
+            "SoftFocusVariant" => 1,
+            "ElectricCutVariant" => 2,
+            _ => -1
+        };
+        if (candidateVariant >= 0 && candidateVariant == preferredVariant)
+            score += 8f;
+
+        // Profile History and explicit color preferences.
+        if (profile.LikedThemeIds.Contains(theme.Id)) score += 10f;
+        if (profile.DislikedThemeIds.Contains(theme.Id)) score -= 20f;
+        if (profile.ColorPreferences.TryGetValue(CozyTheme.NormalizeHex(theme.AccentPrimary), out float weight))
+            score += weight * 5f;
 
         return score;
     }
+
+    private static bool HasAny(string text, params string[] phrases)
+        => phrases.Any(phrase => AestheticProfileCatalog.ContainsPositiveCue(text, phrase));
 
     private float ScoreWidget(WidgetCandidate candidate, UserProfile profile, GenerationContext context)
     {

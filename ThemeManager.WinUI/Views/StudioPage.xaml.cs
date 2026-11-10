@@ -1,13 +1,38 @@
+using System.Globalization;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Skins;
+using ThemeManager.Core.Personalization;
+using ThemeManager.WinUI.Services;
+using Microsoft.UI.Xaml.Input;
 
 namespace ThemeManager.WinUI.Views;
 
 public sealed partial class StudioPage : Page
 {
     private DesktopScene? _selected;
+    private string? _lastWallpaperPath;
+    private bool _wallpaperBusy;
+    private bool _sceneApplyBusy;
+    private int _sceneSelectionVersion;
+    private bool _studioInitializing;
+    private bool _autoApplyAesthetic;
+    private bool _worldControlsUpdating;
+
+    // Display row for the WORLDS list. DesktopScene has no notion of "active" — that lives on
+    // DesktopSceneService.ActiveScene — so we wrap each scene with a computed IsActive flag at
+    // bind time instead of adding UI state to the Core model.
+    private sealed class WorldListItem
+    {
+        public required DesktopScene Scene { get; init; }
+        public required string Name { get; init; }
+        public required string Description { get; init; }
+        public required int WidgetCount { get; init; }
+        public required bool IsActive { get; init; }
+    }
+
     private static readonly (string Name, string Description, string Tag)[] Worlds =
     {
         ("Midnight Kyoto", "Rainy neon, quiet motion and a late-night city glow.", "nocturnal"),
@@ -17,46 +42,87 @@ public sealed partial class StudioPage : Page
         ("Arctic Glass", "Cool light, clean glass and almost-silent movement.", "minimal")
     };
 
+    public IReadOnlyList<string> WallpaperStyles { get; } = ThemedWallpaperGenerator.AvailableStyles;
+
+    public IReadOnlyList<string> WallpaperSizes { get; } =
+    [
+        "1920 × 1080",
+        "2560 × 1440",
+        "2560 × 1080",
+        "3440 × 1440",
+        "3840 × 2160",
+        "3840 × 1600"
+    ];
+
     public StudioPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) =>
-        {
-            await App.SceneService.InitializeAsync();
-            await App.StartWorldRuntimeAsync();
-            await SeedStarterWorldsAsync();
-            Refresh();
-        };
-        App.SceneService.ScenesChanged += OnScenesChanged;
+        // Service subscriptions are paired with unsubscription in the Loaded/Unloaded handlers.
     }
+
+    private void ThemeService_ThemeChanged(object? sender, CozyTheme e) =>
+        DispatcherQueue.TryEnqueue(UpdateWallpaperStatus);
 
     private void OnScenesChanged(object? sender, EventArgs e)
     {
         if (!DispatcherQueue.HasThreadAccess) DispatcherQueue.TryEnqueue(Refresh); else Refresh();
     }
 
-    private void Refresh()
+    // SetActiveScene raises ActiveSceneChanged, not ScenesChanged — without this handler the
+    // WORLDS list never re-renders (and never picks up the ACTIVE badge below) when the active
+    // world changes from the Desktop World page, a quick-build preset, or Apply to desktop here.
+    private void OnActiveSceneChanged(object? sender, DesktopScene? scene)
     {
-        ScenesList.ItemsSource = App.SceneService.Scenes.ToList();
-        var scene = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
-        if (scene is not null) Select(scene, false);
+        if (!DispatcherQueue.HasThreadAccess) DispatcherQueue.TryEnqueue(Refresh); else Refresh();
     }
 
-    private void Select(DesktopScene scene, bool activate = true)
+    private void Refresh()
+    {
+        var activeId = App.SceneService.ActiveScene?.Id;
+        ScenesList.ItemsSource = App.SceneService.Scenes
+            .Select(s => new WorldListItem
+            {
+                Scene = s,
+                Name = s.Name,
+                Description = s.Description,
+                WidgetCount = s.Widgets.Count,
+                IsActive = activeId is not null && activeId.Equals(s.Id, StringComparison.OrdinalIgnoreCase)
+            })
+            .ToList();
+
+        WorldCountText.Text = App.SceneService.Scenes.Count.ToString();
+
+        var scene = _selected is not null
+            ? App.SceneService.Scenes.FirstOrDefault(x => x.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase))
+            : App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
+        if (scene is not null)
+            Select(scene, false);
+    }
+
+    private void Select(DesktopScene scene, bool activate = false)
     {
         _selected = scene;
         if (activate) App.SceneService.SetActiveScene(scene);
         ActiveSceneName.Text = scene.Name;
-        var vibe = Services.VibeSnapshotHub.Current;
+        WorldStateLabel.Text = App.SceneService.ActiveScene?.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase) == true
+            ? "ACTIVE WORLD"
+            : "SELECTED WORLD";
+        var vibe = VibeSnapshotHub.Current;
         var track = string.IsNullOrWhiteSpace(vibe.TrackTitle) ? "No track" : $"{vibe.TrackTitle} · {vibe.Artist}";
         ActiveSceneMeta.Text = $"{scene.Description} · {scene.Widgets.Count} widgets · {scene.Effects.Count} effects · {vibe.Mood} · {track}";
-        ApplyStatus.Text = scene.Behavior.ReactToVibeFinder ? "Vibe adaptive · Ready to apply" : "Static world · Ready to apply";
+        // Active-scene notifications refresh this view during apply. Keep the operation's
+        // result (including missing-widget warnings) instead of replacing it with a preview hint.
+        if (!_sceneApplyBusy)
+            ApplyStatus.Text = App.SceneService.ActiveScene?.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase) == true
+                ? "This world is active. Browsing is safe; applying is explicit."
+                : "Preview only — the desktop will not change until you apply this world.";
         SceneDetails.Children.Clear();
         AddDetail("Mood", scene.Tags.FirstOrDefault() ?? "aesthetic");
         AddDetail("Widgets", scene.Widgets.Count.ToString());
         AddDetail("Effects", scene.Effects.Count.ToString());
         AddDetail("Adaptation", scene.Behavior.ReactToVibeFinder ? "VibeFinder + media" : "Static");
         AddDetail("Transition", $"{scene.Behavior.TransitionSeconds:0.0}s");
+        UpdateWallpaperStatus();
     }
 
     private void AddDetail(string label, string value)
@@ -64,10 +130,200 @@ public sealed partial class StudioPage : Page
         SceneDetails.Children.Add(new TextBlock { Text = $"{label}  ·  {value}", FontSize = 13, Opacity = 0.72 });
     }
 
+    private static bool LoadAutoApplyAestheticPreference() => App.Settings.StudioAutoApplyAesthetic;
+
+    private void SyncStudioState()
+    {
+        if (_selected is null) return;
+
+        _studioInitializing = true;
+        AutoSwitchToggle.IsOn = _selected.Behavior.AutoSwitch;
+        AutoApplyAestheticToggle.IsOn = _autoApplyAesthetic;
+        _studioInitializing = false;
+
+        ApplyStatus.Text = App.SceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true
+            ? "This world is active. Browsing is safe; applying is explicit."
+            : "Preview only — the desktop will not change until you apply this world.";
+
+        SyncWorldControls();
+    }
+
+    private async void AutoApplyAestheticToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_studioInitializing) return;
+
+        _autoApplyAesthetic = AutoApplyAestheticToggle.IsOn;
+        App.Settings.StudioAutoApplyAesthetic = _autoApplyAesthetic;
+        try { await App.Settings.SaveAsync(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ApplyStatus.Text = "This selection setting could not be saved. It remains active until the app closes.";
+            return;
+        }
+
+        ApplyStatus.Text = _autoApplyAesthetic
+            ? "Aesthetic apply is ON — selecting a world applies its theme, wallpaper and layout."
+            : "Aesthetic apply is OFF — Studio is preview-only until you press Apply to desktop.";
+
+        if (_selected is not null && ShouldAutoApplyWorld(_selected) && !_sceneApplyBusy)
+            await ApplySelectedWorldAsync();
+    }
+
+    private bool ShouldAutoApplyWorld(DesktopScene scene)
+        => _autoApplyAesthetic && scene.Behavior.ApplyAestheticOnSelection != false;
+
+    private void SyncWorldControls()
+    {
+        if (_selected is null) return;
+
+        _worldControlsUpdating = true;
+        try
+        {
+            SelectedWorldAestheticToggle.IsOn = _selected.Behavior.ApplyAestheticOnSelection != false;
+
+            WorldVibePrimaryToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Primary");
+            WorldVibeMinimalToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Minimal");
+            WorldVibePlaylistToggle.IsOn = IsWorldWidgetVisible(_selected, "VibeFinder Playlist");
+        }
+        finally
+        {
+            _worldControlsUpdating = false;
+        }
+    }
+
+    private bool IsWorldWidgetVisible(DesktopScene scene, string widgetName)
+    {
+        var skin = App.SkinManager?.Skins.FirstOrDefault(s =>
+            s.Name.Equals(widgetName, StringComparison.OrdinalIgnoreCase));
+        if (skin is null) return false;
+
+        var placement = scene.Widgets.FirstOrDefault(p =>
+            p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+
+        return placement?.Visible == true;
+    }
+
+    private static void EnsureWorldWidgetPlacement(DesktopScene scene, SkinDefinition skin)
+    {
+        if (scene.Widgets.Any(p => p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        scene.Widgets.Add(new SceneWidgetPlacement
+        {
+            WidgetId = skin.Id,
+            X = skin.X,
+            Y = skin.Y,
+            Scale = 1.0,
+            Rotation = 0,
+            Opacity = Math.Clamp(skin.Opacity, 0, 1),
+            ZIndex = scene.Widgets.Count == 0 ? 0 : scene.Widgets.Max(p => p.ZIndex) + 1,
+            Visible = false,
+            Monitor = "Primary",
+            Definition = skin.Clone()
+        });
+    }
+
+    private async void SelectedWorldAestheticToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_worldControlsUpdating || _selected is null) return;
+
+        _selected.Behavior.ApplyAestheticOnSelection = SelectedWorldAestheticToggle.IsOn;
+        await App.SceneService.UpsertAsync(_selected);
+
+        ApplyStatus.Text = SelectedWorldAestheticToggle.IsOn
+            ? $"{_selected.Name}: auto-apply allowed when Apply aesthetic on selection is ON."
+            : $"{_selected.Name}: automatic aesthetic apply disabled.";
+
+        if (ShouldAutoApplyWorld(_selected) && !_sceneApplyBusy)
+            await ApplySelectedWorldAsync();
+    }
+
+    private async void WorldVibeWidgetToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_worldControlsUpdating || _selected is null) return;
+        if (sender is not ToggleSwitch toggle || toggle.Tag is not string widgetName) return;
+
+        var skin = App.SkinManager?.Skins.FirstOrDefault(s =>
+            s.Name.Equals(widgetName, StringComparison.OrdinalIgnoreCase));
+        if (skin is null) return;
+
+        try
+        {
+            toggle.IsEnabled = false;
+            EnsureWorldWidgetPlacement(_selected, skin);
+
+            var placement = _selected.Widgets.First(p =>
+                p.WidgetId.Equals(skin.Id, StringComparison.OrdinalIgnoreCase));
+            placement.Visible = toggle.IsOn;
+            placement.Opacity = Math.Clamp(placement.Opacity, 0, 1);
+            placement.Definition ??= skin.Clone(skin.Id);
+
+            await App.SceneService.UpsertAsync(_selected);
+
+            var sceneService = App.SceneService;
+            var skinManager = App.SkinManager;
+            if (sceneService.ActiveScene?.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase) == true &&
+                skinManager is not null)
+                await skinManager.SetEnabledAsync(skin, toggle.IsOn);
+
+            ApplyStatus.Text = toggle.IsOn
+                ? $"{widgetName} enabled for {_selected.Name}."
+                : $"{widgetName} disabled for {_selected.Name}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyStatus.Text = $"Could not change {widgetName}: {ex.Message}";
+            SyncWorldControls();
+        }
+        finally
+        {
+            toggle.IsEnabled = true;
+        }
+    }
+
+    private async Task SaveCurrentSceneLayoutAsync(DesktopScene scene)
+    {
+        if (App.SkinManager is null) return;
+
+        var byId = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var changed = false;
+
+        foreach (var placement in scene.Widgets)
+        {
+            if (!byId.TryGetValue(placement.WidgetId, out var skin)) continue;
+
+            if (placement.X != skin.X ||
+                placement.Y != skin.Y ||
+                Math.Abs(placement.Opacity - skin.Opacity) > 0.001 ||
+                placement.Visible != skin.Enabled)
+                changed = true;
+
+            placement.X = skin.X;
+            placement.Y = skin.Y;
+            placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
+            placement.Visible = skin.Enabled;
+            placement.Definition = skin.Clone(skin.Id);
+        }
+
+        if (changed)
+            await App.SceneService.UpsertAsync(scene);
+    }
+
+    private void UpdateWallpaperStatus()
+    {
+        if (_selected is null) return;
+        var wallpaper = _selected.WallpaperPath;
+        if (!string.IsNullOrWhiteSpace(wallpaper) && File.Exists(wallpaper))
+            WallpaperStatusText.Text = $"Bound to this world ✓  {Path.GetFileName(wallpaper)}";
+        else
+            WallpaperStatusText.Text = $"No wallpaper bound. Active theme: {App.ThemeService.ActiveTheme.Name} · {App.ThemeService.ActiveTheme.AccentPrimary} · generation is fully local/free.";
+    }
+
     private async Task SeedStarterWorldsAsync()
     {
         if (App.SceneService.Scenes.Count > 0) return;
-        var widgets = App.SkinManager?.Skins.Where(s => s.Enabled).ToList() ?? new List<SkinDefinition>();
+
+        var widgets = CaptureCurrentWidgetLayout();
         for (var i = 0; i < Worlds.Length; i++)
         {
             var pick = Worlds[i];
@@ -77,15 +333,10 @@ public sealed partial class StudioPage : Page
                 Description = pick.Description,
                 ThemeId = App.ThemeService.ActiveTheme.Id,
                 Tags = new List<string> { pick.Tag, "starter", "vibe" },
-                Widgets = widgets.Select((w, index) => new SceneWidgetPlacement
-                {
-                    WidgetId = w.Id,
-                    X = 40 + ((index + i) % 3) * 240,
-                    Y = 80 + ((index + i) % 3) * 150,
-                    Opacity = w.Opacity,
-                    ZIndex = index,
-                    Visible = true
-                }).ToList(),
+                // CaptureCurrentWidgetLayout already includes a deep widget-definition snapshot.
+                // Clone the placement so every starter world owns its own independent composition
+                // rather than sharing nested definitions between worlds.
+                Widgets = widgets.Select(ClonePlacement).ToList(),
                 Effects = new List<SceneEffect>
                 {
                     new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = pick.Tag is "neon" or "hud" ? 0.8 : 0.35 },
@@ -97,86 +348,606 @@ public sealed partial class StudioPage : Page
         }
     }
 
-    private async void GenerateWorld_Click(object sender, RoutedEventArgs e) => await CreateWorldAsync();
+    private async void GenerateWorld_Click(object sender, RoutedEventArgs e)
+        => await GeneratePromptWorldAsync();
 
-    private async Task CreateWorldAsync()
+    private async void WorldPromptBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var pick = Worlds[Random.Shared.Next(Worlds.Length)];
-        var scene = new DesktopScene
-        {
-            Name = pick.Name,
-            Description = pick.Description,
-            ThemeId = App.ThemeService.ActiveTheme.Id,
-            Tags = new List<string> { pick.Tag, "generated", "vibe" },
-            Widgets = BuildCurrentWidgetLayout(),
-            Effects = new List<SceneEffect>
-            {
-                new() { Type = pick.Tag == "minimal" ? "Glass" : "Glow", Intensity = pick.Tag is "neon" or "hud" ? 0.8 : 0.35 },
-                new() { Type = "AmbientMotion", Intensity = 0.25, Speed = 0.65 }
-            },
-            Behavior = new SceneBehavior { ReactToVibeFinder = true, ReactToMedia = true, TransitionSeconds = 0.9 }
-        };
-        await App.SceneService.UpsertAsync(scene);
-        Select(scene);
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+        e.Handled = true;
+        await GeneratePromptWorldAsync();
     }
 
-    private List<SceneWidgetPlacement> BuildCurrentWidgetLayout() =>
-        App.SkinManager?.Skins.Where(s => s.Enabled).Select((w, index) => new SceneWidgetPlacement
+    private void WorldPromptChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string prompt } && !string.IsNullOrWhiteSpace(prompt))
         {
-            WidgetId = w.Id,
-            X = 40 + (index % 4) * 220,
-            Y = 80 + (index / 4) * 140,
-            Opacity = w.Opacity,
+            WorldPromptBox.Text = prompt;
+            WorldPromptBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            WorldPromptBox.SelectionStart = WorldPromptBox.Text.Length;
+        }
+    }
+
+    private async Task GeneratePromptWorldAsync()
+    {
+        var prompt = WorldPromptBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            ApplyStatus.Text = "Describe the desktop you want first — the prompt drives its palette, wallpaper and widget mix.";
+            WorldPromptBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            return;
+        }
+
+        await CreateWorldAsync(true, prompt);
+    }
+
+    private async Task CreateWorldAsync(bool generateWallpaper, string prompt)
+    {
+        prompt = prompt.Trim();
+        var lower = prompt.ToLowerInvariant();
+        var tag = InferWorldTag(lower);
+        var minimal = ContainsAny(lower, "minimal", "minimalist", "only", "just", "clean", "focus");
+        var dark = ContainsAny(lower, "dark", "midnight", "night", "noir", "neon", "cyberpunk", "space");
+        var light = ContainsAny(lower, "light", "bright", "airy", "daylight", "pastel", "white");
+        var wantsMotion = ContainsAny(lower, "animated", "motion", "energetic", "dynamic", "alive");
+        var wantsMusic = ContainsAny(lower, "music", "playlist", "player", "song", "spotify", "vibe", "listen", "audio");
+
+        var context = new GenerationContext
+        {
+            Prompt = prompt,
+            Constraints = new GenerationConstraints
+            {
+                MustBeDarkTheme = dark && !light,
+                MustBeLightTheme = light && !dark,
+                Minimalist = minimal,
+                MaxWidgets = minimal ? 3 : 5
+            }
+        };
+
+        ApplyStatus.Text = "Designing a palette and composing your desktop world…";
+        try
+        {
+            var candidate = await Task.Run(() => App.Personalization.GenerateBestTheme(context));
+            var generatedTheme = candidate.Theme;
+            generatedTheme.Description = $"Palette generated from: {prompt}";
+            await App.ThemeService.SaveThemeAsync(generatedTheme);
+
+            var scene = new DesktopScene
+            {
+                Name = BuildWorldName(generatedTheme.Name),
+                Description = prompt,
+                ThemeId = generatedTheme.Id,
+                Tags = new List<string> { tag, "generated", "prompt-generated" },
+                Widgets = CaptureWidgetLayoutForPrompt(prompt, minimal ? 3 : 5),
+                Effects = new List<SceneEffect>
+                {
+                    new()
+                    {
+                        Type = tag == "minimal" ? "Glass" : tag is "neon" or "hud" ? "Glow" : "AmbientMotion",
+                        Intensity = wantsMotion ? 0.8 : minimal ? 0.12 : tag is "neon" or "hud" ? 0.58 : 0.28,
+                        Speed = wantsMotion ? 0.9 : 0.4
+                    },
+                    new()
+                    {
+                        Type = "AmbientMotion",
+                        Intensity = wantsMotion ? 0.55 : minimal ? 0.08 : 0.22,
+                        Speed = wantsMotion ? 0.85 : 0.35
+                    }
+                },
+                Behavior = new SceneBehavior
+                {
+                    ReactToVibeFinder = wantsMusic,
+                    ReactToMedia = true,
+                    ReactToWeather = ContainsAny(lower, "weather", "rain", "storm", "forecast"),
+                    MotionIntensity = wantsMotion ? 0.8 : minimal ? 0.1 : 0.3,
+                    TransitionSeconds = ContainsAny(lower, "snappy", "instant", "fast") ? 0.35 : 0.9
+                }
+            };
+
+            await App.SceneService.UpsertAsync(scene);
+            Select(scene);
+
+            if (generateWallpaper)
+            {
+                WallpaperStyleCombo.SelectedItem = WallpaperStyleForTag(tag);
+                WallpaperNameBox.Text = scene.Name;
+                WallpaperStatusText.Text = $"Generating wallpaper from the new “{generatedTheme.Name}” palette…";
+                await GenerateWallpaperAsync(false);
+            }
+
+            ApplyStatus.Text = $"Created “{scene.Name}” from your prompt. Review its widgets and press Apply to desktop when ready.";
+        }
+        catch (Exception ex)
+        {
+            ApplyStatus.Text = $"World generation failed: {ex.Message}";
+            App.LoggerFactory.CreateLogger<StudioPage>().LogError(ex, "Prompt-to-world generation failed for {Prompt}", prompt);
+        }
+    }
+
+    private static string InferWorldTag(string prompt)
+    {
+        if (ContainsAny(prompt, "neon", "cyberpunk", "synthwave", "tokyo", "magenta", "vaporwave")) return "neon";
+        if (ContainsAny(prompt, "hud", "terminal", "sci-fi", "futuristic", "cyber", "spaceship", "dashboard")) return "hud";
+        if (ContainsAny(prompt, "cozy", "cafe", "café", "warm", "autumn", "library", "reading", "linen")) return "cozy";
+        if (ContainsAny(prompt, "arctic", "ice", "snow", "glacier", "minimal", "minimalist", "zen", "focus", "clean")) return "minimal";
+        return ContainsAny(prompt, "rain", "night", "midnight", "city", "storm", "space", "noir", "moody") ? "nocturnal" : "cozy";
+    }
+
+    private static bool ContainsAny(string text, params string[] values)
+        => values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildWorldName(string? themeName)
+    {
+        var clean = string.IsNullOrWhiteSpace(themeName) ? "New Desktop" : themeName.Trim();
+        clean = clean.EndsWith("World", StringComparison.OrdinalIgnoreCase) ? clean : $"{clean} World";
+        return clean.Length <= 48 ? clean : clean[..48].TrimEnd();
+    }
+
+    private List<SceneWidgetPlacement> CaptureWidgetLayoutForPrompt(string prompt, int maxWidgets)
+    {
+        var available = App.SkinManager?.Skins ?? new List<SkinDefinition>();
+        var lower = prompt.ToLowerInvariant();
+        var chosen = new List<SkinDefinition>();
+        bool explicitWidgetIntent = ContainsAny(lower, "clock", "time", "date", "cpu", "processor", "ram", "memory", "disk", "storage", "system stats", "performance", "network", "wifi", "bandwidth", "uptime", "music", "playlist", "player", "song", "spotify", "vibe", "widget");
+        bool wantsNoWidgets = ContainsAny(lower, "no widgets", "without widgets", "wallpaper only", "background only");
+
+        void AddFirst(params string[] nameHints)
+        {
+            var match = available.FirstOrDefault(s => nameHints.Any(h =>
+                s.Name.Contains(h, StringComparison.OrdinalIgnoreCase)));
+            if (match is not null && chosen.All(s => !s.Id.Equals(match.Id, StringComparison.OrdinalIgnoreCase)))
+                chosen.Add(match);
+        }
+
+        if (wantsNoWidgets) return new List<SceneWidgetPlacement>();
+
+        if (ContainsAny(lower, "clock", "time", "date")) AddFirst("clock");
+        if (ContainsAny(lower, "cpu", "processor", "ram", "memory", "disk", "storage", "system stats", "performance")) AddFirst("system monitor", "system");
+        if (ContainsAny(lower, "network", "wifi", "bandwidth", "internet")) AddFirst("network");
+        if (ContainsAny(lower, "uptime")) AddFirst("uptime");
+        if (ContainsAny(lower, "music", "playlist", "player", "song", "spotify", "vibe", "listen", "audio"))
+        {
+            if (ContainsAny(lower, "playlist", "full player", "music dashboard")) AddFirst("vibefinder playlist");
+            else if (ContainsAny(lower, "minimal", "compact", "pill")) AddFirst("vibefinder minimal");
+            else AddFirst("vibefinder primary");
+        }
+
+        if (chosen.Count == 0 && !explicitWidgetIntent)
+            chosen = available.Where(s => s.Enabled).Take(maxWidgets).ToList();
+        if (chosen.Count == 0 && !wantsNoWidgets)
+            chosen = available.Where(s => s.Enabled).Take(maxWidgets).ToList();
+
+        chosen = chosen.Take(maxWidgets).ToList();
+        if (chosen.Count == 0) return new List<SceneWidgetPlacement>();
+
+        return chosen.Select((skin, index) => new SceneWidgetPlacement
+        {
+            WidgetId = skin.Id,
+            X = skin.X,
+            Y = skin.Y,
+            Scale = 1.0,
+            Rotation = 0,
+            Opacity = Math.Clamp(skin.Opacity, 0, 1),
             ZIndex = index,
-            Visible = true
-        }).ToList() ?? new List<SceneWidgetPlacement>();
+            Visible = true,
+            Monitor = "Primary",
+            Definition = skin.Clone(skin.Id)
+        }).ToList();
+    }
+
+    private static string WallpaperStyleForTag(string tag) => tag switch
+    {
+        "nocturnal" => "Orbital Night",
+        "cozy" => "Cozy Aurora",
+        "hud" => "Glass Mesh",
+        "neon" => "Neon Glow",
+        "minimal" => "Zen Minimal",
+        _ => "Soft Gradient"
+    };
+
+    private List<SceneWidgetPlacement> CaptureCurrentWidgetLayout() =>
+        App.SkinManager?.Skins
+            .Where(w => w.Enabled)
+            .Select((w, index) => new SceneWidgetPlacement
+            {
+                WidgetId = w.Id,
+                X = w.X,
+                Y = w.Y,
+                Scale = 1.0,
+                Rotation = 0,
+                Opacity = Math.Clamp(w.Opacity, 0, 1),
+                ZIndex = index,
+                Visible = w.Enabled,
+                Monitor = "Primary",
+                Definition = w.Clone()
+            })
+            .ToList() ?? new List<SceneWidgetPlacement>();
+
+    private static readonly string[] SurprisePrompts =
+    [
+        "A rainy cyberpunk night with neon magenta and cyan, a music player and system stats",
+        "A cozy autumn reading nook with warm paper colors, clock and uptime",
+        "A bright minimal focus desk with lots of whitespace and only a clock",
+        "An arctic glass workstation with icy blue accents, system monitor and network stats",
+        "A dark orbital terminal with a subtle HUD, uptime and a compact music pill"
+    ];
 
     private async void SurpriseMe_Click(object sender, RoutedEventArgs e)
     {
-        await CreateWorldAsync();
+        var prompt = SurprisePrompts[Random.Shared.Next(SurprisePrompts.Length)];
+        WorldPromptBox.Text = prompt;
+        await CreateWorldAsync(true, prompt);
         await ApplySelectedWorldAsync();
     }
 
     private async void ApplyScene_Click(object sender, RoutedEventArgs e) => await ApplySelectedWorldAsync();
 
-    private void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void ScenesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ScenesList.SelectedItem is DesktopScene scene) Select(scene);
+        if (_sceneApplyBusy || ScenesList.SelectedItem is not WorldListItem item) return;
+        var selectionVersion = ++_sceneSelectionVersion;
+
+        // Save the outgoing world's current positions before optionally moving into the selected world.
+        var outgoing = App.SceneService.ActiveScene;
+        if (outgoing is not null && !outgoing.Id.Equals(item.Scene.Id, StringComparison.OrdinalIgnoreCase))
+            await SaveCurrentSceneLayoutAsync(outgoing);
+
+        // Ignore a selection whose save finished after a newer selection or apply.
+        if (_sceneApplyBusy || selectionVersion != _sceneSelectionVersion) return;
+        Select(item.Scene, false);
+
+        UpdateAutoSwitchUi();
+        UpdateSetActiveButtonState();
+
+        var selected = _selected;
+        if (selected is not null && ShouldAutoApplyWorld(selected) && !_sceneApplyBusy)
+            await ApplySelectedWorldAsync();
+        else
+            SyncStudioState();
+    }
+
+    private async void SaveCurrentLayout_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null)
+        {
+            ApplyStatus.Text = "Select a world first.";
+            return;
+        }
+
+        _selected.Widgets = CaptureCurrentWidgetLayout();
+        await App.SceneService.UpsertAsync(_selected);
+        Select(_selected, false);
+        ApplyStatus.Text = "Current desktop layout saved to this world ✓";
+    }
+
+    private async void EditWorldDetails_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+
+        var nameBox = new TextBox
+        {
+            Header = "World name",
+            Text = _selected.Name,
+            PlaceholderText = "Give this world a memorable name"
+        };
+        var descriptionBox = new TextBox
+        {
+            Header = "Description / prompt",
+            Text = _selected.Description,
+            PlaceholderText = "What makes this desktop world yours?",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 100
+        };
+        var content = new StackPanel { Spacing = 12, MinWidth = 360 };
+        content.Children.Add(nameBox);
+        content.Children.Add(descriptionBox);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Edit desktop world",
+            Content = content,
+            PrimaryButtonText = "Save changes",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var nextName = nameBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(nextName))
+        {
+            ApplyStatus.Text = "World name can't be empty.";
+            return;
+        }
+
+        _selected.Name = nextName;
+        _selected.Description = descriptionBox.Text?.Trim() ?? string.Empty;
+        await App.SceneService.UpsertAsync(_selected);
+        Select(_selected, false);
+        ApplyStatus.Text = $"Saved changes to “{_selected.Name}”.";
+    }
+
+    private async void DuplicateWorld_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+
+        var copy = new DesktopScene
+        {
+            Name = _selected.Name + " Copy",
+            Description = _selected.Description,
+            Author = _selected.Author,
+            Tags = _selected.Tags.ToList(),
+            ThemeId = _selected.ThemeId,
+            WallpaperPath = _selected.WallpaperPath,
+            ThemeSnapshot = _selected.ThemeSnapshot?.Duplicate(),
+            RequiresExplicitActivation = _selected.RequiresExplicitActivation,
+            WallpaperOpacity = _selected.WallpaperOpacity,
+            WallpaperFit = _selected.WallpaperFit,
+            Widgets = _selected.Widgets.Select(ClonePlacement).ToList(),
+            Effects = _selected.Effects.Select(CloneEffect).ToList(),
+            Behavior = CloneBehavior(_selected.Behavior)
+        };
+
+        await App.SceneService.UpsertAsync(copy);
+        Select(copy);
+        ApplyStatus.Text = $"Created {copy.Name} ✓";
+    }
+
+    private async void DeleteWorld_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Delete this world?",
+            Content = $"\"{_selected.Name}\" will be removed permanently. Your widget definitions are not deleted.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var deletedName = _selected.Name;
+        var deletedId = _selected.Id;
+        await App.SceneService.DeleteAsync(deletedId);
+        _selected = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
+        if (_selected is not null) Select(_selected, false);
+        ApplyStatus.Text = $"Deleted {deletedName}.";
+    }
+
+    private static SceneWidgetPlacement ClonePlacement(SceneWidgetPlacement source) => new()
+    {
+        WidgetId = source.WidgetId,
+        X = source.X,
+        Y = source.Y,
+        Scale = source.Scale,
+        Rotation = source.Rotation,
+        Opacity = source.Opacity,
+        ZIndex = source.ZIndex,
+        Visible = source.Visible,
+        Monitor = source.Monitor,
+        Definition = source.Definition?.Clone()
+    };
+
+    private static SceneEffect CloneEffect(SceneEffect source) => new()
+    {
+        Type = source.Type,
+        Intensity = source.Intensity,
+        Speed = source.Speed,
+        Enabled = source.Enabled,
+        Parameters = source.Parameters.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase)
+    };
+
+    private static SceneBehavior CloneBehavior(SceneBehavior source) => new()
+    {
+        FollowWindowsTheme = source.FollowWindowsTheme,
+        ReactToMedia = source.ReactToMedia,
+        ReactToVibeFinder = source.ReactToVibeFinder,
+        ReactToWeather = source.ReactToWeather,
+        AutoSwitch = source.AutoSwitch,
+        ApplyAestheticOnSelection = source.ApplyAestheticOnSelection,
+        TransitionSeconds = source.TransitionSeconds,
+        MotionIntensity = source.MotionIntensity,
+        AudioSensitivity = source.AudioSensitivity
+    };
+
+    private async Task GenerateWallpaperAsync(bool applyAfterGeneration)
+    {
+        if (_selected is null)
+        {
+            WallpaperStatusText.Text = "Select a world first.";
+            return;
+        }
+
+        if (_wallpaperBusy) return;
+        _wallpaperBusy = true;
+
+        try
+        {
+            var style = WallpaperStyleCombo.SelectedItem as string ?? WallpaperStyles[0];
+            var (width, height) = ParseSize(WallpaperSizeCombo.SelectedItem as string);
+            var name = string.IsNullOrWhiteSpace(WallpaperNameBox.Text)
+                ? _selected.Name
+                : WallpaperNameBox.Text.Trim();
+            var worldTheme = App.ThemeService.Themes.FirstOrDefault(t =>
+                t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase))
+                ?? App.ThemeService.ActiveTheme;
+
+            WallpaperStatusText.Text = $"Generating {style} wallpaper from {worldTheme.Name}…";
+            var path = await ThemedWallpaperGenerator.GenerateAsync(
+                worldTheme,
+                style,
+                width,
+                height,
+                name);
+
+            _lastWallpaperPath = path;
+            _selected.WallpaperPath = path;
+            _selected.WallpaperFit = "Fill";
+            _selected.WallpaperOpacity = 1.0;
+            await App.SceneService.UpsertAsync(_selected);
+
+            if (applyAfterGeneration)
+            {
+                WallpaperStatusText.Text = "Generated ✓ · applying to Windows…";
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(path);
+                WallpaperStatusText.Text = applied
+                    ? $"Applied ✓  {Path.GetFileName(path)} · bound to {_selected.Name}"
+                    : $"Generated ✓ but Windows did not accept the wallpaper change. Saved at {path}";
+            }
+            else
+            {
+                WallpaperStatusText.Text = $"Generated ✓  {Path.GetFileName(path)} · bound to {_selected.Name}";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            WallpaperStatusText.Text = "Wallpaper generation cancelled.";
+        }
+        catch (Exception ex)
+        {
+            WallpaperStatusText.Text = $"Wallpaper generation failed: {ex.Message}";
+        }
+        finally
+        {
+            _wallpaperBusy = false;
+        }
+    }
+
+    private async void GenerateWallpaper_Click(object sender, RoutedEventArgs e) =>
+        await GenerateWallpaperAsync(false);
+
+    private async void GenerateAndApplyWallpaper_Click(object sender, RoutedEventArgs e) =>
+        await GenerateWallpaperAsync(true);
+
+    private async void ApplyLastWallpaper_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _lastWallpaperPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            path = _selected?.WallpaperPath;
+
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            WallpaperStatusText.Text = "No generated wallpaper is available for this world yet.";
+            return;
+        }
+
+        try
+        {
+            var applied = await App.SystemIntegrator.ApplyWallpaperAsync(path);
+            WallpaperStatusText.Text = applied
+                ? $"Applied ✓  {Path.GetFileName(path)}"
+                : "Windows rejected the wallpaper change.";
+        }
+        catch (Exception ex)
+        {
+            WallpaperStatusText.Text = $"Could not apply wallpaper: {ex.Message}";
+        }
+    }
+
+    private static (int Width, int Height) ParseSize(string? value)
+    {
+        var numbers = value?
+            .Replace("×", "x", StringComparison.Ordinal)
+            .Split('x', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (numbers is { Length: 2 } &&
+            int.TryParse(numbers[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var width) &&
+            int.TryParse(numbers[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var height))
+        {
+            return (width, height);
+        }
+
+        return (1920, 1080);
     }
 
     private async Task ApplySelectedWorldAsync()
     {
-        if (_selected is null) return;
-        var themes = await App.ThemeRepository.LoadAllAsync();
-        var targetTheme = themes.FirstOrDefault(t => t.Id.Equals(_selected.ThemeId, StringComparison.OrdinalIgnoreCase));
-        if (targetTheme is not null)
-        {
-            App.ThemeService.SetActiveTheme(targetTheme);
-            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
-            if (targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
-                await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
-        }
-        else if (!string.IsNullOrWhiteSpace(_selected.WallpaperPath) && File.Exists(_selected.WallpaperPath))
-        {
-            await App.SystemIntegrator.ApplyWallpaperAsync(_selected.WallpaperPath);
-        }
+        if (_selected is null || _sceneApplyBusy) return;
+        // Keep one target across awaits; the live selection may change during callbacks.
+        var target = _selected;
+        _sceneApplyBusy = true;
+        ScenesList.IsEnabled = false;
 
-        if (App.SkinManager is not null)
+        try
         {
-            var known = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-            foreach (var placement in _selected.Widgets)
+            ApplyStatus.Text = $"Applying {target.Name}…";
+
+            var previous = App.SceneService.ActiveScene;
+            if (previous is not null && !previous.Id.Equals(target.Id, StringComparison.OrdinalIgnoreCase))
+                await SaveCurrentSceneLayoutAsync(previous);
+
+            var themes = await App.ThemeRepository.LoadAllAsync();
+            var targetTheme = target.ThemeSnapshot ?? themes.FirstOrDefault(t => t.Id.Equals(target.ThemeId, StringComparison.OrdinalIgnoreCase));
+
+            if (targetTheme is not null)
             {
-                if (!known.TryGetValue(placement.WidgetId, out var skin)) continue;
-                skin.X = placement.X;
-                skin.Y = placement.Y;
-                skin.Opacity = Math.Clamp(placement.Opacity, 0, 1);
-                await App.SkinManager.SetOpacityAsync(skin, skin.Opacity);
-                await App.SkinManager.SaveSkinAsync(skin);
-                await App.SkinManager.SetEnabledAsync(skin, placement.Visible);
+                App.ThemeService.SetActiveTheme(targetTheme);
+                await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(targetTheme.BackgroundBase));
+                await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
             }
+
+            if (!string.IsNullOrWhiteSpace(target.WallpaperPath) && File.Exists(target.WallpaperPath))
+            {
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(target.WallpaperPath);
+                WallpaperStatusText.Text = applied
+                    ? $"Applied ✓  {Path.GetFileName(target.WallpaperPath)} · bound to {target.Name}"
+                    : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(target.WallpaperPath)}";
+            }
+            else if (targetTheme is not null && targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
+            {
+                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
+                WallpaperStatusText.Text = applied
+                    ? $"Applied theme wallpaper ✓  {Path.GetFileName(targetTheme.WallpaperPath)}"
+                    : "Theme wallpaper was not accepted by Windows.";
+            }
+
+            if (App.SkinManager is not null)
+            {
+                var result = await App.SkinManager.ApplySceneAsync(target.Widgets);
+
+                // Backfill snapshots for older worlds whose widget ids still resolve locally. This
+                // turns a successful legacy apply into a self-contained world without changing its
+                // saved placement geometry.
+                var currentWidgets = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+                var snapshotsChanged = false;
+                foreach (var placement in target.Widgets)
+                {
+                    if (placement.Definition is null &&
+                        currentWidgets.TryGetValue(placement.WidgetId, out var resolvedWidget))
+                    {
+                        placement.Definition = resolvedWidget.Clone();
+                        snapshotsChanged = true;
+                    }
+                }
+
+                if (snapshotsChanged)
+                    await App.SceneService.UpsertAsync(target);
+
+                ApplyStatus.Text = result.Missing > 0
+                    ? $"Applied {result.Applied}/{target.Widgets.Count} widgets · {result.Missing} unavailable"
+                    : $"Applied {result.Applied} widgets to desktop ✓";
+            }
+            else
+            {
+                ApplyStatus.Text = "Applied world theme and wallpaper ✓";
+            }
+
+            App.SceneService.SetActiveScene(target);
+            ActiveSceneMeta.Text = $"Applied · {target.Widgets.Count} saved widget placements · VibeFinder adaptation {(target.Behavior.ReactToVibeFinder ? "on" : "off")}";
         }
-        App.SceneService.SetActiveScene(_selected);
-        ApplyStatus.Text = "Applied to desktop";
-        ActiveSceneMeta.Text = $"Applied · {_selected.Widgets.Count} widget placements · VibeFinder adaptation {(_selected.Behavior.ReactToVibeFinder ? "on" : "off")}";
+        catch (Exception ex)
+        {
+            ApplyStatus.Text = $"World apply failed: {ex.Message}";
+        }
+        finally
+        {
+            _sceneApplyBusy = false;
+            ScenesList.IsEnabled = true;
+        }
     }
 }

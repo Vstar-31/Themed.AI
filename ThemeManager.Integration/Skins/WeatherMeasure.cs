@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ThemeManager.Integration.Skins;
 
 /// <summary>
-/// Fetches weather data from OpenWeatherMap. Target should be formatted as "City|ApiKey".
+/// Uses key-free weather for "City" targets and preserves legacy "City|ApiKey" targets.
 /// </summary>
 public sealed class WeatherMeasure : IMeasure
 {
@@ -20,6 +20,8 @@ public sealed class WeatherMeasure : IMeasure
     private readonly MeasureType _type;
     private readonly string _target;
     private readonly ILogger _logger;
+    private int _keyFreeRefresh;
+    private DateTime _nextKeyFreeRefresh = DateTime.MinValue;
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
@@ -48,9 +50,12 @@ public sealed class WeatherMeasure : IMeasure
 
     public void Refresh()
     {
-        if (string.IsNullOrWhiteSpace(_target) || !_target.Contains('|'))
+        if (string.IsNullOrWhiteSpace(_target)) { Text = "Set weather city"; return; }
+        var targetParts = _target.Split('|', 2);
+        if (targetParts.Length == 1 || string.IsNullOrWhiteSpace(targetParts[1]))
         {
-            Text = "Config Err";
+            if (DateTime.UtcNow >= _nextKeyFreeRefresh && System.Threading.Interlocked.CompareExchange(ref _keyFreeRefresh, 1, 0) == 0)
+                _ = RefreshKeyFreeAsync(targetParts[0]);
             return;
         }
 
@@ -63,6 +68,28 @@ public sealed class WeatherMeasure : IMeasure
         }
 
         UpdateFromCache(entry);
+    }
+
+    private async Task RefreshKeyFreeAsync(string city)
+    {
+        try
+        {
+            var reading = await OpenMeteoWeatherClient.Shared.GetAsync(city);
+            if (reading is null) { Text = "Weather unavailable"; return; }
+            if (_type == MeasureType.WeatherTemp) { Value = reading.Temperature; Text = $"{Value:F0}°"; }
+            else if (_type == MeasureType.WeatherDesc) Text = reading.Description;
+            else if (_type == MeasureType.WeatherCity) Text = reading.City;
+        }
+        catch (Exception ex)
+        {
+            Text = "Weather unavailable";
+            _logger.LogWarning("Weather provider failed ({ErrorType}); check weather-provider.json and connectivity", ex.GetType().Name);
+        }
+        finally
+        {
+            _nextKeyFreeRefresh = DateTime.UtcNow.AddMinutes(1);
+            System.Threading.Interlocked.Exchange(ref _keyFreeRefresh, 0);
+        }
     }
 
     private void UpdateFromCache(CacheEntry entry)

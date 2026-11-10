@@ -113,6 +113,46 @@ public class ColorMathTests
         Assert.Equal(b, b2, 0.01f);
     }
 
+    // ── OKLCH perceptual color conversion ─────────────────────────────────────
+
+    [Theory]
+    [InlineData("#FF0000")]
+    [InlineData("#00FF00")]
+    [InlineData("#0000FF")]
+    [InlineData("#FFFFFF")]
+    [InlineData("#000000")]
+    [InlineData("#FF4FD8")]
+    [InlineData("#77F7FF")]
+    [InlineData("#B7A6C9")]
+    [InlineData("#C59A55")]
+    [InlineData("#2C795D")]
+    public void OklchRoundtrip_StaysWithinSrgbGamut(string hex)
+    {
+        var (lightness, chroma, hue) = ColorMath.HexToOklch(hex);
+        var roundtrip = ColorMath.OklchToHex(lightness, chroma, hue);
+        var (r, g, b) = ColorMath.HexToRgb(hex);
+        var (r2, g2, b2) = ColorMath.HexToRgb(roundtrip);
+
+        Assert.InRange(Math.Abs(r - r2), 0f, 0.025f);
+        Assert.InRange(Math.Abs(g - g2), 0f, 0.025f);
+        Assert.InRange(Math.Abs(b - b2), 0f, 0.025f);
+    }
+
+    [Theory]
+    [InlineData(0f, 0.08f, 270f)]
+    [InlineData(0.5f, 0.2f, 120f)]
+    [InlineData(0.9f, 0.04f, 210f)]
+    public void OklchToHex_ProducesValidSixDigitHex(float l, float c, float h)
+    {
+        var hex = ColorMath.OklchToHex(l, c, h);
+
+        Assert.Matches("^#[0-9A-F]{6}$", hex);
+        var (lightness, chroma, hue) = ColorMath.HexToOklch(hex);
+        Assert.InRange(lightness, 0f, 1f);
+        Assert.InRange(chroma, 0f, 0.5f);
+        Assert.InRange(hue, 0f, 360f);
+    }
+
     // ── WCAG Luminance ───────────────────────────────────────────────────────
 
     [Fact]

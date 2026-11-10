@@ -10,7 +10,7 @@ namespace ThemeManager.Core.Services;
 public sealed class AppSettings
 {
     private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        ThemeManager.Core.Services.AppDataPaths.LocalRoot,
         "ThemedAI", "settings.json");
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
@@ -34,6 +34,11 @@ public sealed class AppSettings
     /// "Theme Automation" section.</summary>
     public ThemeSchedule Schedule { get; set; } = new();
 
+    /// <summary>Global Studio selection behavior; OFF always keeps browsing in preview mode.</summary>
+    public bool StudioAutoApplyAesthetic { get; set; }
+
+    private static readonly SemaphoreSlim SaveGate = new(1, 1);
+
     // ── Persistence ───────────────────────────────────────────────────────────
 
     public static async Task<AppSettings> LoadAsync()
@@ -53,17 +58,22 @@ public sealed class AppSettings
 
     public async Task SaveAsync()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-        var tmp = SettingsPath + ".tmp";
-
+        await SaveGate.WaitAsync();
+        var tmp = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            await WriteAndMoveAsync(tmp);
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            try { await WriteAndMoveAsync(tmp); }
+            catch (IOException)
+            {
+                await Task.Delay(200);
+                await WriteAndMoveAsync(tmp);
+            }
         }
-        catch (IOException)
+        finally
         {
-            await Task.Delay(200);
-            await WriteAndMoveAsync(tmp);
+            try { if (File.Exists(tmp)) File.Delete(tmp); }
+            finally { SaveGate.Release(); }
         }
     }
 

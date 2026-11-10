@@ -87,8 +87,11 @@ public sealed partial class ThemeEditorPage : Page
     private async void SaveButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.SaveAsync();
 
+    private void RepairPaletteButton_Click(object sender, RoutedEventArgs e)
+        => ViewModel.RepairPalette();
+
     private void RevertButton_Click(object sender, RoutedEventArgs e)
-        => ViewModel.RevertToDefault();
+        => ViewModel.RevertPaletteChanges();
 
     private void UndoButton_Click(object sender, RoutedEventArgs e)
         => ViewModel.Undo();
@@ -98,6 +101,7 @@ public sealed partial class ThemeEditorPage : Page
 
     // Called by ColorTokenRow.ColorChanged — live update happens through the ViewModel binding.
     private void OnColorTokenChanged(object sender, string newHex) { }
+    private void OnColorEditCompleted(object? sender, EventArgs e) => ViewModel.EndColorEdit();
 
     // ── Contrast proxy refresh ────────────────────────────────────────────────
 
