@@ -24,7 +24,8 @@ public sealed class VibeFinderSiteTests
         {
             automatic = VibeFinderLoginScripts.Build("test'user", "test\\password"),
             forced = VibeFinderLoginScripts.Build("test'user", "test\\password", force: true),
-            ready = VibeFinderLoginScripts.SessionReadyScript
+            ready = VibeFinderLoginScripts.SessionReadyScript,
+            renewal = VibeFinderLoginScripts.BuildRenewal("test'user", "test\\password", "11111111-1111-4111-8111-111111111111")
         }));
         process.StandardInput.Close();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

@@ -125,6 +125,9 @@ public sealed partial class MainWindow : Window
                 catch (ArgumentException) { return; }
                 if (string.IsNullOrEmpty(json)) return;
 
+                if (await VibeFinderAuth.TryRenewSessionAsync(VibeFinderPrewarmWebView.CoreWebView2,
+                    json, () => VibeFinderAuth.TryReadCredentials(App.SkinManager))) return;
+
                 if (VibeFinderAuth.TryParseLoginResult(json, out bool success, out string? reason))
                 {
                     await HandleVibeFinderLoginResultAsync(json);

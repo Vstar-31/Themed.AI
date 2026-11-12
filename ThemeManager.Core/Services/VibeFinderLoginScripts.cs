@@ -22,8 +22,46 @@ public static class VibeFinderLoginScripts
     public static string SessionReadyScript => $$"""
         (() => {
             if (location.origin !== {{JsonSerializer.Serialize(VibeFinderSite.Origin)}}) return false;
+            window._themed_session_renewal_supported = true;
             {{CurrentTokenFunction}}
             return !window._themed_login_in_flight && hasCurrentToken();
+        })();
+        """;
+
+    public static string BuildRenewal(string user, string pass, string requestId) => $$"""
+        (async () => {
+            if (location.origin !== {{JsonSerializer.Serialize(VibeFinderSite.Origin)}}) return;
+            const id = {{JsonSerializer.Serialize(requestId)}};
+            if (window._themed_session_renewal !== id || window._themed_renewal_in_flight) return;
+            {{CurrentTokenFunction}}
+            window._themed_renewal_in_flight = true;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            let success = false;
+            try {
+                const fd = new URLSearchParams();
+                fd.append('username', {{JsonSerializer.Serialize(user)}});
+                fd.append('password', {{JsonSerializer.Serialize(pass)}});
+                const res = await fetch('https://vibefinderai.onrender.com/auth/token', {
+                    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: fd, signal: controller.signal,
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    // Sign Out, navigation, or the SPA timeout may cancel this request.
+                    // Never restore a session after that cancellation.
+                    if (window._themed_session_renewal === id && typeof data.access_token === 'string') {
+                        localStorage.setItem('vf_token', data.access_token);
+                        success = hasCurrentToken();
+                        if (!success) localStorage.removeItem('vf_token');
+                    }
+                }
+            } catch { /* The SPA keeps the prompt and offers an explicit retry. */ }
+            finally {
+                clearTimeout(timeout);
+                window._themed_renewal_in_flight = false;
+                window.dispatchEvent(new CustomEvent('themed:session-renewed', { detail: { id, success } }));
+            }
         })();
         """;
 
@@ -31,7 +69,7 @@ public static class VibeFinderLoginScripts
     {
         // Check in JavaScript too: navigation can change the document after the native check
         // and before ExecuteScriptAsync runs. Serialize credentials without altering passwords.
-        var guard = force ? "" : """
+        var guard = force ? "window._themed_session_renewal = null;" : """
             if (hasCurrentToken()) return;
             if (window._themed_auto_login) return;
             window._themed_auto_login = true;
@@ -39,6 +77,7 @@ public static class VibeFinderLoginScripts
         return $$"""
             (async function() {
                 if (location.origin !== {{JsonSerializer.Serialize(VibeFinderSite.Origin)}}) return;
+                window._themed_session_renewal_supported = true;
                 {{CurrentTokenFunction}}
                 const postResult = (success, reason) => {
                     try { window.chrome.webview.postMessage(JSON.stringify({ type: 'VIBEFINDER_LOGIN_RESULT', success, reason: reason || null })); } catch(e) {}

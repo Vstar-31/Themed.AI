@@ -68,6 +68,8 @@ public sealed partial class VibeFinderAIPage : Page
                     _logger.LogDebug("VibeFinderAIPage: WebMessageReceived fired with an empty/non-string payload — ignored");
                     return;
                 }
+                if (await VibeFinderAuth.TryRenewSessionAsync(VibeFinderWebView.CoreWebView2, json,
+                    () => (UsernameBox.Text?.Trim() ?? "", PasswordBox.Password ?? ""))) return;
                 if (VibeFinderAuth.TryParseLoginResult(json, out bool loginSuccess, out string? loginReason))
                 {
                     _logger.LogDebug("VibeFinderAIPage: VIBEFINDER_LOGIN_RESULT success={Success} reason={Reason}", loginSuccess, loginReason ?? "(none)");
