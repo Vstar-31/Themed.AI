@@ -5,6 +5,34 @@ namespace ThemeManager.Tests;
 
 public sealed class VibeFinderSiteTests
 {
+    [Fact]
+    public async Task LoginScriptsExecuteSessionRenewalScenarios()
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("node")
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Fixtures", "vibefinder-login.cjs"));
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync();
+        var errors = process.StandardError.ReadToEndAsync();
+        await process.StandardInput.WriteAsync(JsonSerializer.Serialize(new
+        {
+            automatic = VibeFinderLoginScripts.Build("test'user", "test\\password"),
+            forced = VibeFinderLoginScripts.Build("test'user", "test\\password", force: true),
+            ready = VibeFinderLoginScripts.SessionReadyScript
+        }));
+        process.StandardInput.Close();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException) { process.Kill(entireProcessTree: true); throw; }
+        Assert.True(process.ExitCode == 0, await output + await errors);
+    }
+
     [Theory]
     [InlineData("https://vfaithemed.netlify.app")]
     [InlineData("https://VFAITHEMED.netlify.app:443/app?embed=1#music")]
@@ -37,6 +65,6 @@ public sealed class VibeFinderSiteTests
         Assert.Contains($"fd.append('password', {JsonSerializer.Serialize(password)})", script);
         var guard = script.IndexOf($"if (location.origin !== {JsonSerializer.Serialize(VibeFinderSite.Origin)}) return;", StringComparison.Ordinal);
         Assert.True(guard >= 0 && guard < script.IndexOf("const postResult", StringComparison.Ordinal));
-        Assert.Equal(!force, script.Contains("sessionStorage.getItem('_themed_auto_login')"));
+        Assert.Equal(!force, script.Contains("if (window._themed_auto_login) return;"));
     }
 }

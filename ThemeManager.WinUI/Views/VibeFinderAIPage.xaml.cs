@@ -76,6 +76,10 @@ public sealed partial class VibeFinderAIPage : Page
                 }
                 if (TryParseAppReady(json, out bool hasToken))
                 {
+                    if (hasToken)
+                        hasToken = await VibeFinderAuth.EnsureSessionReadyAsync(
+                            VibeFinderWebView.CoreWebView2,
+                            UsernameBox.Text?.Trim() ?? "", PasswordBox.Password ?? "");
                     var forcePrompt = hasToken && _applySavedPromptOnReady;
                     if (forcePrompt) _applySavedPromptOnReady = false;
                     _embedReady = true;
