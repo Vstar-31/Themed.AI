@@ -15,6 +15,24 @@ namespace ThemeManager.WinUI.Services;
 /// </summary>
 public static class VibeFinderAuth
 {
+    public static async Task<bool> EnsureSessionReadyAsync(
+        Microsoft.Web.WebView2.Core.CoreWebView2 browser, string user, string pass)
+    {
+        try
+        {
+            if (!VibeFinderSite.IsTrusted(browser.Source)) return false;
+            if (await browser.ExecuteScriptAsync(VibeFinderLoginScripts.SessionReadyScript) == "true")
+                return true;
+            if (VibeFinderCredentials.IsConfigured(user, pass))
+                await browser.ExecuteScriptAsync(BuildAutoLoginScript(user, pass));
+        }
+        catch (Exception)
+        {
+            // Navigation/disposal may race a ready message. Never start analysis on that document.
+        }
+        return false;
+    }
+
     public const string SkipTutorialScript =
         "try { localStorage.setItem('vf_tutorial_seen', '1'); } catch(e) {}";
 

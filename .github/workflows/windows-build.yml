@@ -40,6 +40,9 @@ jobs:
           global-json-file: global.json
           dotnet-version: '8.0.x'
 
+      - name: Check JavaScript regression runtime
+        run: node --version
+
       - name: Build and test on Windows
         shell: pwsh
         run: ./scripts/Test-Windows.ps1 -Configuration '${{ matrix.configuration }}' -Publish:('${{ matrix.configuration }}' -eq 'Release')

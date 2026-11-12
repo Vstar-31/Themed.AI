@@ -18,6 +18,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repoRoot
 try {
     Get-Command dotnet -ErrorAction Stop | Out-Null
+    Get-Command node -ErrorAction Stop | Out-Null # Executes the generated WebView login scripts in regression tests.
     $results = Join-Path $repoRoot "artifacts/test-results/$Configuration"
     New-Item -ItemType Directory -Force -Path $results | Out-Null
     # global.json selects the SDK; setup-dotnet/Visual Studio must also provide .NET 8.

@@ -12,6 +12,9 @@ and Visual Studio's Windows application development tooling. Use a Visual Studio
 that supports that SDK if building inside the IDE. Install Microsoft Edge WebView2 Runtime.
 Run on Windows 10 build 19041+ or Windows 11, x64.
 
+The test suite also requires Node.js on PATH to execute the generated WebView sign-in
+scripts against isolated browser/storage/network fixtures. These tests do not use real credentials.
+
 From PowerShell in your repository:
 
 ```powershell

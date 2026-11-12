@@ -140,7 +140,12 @@ public sealed partial class MainWindow : Window
                         return;
                     }
                     if (hasToken)
-                        PushVibePromptAndTrackLimit();
+                    {
+                        var (user, pass) = VibeFinderAuth.TryReadCredentials(App.SkinManager);
+                        if (await VibeFinderAuth.EnsureSessionReadyAsync(
+                            VibeFinderPrewarmWebView.CoreWebView2, user, pass))
+                            PushVibePromptAndTrackLimit();
+                    }
                     return;
                 }
 
