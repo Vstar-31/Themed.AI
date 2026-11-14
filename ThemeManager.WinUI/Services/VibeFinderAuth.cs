@@ -15,6 +15,26 @@ namespace ThemeManager.WinUI.Services;
 /// </summary>
 public static class VibeFinderAuth
 {
+    public static async Task<bool> TryRenewSessionAsync(
+        Microsoft.Web.WebView2.Core.CoreWebView2 browser, string json, Func<(string User, string Pass)> readCredentials)
+    {
+        try
+        {
+            using var message = JsonDocument.Parse(json);
+            var root = message.RootElement;
+            if (!root.TryGetProperty("type", out var type) || type.GetString() != "VIBEFINDER_RENEW_SESSION")
+                return false;
+            if (!VibeFinderSite.IsTrusted(browser.Source)
+                || !root.TryGetProperty("requestId", out var id) || id.ValueKind != JsonValueKind.String
+                || !Guid.TryParseExact(id.GetString(), "D", out var requestId)) return true;
+            var (user, pass) = readCredentials();
+            if (!VibeFinderCredentials.IsConfigured(user, pass)) return true;
+            await browser.ExecuteScriptAsync(VibeFinderLoginScripts.BuildRenewal(user, pass, requestId.ToString("D")));
+            return true;
+        }
+        catch { return false; }
+    }
+
     public static async Task<bool> EnsureSessionReadyAsync(
         Microsoft.Web.WebView2.Core.CoreWebView2 browser, string user, string pass)
     {
