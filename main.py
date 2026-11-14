@@ -3,6 +3,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import jwt
+from auth_security import load_signing_key, decode_access_token
+from lastfm_proxy import proxy as public_lastfm_proxy
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
@@ -43,18 +45,7 @@ dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(dotenv_path=dotenv_path)
 logger.info(f"Environment variables loaded from: {dotenv_path}")
 
-def _load_secret_key() -> str:
-    secret = os.getenv("SECRET_KEY")
-    if (
-        not secret
-        or not secret.strip()
-        or len(secret.encode("utf-8")) < 32
-        or secret == "super_secret_student_budget_key_dont_leak_this"
-    ):
-        raise RuntimeError("SECRET_KEY must be configured with a private random value of at least 32 bytes.")
-    return secret
-
-SECRET_KEY = _load_secret_key()
+SECRET_KEY = load_signing_key()
 
 try:
     import aiohttp as _aiohttp
@@ -1199,7 +1190,7 @@ def get_password_hash(password):
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "token_use": "access"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -1666,7 +1657,7 @@ async def health_check():
 @app.get("/api/user/taste")
 async def get_user_taste(token: str = Depends(oauth2_scheme)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token, SECRET_KEY)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
@@ -1737,7 +1728,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @app.get("/users/me")
 async def read_users_me(token: str = Depends(oauth2_scheme)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token, SECRET_KEY)
         user_id = payload.get("sub")
         user    = await db.user.find_unique(where={"id": user_id})
         return user
@@ -1751,7 +1742,7 @@ async def read_users_me(token: str = Depends(oauth2_scheme)):
 @app.post("/api/vibe/analyze", response_model=VibeResponse)
 async def analyze_vibe(request: VibeRequest, token: str = Depends(oauth2_scheme)):
     try:
-        _pre_payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        _pre_payload = decode_access_token(token, SECRET_KEY)
         _pre_user_id = _pre_payload.get("sub")
         if not _pre_user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
@@ -2295,7 +2286,7 @@ async def analyze_vibe(request: VibeRequest, token: str = Depends(oauth2_scheme)
     vibe_request_id  = None
     _logged_nicheness = request.nicheness  # already boosted if PATCH 6 fired
     try:
-        payload  = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload  = decode_access_token(token, SECRET_KEY)
         user_id  = payload.get("sub")
         vibe_request_row = await db.viberequest.create(data={
             "userId":          user_id,
@@ -2349,7 +2340,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 @app.post("/api/vibe/story")
 async def generate_vibe_story(req: VibeStoryRequest, token: str = Depends(oauth2_scheme)):
     try:
-        claims = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require": ["exp", "sub"]})
+        claims = decode_access_token(token, SECRET_KEY)
         subject = claims.get("sub")
         if not isinstance(subject, str) or not subject.strip():
             raise jwt.InvalidTokenError("Invalid subject")
@@ -2387,7 +2378,7 @@ async def generate_vibe_story(req: VibeStoryRequest, token: str = Depends(oauth2
 @app.get("/api/vibe/history")
 async def get_vibe_history(limit: int = 10, token: str = Depends(oauth2_scheme), db: Prisma = Depends(get_db)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token, SECRET_KEY)
         user_id = payload.get("sub")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -2430,7 +2421,7 @@ async def submit_feedback(feedback: FeedbackRequest, token: str = Depends(oauth2
     if feedback.signal not in (-1, 0, 1):
         raise HTTPException(status_code=422, detail="signal must be -1, 0, or 1")
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = decode_access_token(token, SECRET_KEY)
         user_id = payload.get("sub")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -2468,58 +2459,4 @@ async def submit_feedback(feedback: FeedbackRequest, token: str = Depends(oauth2
 
 @app.get("/api/lastfm/proxy")
 async def lastfm_proxy(request: Request):
-    LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
-    if not LASTFM_API_KEY:
-        raise HTTPException(status_code=500, detail="Last.fm API key not configured")
-
-    params = dict(request.query_params)
-    params["api_key"] = LASTFM_API_KEY
-    params["format"] = "json"
-
-    timeout = httpx.Timeout(connect=4.0, read=8.0, write=4.0, pool=4.0)
-    last_exc: Exception | None = None
-
-    for attempt in range(2):
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                r = await client.get("https://ws.audioscrobbler.com/2.0/", params=params)
-
-            # Last.fm often returns HTTP 200 even when payload is an API error.
-            data = r.json()
-            if "error" in data:
-                logger.warning(
-                    f"[LFM Proxy] Last.fm API error {data['error']}: {data.get('message', '')} "
-                    f"(method={params.get('method')}, "
-                    f"tag={params.get('tag', params.get('artist', ''))})"
-                )
-                raise HTTPException(status_code=502, detail=data.get("message", "Last.fm API error"))
-
-            return data
-
-        except HTTPException:
-            raise
-
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as e:
-            last_exc = e
-            err_repr = repr(e) or type(e).__name__
-            if attempt == 0:
-                logger.warning(
-                    f"[LFM Proxy] Transient error (attempt {attempt + 1}/2), retrying: {err_repr} "
-                    f"method={params.get('method')}"
-                )
-                await asyncio.sleep(0.6)
-            else:
-                logger.error(
-                    f"[LFM Proxy] Failed after 2 attempts: {err_repr} "
-                    f"method={params.get('method')}"
-                )
-
-        except Exception as e:
-            err_repr = repr(e) or type(e).__name__
-            logger.error(f"[LFM Proxy] Unexpected error: {err_repr}")
-            raise HTTPException(status_code=500, detail=f"Proxy error: {type(e).__name__}")
-
-    raise HTTPException(
-        status_code=502,
-        detail=f"Last.fm unreachable after retries: {type(last_exc).__name__}",
-    )
+    return await public_lastfm_proxy(request)
