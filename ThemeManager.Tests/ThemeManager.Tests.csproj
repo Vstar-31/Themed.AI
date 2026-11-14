@@ -27,6 +27,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <None Update="Fixtures\vibefinder-login.cjs" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures\portable-image-card.themedwidget" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Actual editor logic, with explicit dispatcher/persistence doubles in Editor/.
