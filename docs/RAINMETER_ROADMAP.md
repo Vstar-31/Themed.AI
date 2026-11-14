@@ -1,5 +1,9 @@
 # Themed.AI desktop platform roadmap
 
+For delivery status as of 14 November 2026, use the [project report](../phases.md)
+and [future action plan](FUTURE_ACTION_PLAN.md). The baselines and implementation
+notes below describe earlier milestones; the acceptance criteria remain useful.
+
 The goal is a Rainmeter-class desktop customization platform with a visual editor, coherent
 worlds, accessible themes and portable widgets. Success means people can build, use, recover
 and share a desktop without hand-editing configuration files. Rainmeter compatibility is a
@@ -13,8 +17,7 @@ cloud environment: 415 tests, none skipped. Groups, formulas, plugin contracts a
 loader already exist. These foundations need integration and lifecycle validation rather than
 being rewritten. The WinUI UI requires a Windows build and real desktop checks.
 
-The historical notes in `phases.md` mix completed implementation, old caveats and proposed work.
-Use the milestones below for new delivery decisions. A milestone is complete only when its
+The milestones below define the original platform acceptance criteria. A milestone is complete only when its
 acceptance checks pass; implemented code alone does not establish desktop behavior.
 
 ## Delivery sequence
