@@ -58,6 +58,37 @@ public sealed class SkinPackageServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task PortableCard_ImportsEditsAndReexportsOnAnotherInstallation()
+    {
+        // Exported by the desktop Release build. Only the archive travels to CI.
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "portable-image-card.themedwidget");
+        var imported = await Service.ImportAsync(fixture);
+        Assert.NotEqual("qa-portable-card-source", imported.Id);
+        var image = Assert.Single(imported.Meters, meter => meter.Kind == MeterKind.Image);
+        var caption = Assert.Single(imported.Meters, meter => meter.Kind == MeterKind.String);
+        var group = Assert.Single(imported.Groups);
+        Assert.Equal(new[] { image.Id, caption.Id }, group.MeterIds);
+        Assert.Equal(12, group.Rotation);
+        const string imageHash = "98119FFB3AFF4EC1200253A3D97412A25F86BC74312EAE7502D75214741B3985";
+        Assert.Equal(imageHash, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(image.ImagePath!))));
+
+        caption.StaticText = "Edited on receiver";
+        group.Rotation = 30;
+        await Service.ExportAsync(imported, Package);
+        File.Delete(image.ImagePath!);
+        var nextInstall = new SkinPackageService(Path.Combine(_root, "second-install"));
+        var reopened = await nextInstall.ImportAsync(Package);
+        Assert.NotEqual(imported.Id, reopened.Id);
+        var reopenedImage = Assert.Single(reopened.Meters, meter => meter.Kind == MeterKind.Image);
+        var reopenedCaption = Assert.Single(reopened.Meters, meter => meter.Kind == MeterKind.String);
+        var reopenedGroup = Assert.Single(reopened.Groups);
+        Assert.Equal("Edited on receiver", reopenedCaption.StaticText);
+        Assert.Equal(30, reopenedGroup.Rotation);
+        Assert.Equal(new[] { reopenedImage.Id, reopenedCaption.Id }, reopenedGroup.MeterIds);
+        Assert.Equal(imageHash, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(reopenedImage.ImagePath!))));
+    }
+
+    [Fact]
     public async Task Images_AreBundledOnceAndSurviveSourceDeletionAndReexport()
     {
         var source = Path.Combine(_root, "private-photo-name.png");

@@ -18,7 +18,10 @@ performed by this local change.
 
 `/api/vibe/story` requires an HS256 token signed with the configured key, an unexpired `exp`
 claim and a nonblank string `sub` claim before accessing Gemini or returning its missing-key
-fallback. Tokens issued by the existing login flow retain the same format. Invalid tokens
+fallback. Shared validation also applies to the other private handlers in this snapshot.
+New login tokens include `token_use: access`; existing user tokens without this claim
+remain valid until expiry. Metrics-purpose tokens and the reserved `metrics` subject
+are rejected by user endpoints. Invalid tokens
 receive HTTP 401; authenticated upstream failures still return `{"story": null}`.
 
 The three Last.fm lookup helpers now send API-key-bearing requests to HTTPS endpoints in both
