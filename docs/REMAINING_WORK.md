@@ -2,7 +2,7 @@
 
 **16 November 2026.** This inventory covers the Windows app, its embedded VibeFinder client, and the shared services that client depends on. The desktop baseline is `6f1af11` on `Vstar-31/Themed.AI:master`. The embedded frontend baseline is `fb2868b` on `Vstar-31/vibefinderai:Themed.AI`. The 15 November Windows GUI pass is the latest direct evidence used here. The desktop Release build passed 834 automated tests.
 
-**Release decision.** The first fix is world activation. The app can persist the wrong relationship between the active world and the visible widgets, which undermines restart and subsequent layout saves. The playlist fix can proceed independently. Start the rendering soak as soon as a corrected desktop build is available. Production security rollout has a separate operator dependency.
+**16 November fix.** Finding 1 below describes the original master regression. The corrected build passed 20 alternating GUI activations, recovery from a failed write, and restart. The next open UI defect is the narrow playlist. Start the rendering soak on the corrected desktop build. Production security rollout has a separate operator dependency. [World activation verification](testing/2026-11-16-world-activation.md)
 
 ## 1. Where to work
 
