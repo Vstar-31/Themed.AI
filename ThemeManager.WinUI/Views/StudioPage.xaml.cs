@@ -96,13 +96,12 @@ public sealed partial class StudioPage : Page
             ? App.SceneService.Scenes.FirstOrDefault(x => x.Id.Equals(_selected.Id, StringComparison.OrdinalIgnoreCase))
             : App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
         if (scene is not null)
-            Select(scene, false);
+            Select(scene);
     }
 
-    private void Select(DesktopScene scene, bool activate = false)
+    private void Select(DesktopScene scene)
     {
         _selected = scene;
-        if (activate) App.SceneService.SetActiveScene(scene);
         ActiveSceneName.Text = scene.Name;
         WorldStateLabel.Text = App.SceneService.ActiveScene?.Id.Equals(scene.Id, StringComparison.OrdinalIgnoreCase) == true
             ? "ACTIVE WORLD"
@@ -281,34 +280,6 @@ public sealed partial class StudioPage : Page
         }
     }
 
-    private async Task SaveCurrentSceneLayoutAsync(DesktopScene scene)
-    {
-        if (App.SkinManager is null) return;
-
-        var byId = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-        var changed = false;
-
-        foreach (var placement in scene.Widgets)
-        {
-            if (!byId.TryGetValue(placement.WidgetId, out var skin)) continue;
-
-            if (placement.X != skin.X ||
-                placement.Y != skin.Y ||
-                Math.Abs(placement.Opacity - skin.Opacity) > 0.001 ||
-                placement.Visible != skin.Enabled)
-                changed = true;
-
-            placement.X = skin.X;
-            placement.Y = skin.Y;
-            placement.Opacity = Math.Clamp(skin.Opacity, 0, 1);
-            placement.Visible = skin.Enabled;
-            placement.Definition = skin.Clone(skin.Id);
-        }
-
-        if (changed)
-            await App.SceneService.UpsertAsync(scene);
-    }
-
     private void UpdateWallpaperStatus()
     {
         if (_selected is null) return;
@@ -323,7 +294,7 @@ public sealed partial class StudioPage : Page
     {
         if (App.SceneService.Scenes.Count > 0) return;
 
-        var widgets = CaptureCurrentWidgetLayout();
+        var widgets = WorldActivation.CaptureCurrentWidgetLayout();
         for (var i = 0; i < Worlds.Length; i++)
         {
             var pick = Worlds[i];
@@ -545,24 +516,6 @@ public sealed partial class StudioPage : Page
         _ => "Soft Gradient"
     };
 
-    private List<SceneWidgetPlacement> CaptureCurrentWidgetLayout() =>
-        App.SkinManager?.Skins
-            .Where(w => w.Enabled)
-            .Select((w, index) => new SceneWidgetPlacement
-            {
-                WidgetId = w.Id,
-                X = w.X,
-                Y = w.Y,
-                Scale = 1.0,
-                Rotation = 0,
-                Opacity = Math.Clamp(w.Opacity, 0, 1),
-                ZIndex = index,
-                Visible = w.Enabled,
-                Monitor = "Primary",
-                Definition = w.Clone()
-            })
-            .ToList() ?? new List<SceneWidgetPlacement>();
-
     private static readonly string[] SurprisePrompts =
     [
         "A rainy cyberpunk night with neon magenta and cyan, a music player and system stats",
@@ -590,11 +543,11 @@ public sealed partial class StudioPage : Page
         // Save the outgoing world's current positions before optionally moving into the selected world.
         var outgoing = App.SceneService.ActiveScene;
         if (outgoing is not null && !outgoing.Id.Equals(item.Scene.Id, StringComparison.OrdinalIgnoreCase))
-            await SaveCurrentSceneLayoutAsync(outgoing);
+            await WorldActivation.SaveOutgoingLayoutAsync(outgoing);
 
         // Ignore a selection whose save finished after a newer selection or apply.
         if (_sceneApplyBusy || selectionVersion != _sceneSelectionVersion) return;
-        Select(item.Scene, false);
+        Select(item.Scene);
 
         UpdateAutoSwitchUi();
         UpdateSetActiveButtonState();
@@ -614,9 +567,9 @@ public sealed partial class StudioPage : Page
             return;
         }
 
-        _selected.Widgets = CaptureCurrentWidgetLayout();
+        _selected.Widgets = WorldActivation.CaptureCurrentWidgetLayout();
         await App.SceneService.UpsertAsync(_selected);
-        Select(_selected, false);
+        Select(_selected);
         ApplyStatus.Text = "Current desktop layout saved to this world ✓";
     }
 
@@ -665,7 +618,7 @@ public sealed partial class StudioPage : Page
         _selected.Name = nextName;
         _selected.Description = descriptionBox.Text?.Trim() ?? string.Empty;
         await App.SceneService.UpsertAsync(_selected);
-        Select(_selected, false);
+        Select(_selected);
         ApplyStatus.Text = $"Saved changes to “{_selected.Name}”.";
     }
 
@@ -715,7 +668,7 @@ public sealed partial class StudioPage : Page
         var deletedId = _selected.Id;
         await App.SceneService.DeleteAsync(deletedId);
         _selected = App.SceneService.ActiveScene ?? App.SceneService.Scenes.FirstOrDefault();
-        if (_selected is not null) Select(_selected, false);
+        if (_selected is not null) Select(_selected);
         ApplyStatus.Text = $"Deleted {deletedName}.";
     }
 
@@ -877,67 +830,10 @@ public sealed partial class StudioPage : Page
         {
             ApplyStatus.Text = $"Applying {target.Name}…";
 
-            var previous = App.SceneService.ActiveScene;
-            if (previous is not null && !previous.Id.Equals(target.Id, StringComparison.OrdinalIgnoreCase))
-                await SaveCurrentSceneLayoutAsync(previous);
-
-            var themes = await App.ThemeRepository.LoadAllAsync();
-            var targetTheme = target.ThemeSnapshot ?? themes.FirstOrDefault(t => t.Id.Equals(target.ThemeId, StringComparison.OrdinalIgnoreCase));
-
-            if (targetTheme is not null)
-            {
-                App.ThemeService.SetActiveTheme(targetTheme);
-                await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(targetTheme.BackgroundBase));
-                await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(targetTheme.AccentPrimary));
-            }
-
-            if (!string.IsNullOrWhiteSpace(target.WallpaperPath) && File.Exists(target.WallpaperPath))
-            {
-                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(target.WallpaperPath);
-                WallpaperStatusText.Text = applied
-                    ? $"Applied ✓  {Path.GetFileName(target.WallpaperPath)} · bound to {target.Name}"
-                    : $"World wallpaper saved, but Windows rejected the change: {Path.GetFileName(target.WallpaperPath)}";
-            }
-            else if (targetTheme is not null && targetTheme.ApplyToWallpaper && !string.IsNullOrWhiteSpace(targetTheme.WallpaperPath) && File.Exists(targetTheme.WallpaperPath))
-            {
-                var applied = await App.SystemIntegrator.ApplyWallpaperAsync(targetTheme.WallpaperPath);
-                WallpaperStatusText.Text = applied
-                    ? $"Applied theme wallpaper ✓  {Path.GetFileName(targetTheme.WallpaperPath)}"
-                    : "Theme wallpaper was not accepted by Windows.";
-            }
-
-            if (App.SkinManager is not null)
-            {
-                var result = await App.SkinManager.ApplySceneAsync(target.Widgets);
-
-                // Backfill snapshots for older worlds whose widget ids still resolve locally. This
-                // turns a successful legacy apply into a self-contained world without changing its
-                // saved placement geometry.
-                var currentWidgets = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
-                var snapshotsChanged = false;
-                foreach (var placement in target.Widgets)
-                {
-                    if (placement.Definition is null &&
-                        currentWidgets.TryGetValue(placement.WidgetId, out var resolvedWidget))
-                    {
-                        placement.Definition = resolvedWidget.Clone();
-                        snapshotsChanged = true;
-                    }
-                }
-
-                if (snapshotsChanged)
-                    await App.SceneService.UpsertAsync(target);
-
-                ApplyStatus.Text = result.Missing > 0
-                    ? $"Applied {result.Applied}/{target.Widgets.Count} widgets · {result.Missing} unavailable"
-                    : $"Applied {result.Applied} widgets to desktop ✓";
-            }
-            else
-            {
-                ApplyStatus.Text = "Applied world theme and wallpaper ✓";
-            }
-
-            App.SceneService.SetActiveScene(target);
+            var result = await WorldActivation.ApplyAsync(target);
+            ApplyStatus.Text = result.Status;
+            if (result.WallpaperStatus is not null)
+                WallpaperStatusText.Text = result.WallpaperStatus;
             ActiveSceneMeta.Text = $"Applied · {target.Widgets.Count} saved widget placements · VibeFinder adaptation {(target.Behavior.ReactToVibeFinder ? "on" : "off")}";
         }
         catch (Exception ex)

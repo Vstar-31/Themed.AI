@@ -59,7 +59,7 @@ public sealed partial class DesktopWorldPage : Page
             if (scene.Tags.Count > 0) info.Children.Add(new TextBlock { Text = string.Join("  ·  ", scene.Tags.Take(4)), Style = (Style)Application.Current.Resources["CaptionStyle"] });
             grid.Children.Add(info);
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-            var activate = new Button { Content = active ? "Active" : "Activate", Tag = scene, IsEnabled = !active };
+            var activate = new Button { Content = active ? "Reapply active world" : "Activate", Tag = scene };
             activate.Click += Activate_Click;
             actions.Children.Add(activate);
             var export = new Button { Content = "Export", Tag = scene };
@@ -80,9 +80,21 @@ public sealed partial class DesktopWorldPage : Page
             SceneList.Children.Add(new TextBlock { Text = "No scenes yet. Pick a quick-build mood above to create your first one.", Style = (Style)Application.Current.Resources["CaptionStyle"] });
     }
 
-    private void Activate_Click(object sender, RoutedEventArgs e)
+    private async void Activate_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: DesktopScene scene }) App.SceneService.SetActiveScene(scene);
+        if (sender is not Button { Tag: DesktopScene scene }) return;
+        IsEnabled = false;
+        try
+        {
+            PackageStatus.Text = $"Applying {scene.Name}…";
+            var result = await WorldActivation.ApplyAsync(scene);
+            PackageStatus.Text = $"{scene.Name}: {result.Status} {result.WallpaperStatus}".TrimEnd();
+        }
+        catch (Exception ex)
+        {
+            PackageStatus.Text = $"World apply failed: {ex.Message}";
+        }
+        finally { IsEnabled = true; }
     }
 
     private async void Delete_Click(object sender, RoutedEventArgs e)

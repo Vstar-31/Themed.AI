@@ -1,3 +1,4 @@
+using ThemeManager.WinUI.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using ThemeManager.Core.Models;
@@ -50,7 +51,7 @@ public sealed partial class StudioPage
         {
             var active = App.SceneService.ActiveScene;
             if (active is not null && App.SkinManager is not null)
-                await SaveCurrentSceneLayoutAsync(active);
+                await WorldActivation.SaveOutgoingLayoutAsync(active);
         }
         catch (Exception ex)
         {
@@ -107,7 +108,7 @@ public sealed partial class StudioPage
         {
             PaletteQualityValidator.ValidateAndRepair(importedPalette);
             App.ThemeService.SetActiveTheme(importedPalette);
-            await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(importedPalette.BackgroundBase));
+            await App.SystemIntegrator.ApplyWindowsThemeAsync(WorldActivation.IsLightPalette(importedPalette.BackgroundBase));
             await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(importedPalette.AccentPrimary));
             return;
         }
@@ -129,7 +130,7 @@ public sealed partial class StudioPage
                 await App.ThemeService.SaveThemeAsync(generatedTheme);
 
             App.ThemeService.SetActiveTheme(generatedTheme);
-            await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(generatedTheme.BackgroundBase));
+            await App.SystemIntegrator.ApplyWindowsThemeAsync(WorldActivation.IsLightPalette(generatedTheme.BackgroundBase));
             await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(generatedTheme.AccentPrimary));
             return;
         }
@@ -188,28 +189,8 @@ public sealed partial class StudioPage
 
         // Map the world's palette to the native Windows Light/Dark app + system mode so supported
         // Windows apps such as File Explorer follow the same visual direction.
-        await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(worldTheme.BackgroundBase));
+        await App.SystemIntegrator.ApplyWindowsThemeAsync(WorldActivation.IsLightPalette(worldTheme.BackgroundBase));
         await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(worldTheme.AccentPrimary));
-    }
-
-    private static bool IsLightPalette(string hex)
-    {
-        try
-        {
-            var c = App.HexToColor(CozyTheme.NormalizeHex(hex));
-            static double Linear(byte channel)
-            {
-                double v = channel / 255.0;
-                return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
-            }
-
-            double luminance = 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
-            return luminance >= 0.42;
-        }
-        catch
-        {
-            return true;
-        }
     }
 
     private void UpdateSetActiveButtonState()
@@ -221,7 +202,7 @@ public sealed partial class StudioPage
         SetActiveWorldButton.IsEnabled = _selected is not null && !active;
     }
 
-    private void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
+    private async void SetSelectedWorldActive_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null)
         {
@@ -229,11 +210,6 @@ public sealed partial class StudioPage
             return;
         }
 
-        // This action only changes which world is marked active. Visual application remains
-        // explicit (Apply to desktop) or is controlled by the aesthetic toggle.
-        App.SceneService.SetActiveScene(_selected);
-        UpdateAutoSwitchUi();
-        UpdateSetActiveButtonState();
-        SyncStudioState();
+        await ApplySelectedWorldAsync();
     }
 }

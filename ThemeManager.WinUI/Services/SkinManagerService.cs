@@ -401,7 +401,9 @@ public sealed class SkinManagerService : IDisposable
             }
         }
 
-        await PersistAsync(true);
+        // World activation must see a failed write before it commits the active identity.
+        await _repo.SaveAllCheckedAsync(_skins);
+        SkinsChanged?.Invoke(this, EventArgs.Empty);
 
         _logger.LogInformation(
             "Desktop world applied: {AppliedCount} widget placements resolved, {MissingCount} missing definitions, {PlacementCount} placements in scene",
