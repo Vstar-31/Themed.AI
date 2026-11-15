@@ -2,6 +2,8 @@
 
 **14 November 2026 · Windows desktop · baseline `master` at `71872f6`**
 
+**16 November update.** Desktop master `6f1af11` passed 834 automated tests. Its Windows GUI pass reproduced two defects: Desktop World activation can leave the previous widget layout visible, and the embedded playlist can hide titles in the restored window. The 48-hour rendering check remains inconclusive after interruption. For the current bug register, owning files and branches, implementation steps and release acceptance tests, use the [remaining-work analysis](docs/REMAINING_WORK.md). The phase tables below retain their dated baseline.
+
 Themed.AI can generate a palette offline, build and recover a desktop widget, package a world, restore it on restart, and play music through the embedded VibeFinder app. These workflows have Windows evidence. The current deliverable is an unpackaged Windows x64 build. The largest uncertainties before a public release are long-running rendering, real display changes, endpoint hardening, and installation on a clean machine.
 
 **Planning estimate:** 2–4 working weeks to a limited tester beta and 6–10 working weeks total to a signed public v1, assuming one full-time developer, a frozen feature set, test hardware and signing access. The beta date depends especially on reproducing the rendering problem. See the [future action plan](docs/FUTURE_ACTION_PLAN.md) for scope, sequencing, and the longer platform estimate.
