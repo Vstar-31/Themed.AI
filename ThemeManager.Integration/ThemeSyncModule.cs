@@ -1,82 +1,41 @@
+using System.Globalization;
 using ThemeManager.Core.Models;
 using ThemeManager.Core.Services;
+using ThemeManager.Core.Utilities;
 
 namespace ThemeManager.Integration;
 
-/// <summary>
-/// Bridges Themed.AI theme changes into Windows' native application/system appearance.
-/// Registered at module load so every active-theme path gets the same synchronization.
-/// </summary>
-public static class ThemeSyncModule
+/// <summary>Serializes native appearance changes from the application theme service.</summary>
+public sealed class ThemeSyncModule(ISystemThemeIntegrator integrator)
 {
-    private static readonly SemaphoreSlim ApplyGate = new(1, 1);
-    private static int _initialized;
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
-    /// <summary>
-    /// Registers the process-wide theme bridge explicitly from the application startup path.
-    /// Library module initializers are intentionally avoided so analyzers do not flag CA2255.
-    /// </summary>
-    public static void Initialize()
+    public async Task<bool> ApplyAsync(CozyTheme theme)
     {
-        if (Interlocked.Exchange(ref _initialized, 1) != 0) return;
-        ThemeChangeHub.ThemeChanged += OnThemeChanged;
-    }
-
-    private static void OnThemeChanged(CozyTheme theme)
-    {
-        _ = ApplyWindowsThemeAsync(theme);
-    }
-
-    private static async Task ApplyWindowsThemeAsync(CozyTheme theme)
-    {
-        await ApplyGate.WaitAsync().ConfigureAwait(false);
+        await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var integrator = new SystemThemeIntegrator();
-
+            var applied = true;
             if (theme.ApplyToWindowsApps)
             {
-                var isLight = IsLightTheme(theme.BackgroundBase);
-                await integrator.ApplyWindowsThemeAsync(isLight).ConfigureAwait(false);
+                applied = await integrator.ApplyWindowsThemeAsync(IsLight(theme.BackgroundBase)).ConfigureAwait(false);
             }
-
             if (theme.ApplyToSystemAccent)
-                await integrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(theme.AccentPrimary)).ConfigureAwait(false);
+                applied &= await integrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(theme.AccentPrimary)).ConfigureAwait(false);
+            return applied;
         }
         catch
         {
-            // OS theming is best-effort; a failed registry write must never break theme changes.
+            return false;
         }
-        finally
-        {
-            ApplyGate.Release();
-        }
+        finally { _gate.Release(); }
     }
 
-    private static bool IsLightTheme(string hex)
+    private static bool IsLight(string background)
     {
-        try
-        {
-            hex = hex.TrimStart('#').Trim();
-            if (hex.Length == 8) hex = hex[2..];
-            if (hex.Length == 3)
-                hex = $"{hex[0]}{hex[0]}{hex[1]}{hex[1]}{hex[2]}{hex[2]}";
-            if (hex.Length != 6) return true;
-
-            var r = Convert.ToByte(hex[..2], 16) / 255.0;
-            var g = Convert.ToByte(hex.Substring(2, 2), 16) / 255.0;
-            var b = Convert.ToByte(hex.Substring(4, 2), 16) / 255.0;
-
-            static double Linear(double c) => c <= 0.04045
-                ? c / 12.92
-                : Math.Pow((c + 0.055) / 1.055, 2.4);
-
-            var luminance = 0.2126 * Linear(r) + 0.7152 * Linear(g) + 0.0722 * Linear(b);
-            return luminance >= 0.55;
-        }
-        catch
-        {
+        var hex = CozyTheme.NormalizeHex(background);
+        if (hex.Length != 7 || !uint.TryParse(hex.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out _))
             return true;
-        }
+        return ColorMath.LuminanceFromHex(hex) >= 0.55;
     }
 }

@@ -832,8 +832,8 @@ public sealed partial class StudioPage : Page
 
             var result = await WorldActivation.ApplyAsync(target);
             ApplyStatus.Text = result.Status;
-            if (result.WallpaperStatus is not null)
-                WallpaperStatusText.Text = result.WallpaperStatus;
+            if (result.AppearanceStatus is not null)
+                WallpaperStatusText.Text = result.AppearanceStatus;
             ActiveSceneMeta.Text = $"Applied · {target.Widgets.Count} saved widget placements · VibeFinder adaptation {(target.Behavior.ReactToVibeFinder ? "on" : "off")}";
         }
         catch (Exception ex)

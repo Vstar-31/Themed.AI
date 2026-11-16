@@ -33,6 +33,7 @@
   <!-- Actual editor logic, with explicit dispatcher/persistence doubles in Editor/.
        These are logic regressions; they do not exercise WinUI bindings or rendering. -->
   <ItemGroup>
+    <Compile Include="..\ThemeManager.WinUI\Services\WorldActivation.cs" Link="WorldSource\WorldActivation.cs" />
     <Compile Include="..\ThemeManager.WinUI\ViewModels\SkinEditorViewModel*.cs" Link="EditorSource\%(Filename)%(Extension)" />
     <Compile Include="..\ThemeManager.WinUI\ViewModels\WidgetBehaviorEditorItems.cs" Link="EditorSource\WidgetBehaviorEditorItems.cs" />
     <Compile Include="..\ThemeManager.WinUI\ViewModels\ViewModelBase.cs" Link="EditorSource\ViewModelBase.cs" />

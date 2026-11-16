@@ -5,7 +5,7 @@ namespace ThemeManager.WinUI.Services;
 
 internal static class WorldActivation
 {
-    internal sealed record Result(string Status, string? WallpaperStatus);
+    internal sealed record Result(string Status, string? AppearanceStatus);
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     internal static async Task SaveOutgoingLayoutAsync(DesktopScene scene)
@@ -33,9 +33,12 @@ internal static class WorldActivation
                 .FirstOrDefault(t => t.Id.Equals(target.ThemeId, StringComparison.OrdinalIgnoreCase));
             var originalLayout = CaptureCurrentWidgetLayout();
             var requested = target.Widgets.Count;
+            var committed = false;
+            string? appearanceStatus = null;
+            (int Applied, int Missing) result = default;
             try
             {
-                var result = await manager.ApplySceneAsync(target.Widgets);
+                result = await manager.ApplySceneAsync(target.Widgets);
                 var byId = manager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
                 var backfilled = false;
                 foreach (var placement in target.Widgets)
@@ -49,14 +52,13 @@ internal static class WorldActivation
                 if (backfilled)
                     await App.SceneService.UpsertAsync(target);
 
-                var wallpaperStatus = await ApplyAppearanceAsync(target, theme);
-                await App.SceneService.SetAppliedSceneAsync(target);
-                var status = result.Missing > 0
-                    ? $"Applied {result.Applied}/{requested} widgets · {result.Missing} unavailable"
-                    : $"Applied {result.Applied} widgets to desktop ✓";
-                return new Result(status, wallpaperStatus);
+                await App.SceneService.SetAppliedSceneAsync(target, async () =>
+                {
+                    committed = true;
+                    appearanceStatus = await ApplyAppearanceAsync(target, theme);
+                });
             }
-            catch
+            catch when (!committed)
             {
                 try { await manager.ApplySceneAsync(originalLayout); }
                 catch (Exception rollbackError)
@@ -66,27 +68,33 @@ internal static class WorldActivation
                 }
                 throw;
             }
+            catch (Exception error)
+            {
+                App.LoggerFactory.CreateLogger(nameof(WorldActivation)).LogWarning(error,
+                    "World {WorldId} was saved but its desktop update did not finish", target.Id);
+                appearanceStatus = "World activated. Some desktop updates could not finish.";
+            }
+            var status = result.Missing > 0
+                ? $"Applied {result.Applied}/{requested} widgets · {result.Missing} unavailable"
+                : $"Applied {result.Applied} widgets to desktop ✓";
+            return new Result(status, appearanceStatus);
         }
         finally { Gate.Release(); }
     }
 
     private static async Task<string?> ApplyAppearanceAsync(DesktopScene target, CozyTheme? theme)
     {
-        if (theme is not null)
-        {
-            App.ThemeService.SetActiveTheme(theme);
-            if (theme.ApplyToWindowsApps)
-                await App.SystemIntegrator.ApplyWindowsThemeAsync(IsLightPalette(theme.BackgroundBase));
-            if (theme.ApplyToSystemAccent)
-                await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(theme.AccentPrimary));
-        }
+        var messages = new List<string>();
+        if (theme is not null && !await App.ThemeService.SetActiveThemeAsync(theme))
+            messages.Add("Windows could not apply all requested theme settings.");
 
         var wallpaper = File.Exists(target.WallpaperPath) ? target.WallpaperPath
             : theme?.ApplyToWallpaper == true ? theme.WallpaperPath : null;
-        if (string.IsNullOrWhiteSpace(wallpaper) || !File.Exists(wallpaper)) return null;
-        return await App.SystemIntegrator.ApplyWallpaperAsync(wallpaper)
-            ? $"Applied ✓  {Path.GetFileName(wallpaper)} · bound to {target.Name}"
-            : $"Windows rejected the wallpaper: {Path.GetFileName(wallpaper)}";
+        if (File.Exists(wallpaper))
+            messages.Add(await App.SystemIntegrator.ApplyWallpaperAsync(wallpaper)
+                ? $"Applied ✓  {Path.GetFileName(wallpaper)} · bound to {target.Name}"
+                : $"Windows rejected the wallpaper: {Path.GetFileName(wallpaper)}");
+        return messages.Count == 0 ? null : string.Join(" ", messages);
     }
 
     private static async Task SaveLayoutAsync(DesktopScene scene)
@@ -138,25 +146,5 @@ internal static class WorldActivation
                 Definition = w.Clone()
             })
             .ToList() ?? new List<SceneWidgetPlacement>();
-
-    internal static bool IsLightPalette(string hex)
-    {
-        try
-        {
-            var c = App.HexToColor(CozyTheme.NormalizeHex(hex));
-            static double Linear(byte channel)
-            {
-                double v = channel / 255.0;
-                return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
-            }
-
-            double luminance = 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
-            return luminance >= 0.42;
-        }
-        catch
-        {
-            return true;
-        }
-    }
 
 }

@@ -78,8 +78,6 @@ public partial class App : Application
     {
         InitializeComponent();
         ThemeRepository = new ThemeRepository();
-        ThemeService = new ThemeService(ThemeRepository);
-        ThemeSyncModule.Initialize();
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -134,6 +132,8 @@ public partial class App : Application
         };
 
         SystemIntegrator = new SystemThemeIntegrator(LoggerFactory.CreateLogger<SystemThemeIntegrator>());
+        var themeSync = new ThemeSyncModule(SystemIntegrator);
+        ThemeService = new ThemeService(ThemeRepository, themeSync.ApplyAsync);
         WeatherProvider = new ConfiguredWeatherConditionProvider(LoggerFactory.CreateLogger<ConfiguredWeatherConditionProvider>());
 
         // Initialise (loads JSON, sets Cozy Café as active) before the window appears.

@@ -107,9 +107,7 @@ public sealed partial class StudioPage
         if (scene.ThemeSnapshot is { } importedPalette)
         {
             PaletteQualityValidator.ValidateAndRepair(importedPalette);
-            App.ThemeService.SetActiveTheme(importedPalette);
-            await App.SystemIntegrator.ApplyWindowsThemeAsync(WorldActivation.IsLightPalette(importedPalette.BackgroundBase));
-            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(importedPalette.AccentPrimary));
+            await App.ThemeService.SetActiveThemeAsync(importedPalette);
             return;
         }
         var tag = scene.Tags.FirstOrDefault(t =>
@@ -129,9 +127,7 @@ public sealed partial class StudioPage
             if (generatedQuality.Repairs.Count > 0)
                 await App.ThemeService.SaveThemeAsync(generatedTheme);
 
-            App.ThemeService.SetActiveTheme(generatedTheme);
-            await App.SystemIntegrator.ApplyWindowsThemeAsync(WorldActivation.IsLightPalette(generatedTheme.BackgroundBase));
-            await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(generatedTheme.AccentPrimary));
+            await App.ThemeService.SetActiveThemeAsync(generatedTheme);
             return;
         }
 
@@ -185,12 +181,7 @@ public sealed partial class StudioPage
             await App.SceneService.UpsertAsync(scene);
         }
 
-        App.ThemeService.SetActiveTheme(worldTheme);
-
-        // Map the world's palette to the native Windows Light/Dark app + system mode so supported
-        // Windows apps such as File Explorer follow the same visual direction.
-        await App.SystemIntegrator.ApplyWindowsThemeAsync(WorldActivation.IsLightPalette(worldTheme.BackgroundBase));
-        await App.SystemIntegrator.ApplyAccentColorAsync(CozyTheme.NormalizeHex(worldTheme.AccentPrimary));
+        await App.ThemeService.SetActiveThemeAsync(worldTheme);
     }
 
     private void UpdateSetActiveButtonState()
