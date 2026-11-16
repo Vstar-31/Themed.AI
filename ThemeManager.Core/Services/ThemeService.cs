@@ -17,32 +17,23 @@ namespace ThemeManager.Core.Services;
 public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
 {
     private readonly ThemeRepository _repo;
+    private readonly Func<CozyTheme, Task<bool>>? _syncWindows;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     private List<CozyTheme> _themes = new();
     public IReadOnlyList<CozyTheme> Themes => _themes;
 
     private CozyTheme _activeTheme = CozyDefaults.CreateDefault();
-    public CozyTheme ActiveTheme
-    {
-        get => _activeTheme;
-        private set
-        {
-            if (_activeTheme == value) return;
-            _activeTheme = value;
-            OnPropertyChanged();
-            ThemeChanged?.Invoke(this, value);
-            ThemeChangeHub.Publish(value);
-        }
-    }
+    public CozyTheme ActiveTheme => _activeTheme;
 
     public event EventHandler<CozyTheme>? ThemeChanged;
     public event EventHandler? ThemeListChanged;
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ThemeService(ThemeRepository repository)
+    public ThemeService(ThemeRepository repository, Func<CozyTheme, Task<bool>>? syncWindows = null)
     {
         _repo = repository;
+        _syncWindows = syncWindows;
     }
 
     public async Task InitializeAsync()
@@ -55,11 +46,15 @@ public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
 
         _activeTheme = defaultTheme;
         ThemeChangeHub.Publish(_activeTheme);
+        _ = SyncWindowsAsync(_activeTheme);
     }
 
     /// <summary>Sets the active theme, normalizes all color fields, and broadcasts the change to
     /// both the WinUI resource pipeline and cross-layer platform integrations.</summary>
     public void SetActiveTheme(CozyTheme theme)
+        => _ = SetActiveThemeAsync(theme, reapplyWindows: false);
+
+    public Task<bool> SetActiveThemeAsync(CozyTheme theme, bool reapplyWindows = true)
     {
         theme.BackgroundBase = CozyTheme.NormalizeHex(theme.BackgroundBase);
         theme.BackgroundAlt  = CozyTheme.NormalizeHex(theme.BackgroundAlt);
@@ -70,7 +65,14 @@ public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
         theme.TextMuted      = CozyTheme.NormalizeHex(theme.TextMuted);
         theme.BorderSubtle   = CozyTheme.NormalizeHex(theme.BorderSubtle);
 
-        ActiveTheme = theme;
+        if (_activeTheme == theme)
+            return reapplyWindows ? SyncWindowsAsync(theme) : Task.FromResult(true);
+
+        _activeTheme = theme;
+        OnPropertyChanged(nameof(ActiveTheme));
+        ThemeChanged?.Invoke(this, theme);
+        ThemeChangeHub.Publish(theme);
+        return SyncWindowsAsync(theme);
     }
 
     /// <summary>Applies a live palette token change to the active theme and broadcasts it.</summary>
@@ -78,7 +80,11 @@ public sealed class ThemeService : INotifyPropertyChanged, IActiveThemeProvider
     {
         ThemeChanged?.Invoke(this, _activeTheme);
         ThemeChangeHub.Publish(_activeTheme);
+        _ = SyncWindowsAsync(_activeTheme);
     }
+
+    private Task<bool> SyncWindowsAsync(CozyTheme theme) =>
+        _syncWindows?.Invoke(theme) ?? Task.FromResult(true);
 
     public async Task<CozyTheme> CreateThemeAsync(string name)
     {

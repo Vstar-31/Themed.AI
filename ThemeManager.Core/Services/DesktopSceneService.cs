@@ -110,7 +110,7 @@ public sealed class DesktopSceneService
     }
 
     /// <summary>Publish an applied layout only after its identity is durable.</summary>
-    public async Task SetAppliedSceneAsync(DesktopScene scene)
+    public async Task SetAppliedSceneAsync(DesktopScene scene, Func<Task>? afterCommit = null)
     {
         await _writeGate.WaitAsync();
         try
@@ -119,7 +119,15 @@ public sealed class DesktopSceneService
             ActiveScene = scene;
         }
         finally { _writeGate.Release(); }
-        ActiveSceneChanged?.Invoke(this, scene);
+        try
+        {
+            if (afterCommit is not null) await afterCommit();
+        }
+        finally
+        {
+            if (ReferenceEquals(ActiveScene, scene))
+                ActiveSceneChanged?.Invoke(this, scene);
+        }
     }
 
     public void SetActiveScene(DesktopScene? scene)

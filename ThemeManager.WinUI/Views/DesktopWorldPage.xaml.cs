@@ -88,7 +88,7 @@ public sealed partial class DesktopWorldPage : Page
         {
             PackageStatus.Text = $"Applying {scene.Name}…";
             var result = await WorldActivation.ApplyAsync(scene);
-            PackageStatus.Text = $"{scene.Name}: {result.Status} {result.WallpaperStatus}".TrimEnd();
+            PackageStatus.Text = $"{scene.Name}: {result.Status} {result.AppearanceStatus}".TrimEnd();
         }
         catch (Exception ex)
         {

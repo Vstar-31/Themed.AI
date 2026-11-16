@@ -11,7 +11,7 @@ namespace Microsoft.UI.Dispatching
 }
 namespace ThemeManager.WinUI.Services
 {
-    public sealed class SkinManagerService
+    public sealed partial class SkinManagerService
     {
         public ThemeManager.Core.Skins.SkinDefinition? Saved { get; private set; }
         public Exception? SaveError { get; set; }
