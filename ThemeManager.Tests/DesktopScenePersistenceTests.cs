@@ -111,6 +111,34 @@ public sealed class DesktopScenePersistenceTests : IDisposable
     }
 
     [Fact]
+    public async Task AppliedWorldIsPublishedOnlyWhenItsIdentityCanBeRestored()
+    {
+        var repository = new DesktopSceneRepository(_folder);
+        var service = new DesktopSceneService(repository);
+        var clock = new DesktopScene { Id = "clock" };
+        var music = new DesktopScene { Id = "music" };
+        await service.UpsertAsync(clock);
+        await service.UpsertAsync(music);
+        await service.SetAppliedSceneAsync(clock);
+        var updates = new List<string?>();
+        service.ActiveSceneChanged += (_, scene) => updates.Add(scene?.Id);
+
+        var blocked = Directory.CreateDirectory(Path.Combine(_folder, "active-scene.json.tmp"));
+        var error = await Record.ExceptionAsync(() => service.SetAppliedSceneAsync(music));
+        Assert.True(error is IOException or UnauthorizedAccessException);
+        Assert.Same(clock, service.ActiveScene);
+        Assert.Equal(clock.Id, await repository.LoadActiveSceneIdAsync());
+        Assert.Empty(updates);
+
+        blocked.Delete();
+        await service.SetAppliedSceneAsync(music);
+        Assert.Equal(music.Id, Assert.Single(updates));
+        var restarted = new DesktopSceneService(repository);
+        await restarted.InitializeAsync();
+        Assert.Equal(music.Id, restarted.ActiveScene?.Id);
+    }
+
+    [Fact]
     public async Task ActiveWriteFailureDoesNotBlockLaterWrite()
     {
         var repository = new DesktopSceneRepository(_folder);

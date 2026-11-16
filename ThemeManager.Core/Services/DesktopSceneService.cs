@@ -109,6 +109,19 @@ public sealed class DesktopSceneService
         finally { _writeGate.Release(); }
     }
 
+    /// <summary>Publish an applied layout only after its identity is durable.</summary>
+    public async Task SetAppliedSceneAsync(DesktopScene scene)
+    {
+        await _writeGate.WaitAsync();
+        try
+        {
+            await _repository.SaveActiveSceneIdAsync(scene.Id);
+            ActiveScene = scene;
+        }
+        finally { _writeGate.Release(); }
+        ActiveSceneChanged?.Invoke(this, scene);
+    }
+
     public void SetActiveScene(DesktopScene? scene)
     {
         if (ReferenceEquals(ActiveScene, scene)) return;
