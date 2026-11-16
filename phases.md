@@ -2,7 +2,7 @@
 
 **14 November 2026 · Windows desktop · baseline `master` at `71872f6`**
 
-**16 November update.** Desktop master `6f1af11` passed 834 automated tests. Its Windows GUI pass reproduced two defects: Desktop World activation can leave the previous widget layout visible, and the embedded playlist can hide titles in the restored window. The 48-hour rendering check remains inconclusive after interruption. For the current bug register, owning files and branches, implementation steps and release acceptance tests, use the [remaining-work analysis](docs/REMAINING_WORK.md). The phase tables below retain their dated baseline.
+**16 November update.** Desktop master `c4afa45` includes the world layout and theme fixes. The Release suite passed 841 tests. The desktop module also shipped its playlist row fix at `66c866f`, with 22 frontend tests passing. Visual checks of native theme colors, wallpaper and the compact WebView2 playlist remain open. The interrupted 48-hour rendering check remains inconclusive. The phase tables below retain their dated baseline. [Activation report](docs/testing/2026-11-16-world-activation.md) · [Module PR #19](https://github.com/Vstar-31/vibefinderai/pull/19) · [Remaining work](docs/REMAINING_WORK.md)
 
 Themed.AI can generate a palette offline, build and recover a desktop widget, package a world, restore it on restart, and play music through the embedded VibeFinder app. These workflows have Windows evidence. The current deliverable is an unpackaged Windows x64 build. The largest uncertainties before a public release are long-running rendering, real display changes, endpoint hardening, and installation on a clean machine.
 
