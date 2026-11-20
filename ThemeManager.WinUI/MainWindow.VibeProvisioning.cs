@@ -19,6 +19,7 @@ public sealed partial class MainWindow
 
         // Called by App only after SkinManager.InitializeAsync has finished loading storage.
         await App.SkinManager.EnsureVibeFinderSkinsExist();
+        await MigrateSavedVibeFinderCredentialsAsync();
 
         var credentialedWidget = FindCredentialedWidget();
         var playlistWidget = App.SkinManager.Skins.FirstOrDefault(s =>
@@ -56,9 +57,37 @@ public sealed partial class MainWindow
             var target = measure.Target?.TrimStart('|');
             var parts = target?.Split('|', 3);
             return parts is { Length: >= 2 }
-                   && ThemeManager.Core.Services.VibeFinderCredentials.IsConfigured(parts[0], parts[1]);
+                   && ThemeManager.Core.Services.VibeFinderCredentials.IsConfigured(
+                       parts[0], ThemeManager.Core.Services.VibeFinderTarget.ResolvePassword(parts[1]));
         }
         return false;
+    }
+
+    /// <summary>
+    /// One-time upgrade: replaces plain-text passwords in saved VibeFinder targets with DPAPI-protected ones.
+    /// A target is only replaced after the protected copy decrypts back to the original; otherwise the old
+    /// value is kept so the user stays signed in, and the next launch tries again. Passwords are never logged.
+    /// </summary>
+    private async Task MigrateSavedVibeFinderCredentialsAsync()
+    {
+        foreach (var skin in App.SkinManager.Skins.Where(s => s.Name.StartsWith("VibeFinder", StringComparison.Ordinal)).ToList())
+        {
+            bool changed = false;
+            foreach (var measure in skin.Measures)
+            {
+                if (measure.Type is not (MeasureType.VibeTrackTitle or MeasureType.VibeTrackArtist or MeasureType.VibeMood
+                    or MeasureType.VibePlaybackState or MeasureType.VibeTrackProgress))
+                    continue;
+                if (ThemeManager.Core.Services.VibeFinderTarget.TryProtect(measure.Target, out var protectedTarget))
+                {
+                    measure.Target = protectedTarget;
+                    changed = true;
+                }
+            }
+            if (!changed) continue;
+            try { await App.SkinManager.SaveSkinAsync(skin); }
+            catch (Exception ex) { _logger.LogWarning(ex, "VibeFinder credential migration: could not save {Skin}; will retry next launch", skin.Name); }
+        }
     }
 
     private static string? ReadVibeTarget(SkinDefinition skin)

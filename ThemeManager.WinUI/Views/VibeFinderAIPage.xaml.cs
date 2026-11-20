@@ -157,10 +157,11 @@ public sealed partial class VibeFinderAIPage : Page
                 var targetStr = measure.Target;
                 if (targetStr.StartsWith("|") && !targetStr.StartsWith("||")) targetStr = targetStr.Substring(1);
                 var parts = targetStr.Split('|', 3);
-                if (parts.Length >= 2 && VibeFinderCredentials.IsConfigured(parts[0], parts[1]))
+                var savedPassword = parts.Length >= 2 ? VibeFinderTarget.ResolvePassword(parts[1]) : "";
+                if (parts.Length >= 2 && VibeFinderCredentials.IsConfigured(parts[0], savedPassword))
                 {
                     UsernameBox.Text = parts[0];
-                    PasswordBox.Password = parts[1];
+                    PasswordBox.Password = savedPassword;
                 }
                 if (parts.Length >= 3) PromptBox.Text = parts[2];
             }
@@ -374,7 +375,17 @@ public sealed partial class VibeFinderAIPage : Page
         }
 
         _logger.LogInformation("VibeFinderAIPage: Save & Apply — updating credentials for user \"{User}\"", user);
-        string target = $"{user}|{pass}|{prompt}";
+        string target;
+        try { target = VibeFinderTarget.Build(user, pass, prompt); }
+        catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or PlatformNotSupportedException)
+        {
+            // Never fall back to saving the password as plain text.
+            _logger.LogError(ex, "VibeFinderAIPage: could not protect credentials; nothing was saved");
+            StatusText.Text = "Could not store your password securely, so nothing was saved.";
+            StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red);
+            StatusText.Visibility = Visibility.Visible;
+            return;
+        }
         await ApplyVibeFinderCredentialsAsync(target);
         _applySavedPromptOnReady = true;
         StatusText.Text = "Saved. Connecting to VibeFinder AI…";

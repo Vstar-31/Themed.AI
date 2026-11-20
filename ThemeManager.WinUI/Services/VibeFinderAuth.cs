@@ -105,10 +105,11 @@ public static class VibeFinderAuth
 
                 var target = measure.Target?.TrimStart('|');
                 var parts = target?.Split('|', 3);
-                if (parts is { Length: >= 2 }
-                    && ThemeManager.Core.Services.VibeFinderCredentials.IsConfigured(parts[0], parts[1]))
+                if (parts is { Length: >= 2 })
                 {
-                    return (parts[0], parts[1]);
+                    var password = ThemeManager.Core.Services.VibeFinderTarget.ResolvePassword(parts[1]);
+                    if (ThemeManager.Core.Services.VibeFinderCredentials.IsConfigured(parts[0], password))
+                        return (parts[0], password);
                 }
             }
         }
