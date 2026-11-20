@@ -49,7 +49,11 @@ public sealed class TrayIcon : IDisposable
     private const int CMD_EXIT = 2;
 
     private const int HOTKEY_ID = 9000;
+    private const uint MOD_ALT = 0x0001;
+    private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_SHIFT = 0x0004;
+    private const uint MOD_NOREPEAT = 0x4000;
+    private const int ERROR_HOTKEY_ALREADY_REGISTERED = 1409;
     private const uint MOD_WIN = 0x0008;
     private const uint VK_W = 0x57;
 
@@ -132,6 +136,13 @@ public sealed class TrayIcon : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+    // Preferred chord first; the fallback is used only when another process owns the preferred one.
+    private static readonly (uint Mods, string Label)[] HotkeyChords =
+    {
+        (MOD_WIN | MOD_SHIFT, "Win+Shift+W"),
+        (MOD_CONTROL | MOD_ALT | MOD_SHIFT, "Ctrl+Alt+Shift+W"),
+    };
+
     private readonly ILogger _logger;
     private readonly WndProcDelegate _wndProcDelegate; // held for life — see class remarks
     private IntPtr _hwnd;
@@ -143,8 +154,14 @@ public sealed class TrayIcon : IDisposable
     /// <summary>"Exit" from the right-click menu.</summary>
     public event Action? ExitRequested;
 
-    /// <summary>Global hotkey pressed (Win+Shift+W).</summary>
+    /// <summary>Global hotkey pressed (see HotkeyLabel).</summary>
     public event Action? GlobalHotkeyActivated;
+
+    /// <summary>True when a global shortcut is registered. When false, the tray icon is the only way to toggle widgets.</summary>
+    public bool HotkeyRegistered { get; private set; }
+
+    /// <summary>Label of the registered shortcut (e.g. "Win+Shift+W"), or null when none could be registered.</summary>
+    public string? HotkeyLabel { get; private set; }
 
     public TrayIcon(ILogger? logger = null)
     {
@@ -175,9 +192,20 @@ public sealed class TrayIcon : IDisposable
                 return;
             }
 
-            // Register global hotkey (Win+Shift+W)
-            if (!RegisterHotKey(_hwnd, HOTKEY_ID, MOD_WIN | MOD_SHIFT, VK_W))
-                _logger.LogWarning("Failed to register global hotkey (Win+Shift+W); another app may be using it");
+            // Register the global hotkey, trying the fallback chord if the preferred one is taken.
+            foreach (var (mods, label) in HotkeyChords)
+            {
+                if (RegisterHotKey(_hwnd, HOTKEY_ID, mods | MOD_NOREPEAT, VK_W))
+                {
+                    HotkeyRegistered = true;
+                    HotkeyLabel = label;
+                    break;
+                }
+                var err = Marshal.GetLastWin32Error();
+                _logger.LogWarning("Global hotkey {Hotkey} not registered (Win32 error {Error}{Reason}); {Next}",
+                    label, err, err == ERROR_HOTKEY_ALREADY_REGISTERED ? ": already owned by another process or instance" : "",
+                    label == HotkeyChords[^1].Label ? "tray icon remains available" : "trying fallback");
+            }
 
             var data = new NOTIFYICONDATA
             {
@@ -260,7 +288,7 @@ public sealed class TrayIcon : IDisposable
         try
         {
             if (_hwnd != IntPtr.Zero)
-                UnregisterHotKey(_hwnd, HOTKEY_ID);
+                if (HotkeyRegistered) UnregisterHotKey(_hwnd, HOTKEY_ID);
 
             if (_iconAdded)
             {
