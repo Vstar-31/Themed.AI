@@ -15,6 +15,7 @@ public sealed class DesktopWorldRuntime : IDisposable
     private DispatcherQueueTimer? _timer;
     private bool _started;
     private bool _transitioning;
+    private bool _autoSwitching;
 
     public DesktopWorldRuntime(DesktopSceneService scenes, DispatcherQueue dispatcher) { _scenes = scenes; _dispatcher = dispatcher; }
     public DesktopVibeAdapter.Atmosphere CurrentAtmosphere { get; private set; } = DesktopVibeAdapter.From("Neutral", 0.08, 0.5);
@@ -87,7 +88,11 @@ public sealed class DesktopWorldRuntime : IDisposable
         if (_dispatcher.HasThreadAccess) RecalculateTarget(VibeSnapshotHub.Current); else _dispatcher.TryEnqueue(() => RecalculateTarget(VibeSnapshotHub.Current));
     }
 
-    private void ApplySnapshot(VibeSnapshot snapshot) { RecalculateTarget(snapshot); TryAutoSwitch(snapshot); }
+    private void ApplySnapshot(VibeSnapshot snapshot)
+    {
+        RecalculateTarget(snapshot);
+        QueueAutoSwitch(snapshot);
+    }
 
     private void RecalculateTarget(VibeSnapshot snapshot)
     {
@@ -181,57 +186,28 @@ public sealed class DesktopWorldRuntime : IDisposable
         }
     }
 
-    private void TryAutoSwitch(VibeSnapshot snapshot)
+    private void QueueAutoSwitch(VibeSnapshot snapshot)
     {
-        var active = _scenes.ActiveScene;
-        if (active is null || !active.Behavior.AutoSwitch || !active.Behavior.ReactToVibeFinder) return;
+        if (_autoSwitching) return;
+        _ = ApplyAutoSwitchAsync(snapshot);
+    }
 
-        var profile = snapshot.Profile;
-        var learnedMood = profile?.TopMood;
-        var learnedTheme = profile?.TopTheme;
-        var learnedAmbience = profile?.TopAmbience;
-
-        var effectiveMood = !string.IsNullOrWhiteSpace(learnedMood) && profile!.Signals >= 3
-            ? learnedMood!
-            : snapshot.Mood;
-
-        var desiredTag = effectiveMood.ToLowerInvariant() switch
+    private async Task ApplyAutoSwitchAsync(VibeSnapshot snapshot)
+    {
+        _autoSwitching = true;
+        try
         {
-            "nocturnal" => "nocturnal",
-            "cozy" => "cozy",
-            "euphoric" or "intense" => "neon",
-            "bright" => "minimal",
-            "melancholic" or "heartbreak" => "nocturnal",
-            "focus" or "calm" => "minimal",
-            _ => null
-        };
-
-        if (desiredTag is null && !string.IsNullOrWhiteSpace(learnedTheme))
-        {
-            desiredTag = learnedTheme.ToLowerInvariant() switch
-            {
-                var value when value.Contains("neon") => "neon",
-                var value when value.Contains("dark") || value.Contains("night") => "nocturnal",
-                var value when value.Contains("cozy") || value.Contains("warm") => "cozy",
-                var value when value.Contains("minimal") || value.Contains("light") || value.Contains("bright") => "minimal",
-                _ => null
-            };
+            var active = _scenes.ActiveScene;
+            if (active is null) return;
+            var candidate = WorldAutoSwitchSelector.FindCandidate(snapshot.Mood, snapshot.Profile, active, _scenes.Scenes);
+            if (candidate is not null) await WorldActivation.ApplyAsync(candidate);
         }
-
-        if (desiredTag is null && !string.IsNullOrWhiteSpace(learnedAmbience))
+        catch (Exception ex)
         {
-            desiredTag = learnedAmbience.ToLowerInvariant() switch
-            {
-                var value when value.Contains("neon") || value.Contains("dynamic") => "neon",
-                var value when value.Contains("cozy") || value.Contains("calm") => "cozy",
-                var value when value.Contains("dark") || value.Contains("night") => "nocturnal",
-                _ => null
-            };
+            App.LoggerFactory.CreateLogger<DesktopWorldRuntime>().LogWarning(ex,
+                "Automatic world selection could not apply the selected desktop world");
         }
-
-        if (desiredTag is null || active.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase))) return;
-        var candidate = _scenes.Scenes.FirstOrDefault(s => !s.RequiresExplicitActivation && s.Tags.Any(t => t.Equals(desiredTag, StringComparison.OrdinalIgnoreCase)) && s.Behavior.ReactToVibeFinder);
-        if (candidate is not null) _scenes.SetActiveScene(candidate);
+        finally { _autoSwitching = false; }
     }
 
     public void Dispose()

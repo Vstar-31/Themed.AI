@@ -106,8 +106,7 @@ public sealed partial class DesktopWorldPage : Page
     {
         if (sender is not Button { Tag: string tag }) return;
         var scene = CreatePreset(tag);
-        await App.SceneService.UpsertAsync(scene);
-        App.SceneService.SetActiveScene(scene);
+        await CreateAndActivateAsync(scene);
     }
 
     private async void NewScene_Click(object sender, RoutedEventArgs e)
@@ -118,10 +117,27 @@ public sealed partial class DesktopWorldPage : Page
             Description = "A personal desktop world, ready to shape.",
             ThemeId = App.ThemeService.ActiveTheme.Id,
             Tags = new List<string> { "personal" },
+            Widgets = WorldActivation.CaptureCurrentWidgetLayout(),
             Effects = new List<SceneEffect> { new() { Type = "Glow", Intensity = 0.35 }, new() { Type = "AmbientMotion", Intensity = 0.25 } }
         };
-        await App.SceneService.UpsertAsync(scene);
-        App.SceneService.SetActiveScene(scene);
+        await CreateAndActivateAsync(scene);
+    }
+
+    private async Task CreateAndActivateAsync(DesktopScene scene)
+    {
+        IsEnabled = false;
+        try
+        {
+            await App.SceneService.UpsertAsync(scene);
+            PackageStatus.Text = $"Applying {scene.Name}…";
+            var result = await WorldActivation.ApplyAsync(scene);
+            PackageStatus.Text = $"{scene.Name}: {result.Status} {result.AppearanceStatus}".TrimEnd();
+        }
+        catch (Exception ex)
+        {
+            PackageStatus.Text = $"World create failed: {ex.Message}";
+        }
+        finally { IsEnabled = true; }
     }
 
     private DesktopScene CreatePreset(string tag)
@@ -136,6 +152,7 @@ public sealed partial class DesktopWorldPage : Page
         {
             Id = $"builtin-{tag}", Name = name, Description = description, ThemeId = App.ThemeService.ActiveTheme.Id,
             Tags = new List<string> { tag, "starter" },
+            Widgets = WorldActivation.CaptureCurrentWidgetLayout(),
             Effects = effects.Select(e => new SceneEffect { Type = e.Item1, Intensity = e.Item2 }).ToList(),
             Behavior = new SceneBehavior { ReactToVibeFinder = true, ReactToMedia = true, AutoSwitch = true, MotionIntensity = motion, AudioSensitivity = sensitivity, TransitionSeconds = tag == "neon" ? 0.55 : 1.1 }
         };
