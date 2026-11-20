@@ -113,7 +113,8 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
         }
 
         var parts = _target.Split('|', 3);
-        if (parts.Length < 3 || !VibeFinderCredentials.IsConfigured(parts[0], parts[1]) || string.IsNullOrWhiteSpace(parts[2]))
+        string? password = parts.Length >= 2 ? VibeFinderTarget.ResolvePassword(parts[1]) : null;
+        if (parts.Length < 3 || password is null || !VibeFinderCredentials.IsConfigured(parts[0], password) || string.IsNullOrWhiteSpace(parts[2]))
         {
             Text = "Sign in to VibeFinder";
             LogTextTransitionIfChanged();
@@ -121,7 +122,7 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
         }
 
         string? vibeText = ResolveVibeText(parts[2]);
-        string cacheKey = BuildCacheKey(parts[0], parts[1], vibeText ?? parts[2]);
+        string cacheKey = BuildCacheKey(parts[0], password, vibeText ?? parts[2]);
         var entry = Cache.GetOrAdd(cacheKey, _ => new ResultEntry());
 
         bool shouldFetch = false;
@@ -144,7 +145,7 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
         if (shouldFetch)
         {
             _logger.LogDebug("VibeFinderMeasure[{MeasureName}]: cache stale, starting one background fetch for phrase \"{Phrase}\"", Name, vibeText);
-            _ = FetchAsync(entry, parts[0], parts[1], vibeText!, _lifetimeCts.Token);
+            _ = FetchAsync(entry, parts[0], password, vibeText!, _lifetimeCts.Token);
         }
 
         List<(string Title, string Artist, string Mood, string? SpotifyUrl, string? AppleUrl, string? CoverArtUrl, string? PreviewUrl, string? VideoId)> tracks;
@@ -350,7 +351,7 @@ public sealed class VibeFinderMeasure : IMeasure, IDisposable
         var parts = _target.Split('|', 3);
         if (parts.Length < 3) return null;
         var vibe = ResolveVibeText(parts[2]);
-        return BuildCacheKey(parts[0], parts[1], vibe ?? parts[2]);
+        return BuildCacheKey(parts[0], VibeFinderTarget.ResolvePassword(parts[1]), vibe ?? parts[2]);
     }
 
     private void LogTextTransitionIfChanged()
