@@ -276,7 +276,11 @@ public sealed class SkinManagerService : IDisposable
 
         scenePlacements = cleanedPlacements;
 
-        var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        // ToDictionary throws on duplicate ids, which a prior version may have persisted.
+        // Last one wins, matching the most recently saved definition.
+        var known = new Dictionary<string, SkinDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var existing in _skins)
+            known[existing.Id] = existing;
         var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var successfulPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
         var applied = 0;

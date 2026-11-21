@@ -39,7 +39,7 @@ internal static class WorldActivation
             try
             {
                 result = await manager.ApplySceneAsync(target.Widgets);
-                var byId = manager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+                var byId = IndexById(manager.Skins);
                 var backfilled = false;
                 foreach (var placement in target.Widgets)
                 {
@@ -101,7 +101,7 @@ internal static class WorldActivation
     {
         if (App.SkinManager is null) return;
 
-        var byId = App.SkinManager.Skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        var byId = IndexById(App.SkinManager.Skins);
         // Older builds could persist an active badge without ever displaying that world.
         // Do not copy the unrelated desktop's positions or visibility over its saved placements.
         if (scene.Widgets.Any(p => byId.TryGetValue(p.WidgetId, out var skin) && p.Visible != skin.Enabled))
@@ -147,4 +147,12 @@ internal static class WorldActivation
             })
             .ToList() ?? new List<SceneWidgetPlacement>();
 
+    // ToDictionary throws on duplicate ids; last one wins, like the world restore in SkinManagerService.
+    private static Dictionary<string, ThemeManager.Core.Skins.SkinDefinition> IndexById(IEnumerable<ThemeManager.Core.Skins.SkinDefinition> skins)
+    {
+        var index = new Dictionary<string, ThemeManager.Core.Skins.SkinDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var skin in skins)
+            index[skin.Id] = skin;
+        return index;
+    }
 }
