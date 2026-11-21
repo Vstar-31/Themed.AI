@@ -110,6 +110,20 @@ public static class VibeFinderTarget
         return (protector ?? DefaultProtector.Value).TryUnprotect(segment[ProtectedPrefix.Length..], out var plain) ? plain : "";
     }
 
+    /// <summary>True when two targets hold the same user, password and vibe. Protected blobs differ on every save, so compare decrypted values.</summary>
+    public static bool Equivalent(string? a, string? b, ISecretProtector? protector = null)
+    {
+        if (string.Equals(a, b, StringComparison.Ordinal)) return true;
+        if (a is null || b is null) return false;
+        var pa = a.Split('|', 3);
+        var pb = b.Split('|', 3);
+        if (pa.Length < 2 || pb.Length < 2) return false;
+        var passA = ResolvePassword(pa[1], protector);
+        var passB = ResolvePassword(pb[1], protector);
+        if (passA.Length == 0 || passB.Length == 0) return false; // unreadable or empty: never claim equal, so it gets rewritten
+        return pa[0] == pb[0] && passA == passB && (pa.Length == 3 ? pa[2] : "") == (pb.Length == 3 ? pb[2] : "");
+    }
+
     /// <summary>
     /// Migrates a legacy plain-text target. Returns true only when <paramref name="migrated"/> holds a verified
     /// protected copy. On any failure it returns false and the caller must keep the original untouched.

@@ -395,6 +395,18 @@ public sealed partial class VibeFinderAIPage : Page
         App.MainWindow?.ResetVibeFinderPrewarm();
     }
 
+    private async void ForgetCredentials_Click(object sender, RoutedEventArgs e)
+    {
+        // Same "signed out" shape the widgets already understand: no user, no password, vibe prompt kept.
+        await ApplyVibeFinderCredentialsAsync($"||{PromptBox.Text}");
+        UsernameBox.Text = "";
+        PasswordBox.Password = "";
+        StatusText.Text = "Saved login removed from this PC. Widgets will ask you to sign in.";
+        StatusText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray);
+        StatusText.Visibility = Visibility.Visible;
+        App.MainWindow?.ResetVibeFinderPrewarm();
+    }
+
     private async System.Threading.Tasks.Task ApplyVibeFinderCredentialsAsync(string target)
     {
         var vibeSkins = _skinManager.Skins.Where(s => s.Name.StartsWith("VibeFinder")).ToList();
@@ -409,7 +421,7 @@ public sealed partial class VibeFinderAIPage : Page
                     measure.Type != ThemeManager.Core.Skins.MeasureType.VibePlaybackState &&
                     measure.Type != ThemeManager.Core.Skins.MeasureType.VibeTrackProgress)
                     continue;
-                if (!string.Equals(measure.Target, target, System.StringComparison.Ordinal))
+                if (!VibeFinderTarget.Equivalent(measure.Target, target))
                 {
                     measure.Target = target;
                     changed = true;

@@ -85,6 +85,19 @@ public sealed class VibeFinderTargetTests
     public void TryProtect_SkipsEmptyAndPlaceholderTargets(string? target) =>
         Assert.False(VibeFinderTarget.TryProtect(target, out _, new FakeProtector()));
 
+    [Fact]
+    public void Equivalent_IgnoresBlobDifferencesButCatchesRealChanges()
+    {
+        var p = new FakeProtector();
+        var a = VibeFinderTarget.Build("alice", Dummy, "v", p);
+        Assert.True(VibeFinderTarget.Equivalent(a, "alice|" + Dummy + "|v", p));
+        Assert.False(VibeFinderTarget.Equivalent(a, VibeFinderTarget.Build("alice", "other", "v", p), p));
+        Assert.False(VibeFinderTarget.Equivalent(a, VibeFinderTarget.Build("bob", Dummy, "v", p), p));
+        Assert.False(VibeFinderTarget.Equivalent(a, VibeFinderTarget.Build("alice", Dummy, "w", p), p));
+        Assert.False(VibeFinderTarget.Equivalent(a, "||v", p));
+        Assert.False(VibeFinderTarget.Equivalent(a, "alice|dpapi1:QUJD|v", new FakeProtector { FailUnprotect = true }));
+    }
+
     [Theory]
     [InlineData("alice|dummy-Pass#123|v")]
     [InlineData("alice|dpapi1:QUJD|v")]
