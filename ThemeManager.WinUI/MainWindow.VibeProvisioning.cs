@@ -85,7 +85,7 @@ public sealed partial class MainWindow
                 }
             }
             if (!changed) continue;
-            try { await App.SkinManager.SaveSkinAsync(skin); }
+            try { await App.SkinManager.PersistSkinDataAsync(skin); }
             catch (Exception ex) { _logger.LogWarning(ex, "VibeFinder credential migration: could not save {Skin}; will retry next launch", skin.Name); }
         }
     }
