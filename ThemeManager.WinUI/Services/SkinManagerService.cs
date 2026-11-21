@@ -276,7 +276,11 @@ public sealed class SkinManagerService : IDisposable
 
         scenePlacements = cleanedPlacements;
 
-        var known = _skins.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
+        // Use a loop instead of ToDictionary to tolerate duplicates that may have
+        // been persisted by a prior version; last-wins keeps the most recent definition.
+        var known = new Dictionary<string, SkinDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in _skins)
+            known[s.Id] = s;
         var sceneIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var successfulPlacements = new List<SceneWidgetPlacement>(scenePlacements.Count);
         var applied = 0;
@@ -307,6 +311,9 @@ public sealed class SkinManagerService : IDisposable
                         _logger.LogInformation(
                             "Desktop world rebound legacy widget placement {OldWidgetId} to canonical {WidgetId} ({WidgetName})",
                             oldWidgetId, skin.Id, skin.Name);
+                        // liveVibe already lives in _skins — just register it in the local lookup
+                        // so the rest of this loop sees it; do NOT re-add to _skins.
+                        known[skin.Id] = skin;
                     }
                     else
                     {
@@ -314,6 +321,9 @@ public sealed class SkinManagerService : IDisposable
                         _logger.LogInformation(
                             "Desktop world restored missing widget {WidgetId} ({WidgetName}) from its saved placement snapshot",
                             skin.Id, skin.Name);
+                        skin.Enabled = false;
+                        _skins.Add(skin);
+                        known[skin.Id] = skin;
                     }
                 }
                 else if (CanonicalDefaults.TryGetValue(placement.WidgetId, out var canonical))
@@ -324,6 +334,9 @@ public sealed class SkinManagerService : IDisposable
                     _logger.LogInformation(
                         "Desktop world restored canonical built-in widget {WidgetId} ({WidgetName})",
                         skin.Id, skin.Name);
+                    skin.Enabled = false;
+                    _skins.Add(skin);
+                    known[skin.Id] = skin;
                 }
                 else
                 {
@@ -334,10 +347,6 @@ public sealed class SkinManagerService : IDisposable
                         placement.WidgetId);
                     continue;
                 }
-
-                skin.Enabled = false;
-                _skins.Add(skin);
-                known[skin.Id] = skin;
             }
             else if (sceneIds.Contains(skin.Id))
             {
