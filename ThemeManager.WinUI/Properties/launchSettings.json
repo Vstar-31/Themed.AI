@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ThemeManager.WinUI": {
+      "commandName": "Project",
+      "debugEngines": "managed-dotnet,native"
+    }
+  }
+}

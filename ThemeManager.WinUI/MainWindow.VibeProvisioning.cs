@@ -70,6 +70,7 @@ public sealed partial class MainWindow
     /// </summary>
     private async Task MigrateSavedVibeFinderCredentialsAsync()
     {
+        int protectedCount = 0;
         foreach (var skin in App.SkinManager.Skins.Where(s => s.Name.StartsWith("VibeFinder", StringComparison.Ordinal)).ToList())
         {
             bool changed = false;
@@ -82,12 +83,15 @@ public sealed partial class MainWindow
                 {
                     measure.Target = protectedTarget;
                     changed = true;
+                    protectedCount++;
                 }
             }
             if (!changed) continue;
             try { await App.SkinManager.PersistSkinDataAsync(skin); }
             catch (Exception ex) { _logger.LogWarning(ex, "VibeFinder credential migration: could not save {Skin}; will retry next launch", skin.Name); }
         }
+        if (protectedCount > 0)
+            _logger.LogInformation("VibeFinder credential migration: protected {Count} saved login(s)", protectedCount);
     }
 
     private static string? ReadVibeTarget(SkinDefinition skin)

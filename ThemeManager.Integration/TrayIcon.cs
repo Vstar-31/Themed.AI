@@ -199,6 +199,7 @@ public sealed class TrayIcon : IDisposable
                 {
                     HotkeyRegistered = true;
                     HotkeyLabel = label;
+                    _logger.LogInformation("Global hotkey registered: {Hotkey}", label);
                     break;
                 }
                 var err = Marshal.GetLastWin32Error();

@@ -710,9 +710,11 @@ public sealed class SkinManagerService : IDisposable
 
         await YieldToDispatcherAsync();
 
+        bool closeCalled = false;
         try
         {
             entry.Window.Close();
+            closeCalled = true;
         }
         catch (Exception ex)
         {
@@ -721,6 +723,14 @@ public sealed class SkinManagerService : IDisposable
                 skin.Id,
                 skin.Name);
         }
+
+        if (!closeCalled) return;
+
+        // Close() returns before WinUI has finished tearing the window down. Wait for Closed and one more
+        // dispatcher turn so a quick off/on toggle never builds the next window for this widget on top of it.
+        await entry.Window.WaitUntilClosedAsync(TimeSpan.FromSeconds(2));
+        await YieldToDispatcherAsync();
+        _logger.LogInformation("Widget window closed: {SkinId} ({SkinName}); open windows={OpenCount}", skin.Id, skin.Name, _open.Count);
     }
 
     private async Task PersistAsync(bool notifyListChanged)

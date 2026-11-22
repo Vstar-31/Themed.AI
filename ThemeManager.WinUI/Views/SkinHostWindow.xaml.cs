@@ -53,6 +53,7 @@ public sealed partial class SkinHostWindow : Window
     private readonly ILogger _logger = App.LoggerFactory.CreateLogger<SkinHostWindow>();
 
     private bool _dragging;
+    private readonly TaskCompletionSource _closedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // Meter states (hover/pressed/active/threshold) and the animation clock that drives them.
     private readonly List<MeterStateController> _stateControllers = new();
@@ -149,6 +150,8 @@ public sealed partial class SkinHostWindow : Window
         Closed += (_, _) =>
         {
             _windowClosed = true;
+            _dragging = false;
+            _closedTcs.TrySetResult();
             _stateTimer?.Stop();
             _viewModel.MetersUpdated -= OnMetersUpdated;
             App.ThemeService.ThemeChanged -= ThemeService_ThemeChanged;
@@ -224,9 +227,19 @@ public sealed partial class SkinHostWindow : Window
         }
     }
 
+    /// <summary>Completes once WinUI has raised Closed for this window, or after the timeout. Lets the manager finish
+    /// tearing one window down before it creates the next one for the same widget.</summary>
+    public async Task WaitUntilClosedAsync(TimeSpan timeout)
+    {
+        var finished = await Task.WhenAny(_closedTcs.Task, Task.Delay(timeout));
+        if (finished != _closedTcs.Task)
+            _logger.LogWarning("Widget window \"{Skin}\" did not report Closed within {Timeout} ms; continuing", _viewModel.Definition.Name, (int)timeout.TotalMilliseconds);
+    }
+
     public void SuspendForWorld()
     {
         IsWorldHidden = true;
+        _dragging = false;
         _stateTimer?.Stop();
         AppWindow.Hide();
         _viewModel.DisposeMeasures();
@@ -249,6 +262,7 @@ public sealed partial class SkinHostWindow : Window
     public void PrepareForClose()
     {
         _windowClosed = true;
+        _dragging = false;
         try
         {
             _stateTimer?.Stop();
@@ -1511,6 +1525,9 @@ public sealed partial class SkinHostWindow : Window
 
     private void RootCanvas_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
+        // Input can still be queued for a window that is closing or hidden for a world switch.
+        if (_windowClosed || IsWorldHidden) return;
+
         var point = e.GetCurrentPoint(RootCanvas);
 
         if (point.Properties.IsRightButtonPressed)
@@ -1524,7 +1541,12 @@ public sealed partial class SkinHostWindow : Window
         _dragging = true;
         GetCursorPos(out _dragAnchorScreen);
         _dragWindowStart = AppWindow.Position;
-        RootCanvas.CapturePointer(e.Pointer);
+        try { RootCanvas.CapturePointer(e.Pointer); }
+        catch (Exception ex)
+        {
+            _dragging = false;
+            _logger.LogDebug(ex, "Widget drag: pointer capture failed for \"{Skin}\"", _viewModel.Definition.Name);
+        }
     }
 
     private const int SnapThresholdPhysicalPx = 24; // ~16 DIPs at 150% scaling
@@ -1532,6 +1554,7 @@ public sealed partial class SkinHostWindow : Window
     private void RootCanvas_PointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         if (!_dragging) return;
+        if (_windowClosed || IsWorldHidden) { _dragging = false; return; }
 
         GetCursorPos(out var currentScreen);
         int deltaX = currentScreen.X - _dragAnchorScreen.X;
@@ -1539,7 +1562,12 @@ public sealed partial class SkinHostWindow : Window
         if (deltaX == 0 && deltaY == 0) return;
 
         var (newX, newY) = SnapToScreenEdges(_dragWindowStart.X + deltaX, _dragWindowStart.Y + deltaY);
-        AppWindow.Move(new PointInt32(newX, newY));
+        try { AppWindow.Move(new PointInt32(newX, newY)); }
+        catch (Exception ex)
+        {
+            _dragging = false;
+            _logger.LogDebug(ex, "Widget drag: move failed for \"{Skin}\"", _viewModel.Definition.Name);
+        }
     }
 
     /// <summary>Pulls the widget flush against a screen edge once it's within a few DIPs of one,
@@ -1580,7 +1608,8 @@ public sealed partial class SkinHostWindow : Window
     {
         if (!_dragging) return;
         _dragging = false;
-        RootCanvas.ReleasePointerCapture(e.Pointer);
+        try { RootCanvas.ReleasePointerCapture(e.Pointer); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Widget drag: releasing pointer capture failed for \"{Skin}\"", _viewModel.Definition.Name); }
 
         ClearPressedStates();
 
